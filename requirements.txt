@@ -1,0 +1,26 @@
+# Database
+duckdb>=0.9.0
+
+# Data Collection (core)
+beautifulsoup4>=4.12.0
+requests>=2.31.0
+lxml>=4.9.0
+
+# Data Processing
+pandas>=2.0.0
+numpy>=1.24.0
+
+# Visualization
+matplotlib>=3.7.0
+
+# GUI
+ttkbootstrap>=1.10.0
+
+# Utilities
+python-dotenv>=1.0.0
+
+# Optional dependencies (install separately if needed):
+# pip install tradingview-ta  # For technical analysis
+# pip install ollama          # For local AI
+# pip install groq            # For cloud AI fallback
+# pip install git+https://github.com/rongardF/tvdatafeed.git  # For TradingView data
