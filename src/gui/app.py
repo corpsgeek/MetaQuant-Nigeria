@@ -20,6 +20,8 @@ from src.gui.tabs.portfolio_tab import PortfolioTab
 from src.gui.tabs.watchlist_tab import WatchlistTab
 from src.gui.tabs.insights_tab import InsightsTab
 from src.gui.tabs.universe_tab import UniverseTab
+from src.gui.tabs.flow_tab import FlowTab
+from src.gui.tabs.history_tab import HistoryTab
 
 
 logger = logging.getLogger(__name__)
@@ -156,10 +158,14 @@ class MetaQuantApp:
         self.watchlist_tab = WatchlistTab(self.notebook, self.db)
         self.insights_tab = InsightsTab(self.notebook, self.db)
         self.universe_tab = UniverseTab(self.notebook, self.db)
+        self.flow_tab = FlowTab(self.notebook, self.db)
+        self.history_tab = HistoryTab(self.notebook, self.db)
         
         # Add tabs to notebook
         self.notebook.add(self.universe_tab.frame, text="📋 Universe")
         self.notebook.add(self.screener_tab.frame, text="📈 Screener")
+        self.notebook.add(self.flow_tab.frame, text="📊 Flow Analysis")
+        self.notebook.add(self.history_tab.frame, text="📅 History")
         self.notebook.add(self.portfolio_tab.frame, text="💼 Portfolio")
         self.notebook.add(self.watchlist_tab.frame, text="👁 Watchlist")
         self.notebook.add(self.insights_tab.frame, text="🤖 AI Insights")

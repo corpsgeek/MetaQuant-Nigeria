@@ -56,7 +56,8 @@ class DatabaseManager:
             'seq_stocks', 'seq_fundamentals', 'seq_daily_prices',
             'seq_orderbook', 'seq_disclosures', 'seq_portfolios',
             'seq_positions', 'seq_transactions', 'seq_watchlists',
-            'seq_watchlist_items', 'seq_ai_insights', 'seq_technical'
+            'seq_watchlist_items', 'seq_ai_insights', 'seq_technical',
+            'seq_market_snapshots'
         ]
         for seq in sequences:
             self.conn.execute(f"CREATE SEQUENCE IF NOT EXISTS {seq} START 1")
@@ -258,6 +259,27 @@ class DatabaseManager:
                 UNIQUE(stock_id, date)
             )
         """)
+        
+        # Market snapshots - daily market summary for historical memory
+        self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS market_snapshots (
+                id INTEGER PRIMARY KEY DEFAULT nextval('seq_market_snapshots'),
+                date DATE NOT NULL UNIQUE,
+                total_volume BIGINT,
+                total_trades INTEGER,
+                gainers_count INTEGER,
+                losers_count INTEGER,
+                unchanged_count INTEGER,
+                top_gainer_symbol VARCHAR,
+                top_gainer_change DECIMAL(8, 4),
+                top_loser_symbol VARCHAR,
+                top_loser_change DECIMAL(8, 4),
+                market_breadth DECIMAL(8, 4),
+                avg_change_percent DECIMAL(8, 4),
+                notes TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
     
     def _create_indexes(self):
         """Create indexes for better query performance."""
@@ -350,20 +372,19 @@ class DatabaseManager:
     def insert_daily_price(self, stock_id: int, date: str, ohlcv: Dict[str, Any]):
         """Insert daily price data."""
         self.conn.execute("""
-            INSERT INTO daily_prices (stock_id, date, open, high, low, close, volume, trades)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO daily_prices (stock_id, date, open, high, low, close, volume)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT (stock_id, date) DO UPDATE SET
                 open = EXCLUDED.open,
                 high = EXCLUDED.high,
                 low = EXCLUDED.low,
                 close = EXCLUDED.close,
-                volume = EXCLUDED.volume,
-                trades = EXCLUDED.trades
+                volume = EXCLUDED.volume
         """, [
             stock_id, date, 
             ohlcv.get('open'), ohlcv.get('high'), 
             ohlcv.get('low'), ohlcv.get('close'),
-            ohlcv.get('volume'), ohlcv.get('trades')
+            ohlcv.get('volume')
         ])
     
     def get_price_history(self, stock_id: int, days: int = 365) -> List[Dict[str, Any]]:
@@ -543,3 +564,95 @@ class DatabaseManager:
             ORDER BY sector
         """).fetchall()
         return [row[0] for row in results]
+    
+    # ===== Market Snapshots / Historical Memory =====
+    
+    def save_market_snapshot(self, date: str, snapshot_data: Dict[str, Any]) -> int:
+        """
+        Save a market snapshot for a specific date.
+        
+        Args:
+            date: Date string in YYYY-MM-DD format
+            snapshot_data: Dictionary with market summary data
+        """
+        self.conn.execute("""
+            INSERT INTO market_snapshots (
+                date, total_volume, total_trades, gainers_count, losers_count,
+                unchanged_count, top_gainer_symbol, top_gainer_change,
+                top_loser_symbol, top_loser_change, market_breadth, avg_change_percent, notes
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT (date) DO UPDATE SET
+                total_volume = EXCLUDED.total_volume,
+                gainers_count = EXCLUDED.gainers_count,
+                losers_count = EXCLUDED.losers_count,
+                top_gainer_symbol = EXCLUDED.top_gainer_symbol,
+                top_gainer_change = EXCLUDED.top_gainer_change,
+                top_loser_symbol = EXCLUDED.top_loser_symbol,
+                top_loser_change = EXCLUDED.top_loser_change,
+                market_breadth = EXCLUDED.market_breadth,
+                avg_change_percent = EXCLUDED.avg_change_percent
+        """, [
+            date,
+            snapshot_data.get('total_volume', 0),
+            snapshot_data.get('total_trades', 0),
+            snapshot_data.get('gainers_count', 0),
+            snapshot_data.get('losers_count', 0),
+            snapshot_data.get('unchanged_count', 0),
+            snapshot_data.get('top_gainer_symbol'),
+            snapshot_data.get('top_gainer_change'),
+            snapshot_data.get('top_loser_symbol'),
+            snapshot_data.get('top_loser_change'),
+            snapshot_data.get('market_breadth'),
+            snapshot_data.get('avg_change_percent'),
+            snapshot_data.get('notes'),
+        ])
+        return 1
+    
+    def get_market_snapshot(self, date: str) -> Optional[Dict]:
+        """Get market snapshot for a specific date."""
+        result = self.conn.execute("""
+            SELECT * FROM market_snapshots WHERE date = ?
+        """, [date]).fetchone()
+        
+        if result:
+            columns = [desc[0] for desc in self.conn.description]
+            return dict(zip(columns, result))
+        return None
+    
+    def get_available_dates(self, limit: int = 100) -> List[str]:
+        """Get list of dates with available market snapshots."""
+        results = self.conn.execute("""
+            SELECT date FROM market_snapshots 
+            ORDER BY date DESC 
+            LIMIT ?
+        """, [limit]).fetchall()
+        return [str(row[0]) for row in results]
+    
+    def get_market_on_date(self, date: str) -> List[Dict]:
+        """
+        Get all stock prices as they were on a specific date.
+        Returns stocks with their prices from daily_prices table for that date.
+        """
+        results = self.conn.execute("""
+            SELECT 
+                s.symbol, s.name, s.sector,
+                dp.open, dp.high, dp.low, dp.close, dp.volume,
+                dp.date
+            FROM stocks s
+            JOIN daily_prices dp ON s.id = dp.stock_id
+            WHERE dp.date = ?
+            ORDER BY s.symbol
+        """, [date]).fetchall()
+        
+        columns = [desc[0] for desc in self.conn.description]
+        return [dict(zip(columns, row)) for row in results]
+    
+    def get_price_history_dates(self) -> List[str]:
+        """Get list of dates with price history data."""
+        results = self.conn.execute("""
+            SELECT DISTINCT date FROM daily_prices 
+            ORDER BY date DESC 
+            LIMIT 365
+        """).fetchall()
+        return [str(row[0]) for row in results]
+
