@@ -445,11 +445,15 @@ def main():
     
     args = parser.parse_args()
     
-    # TradingView credentials
-    TV_USERNAME = os.getenv("TV_USERNAME", "REDACTED_EMAIL")
-    TV_PASSWORD = os.getenv("TV_PASSWORD", "REDACTED_PASSWORD")
+    # TradingView credentials - MUST be set via environment variables
+    TV_USERNAME = os.getenv("TV_USERNAME")
+    TV_PASSWORD = os.getenv("TV_PASSWORD")
     
-    worker = DataWorker(TV_USERNAME, TV_PASSWORD)
+    if not TV_USERNAME or not TV_PASSWORD:
+        logger.warning("⚠️ TV_USERNAME and TV_PASSWORD not set. Using anonymous mode.")
+        logger.info("Set environment variables: export TV_USERNAME='your_email' TV_PASSWORD='your_password'")
+    
+    worker = DataWorker(TV_USERNAME or "", TV_PASSWORD or "")
     
     try:
         if args.seed:
