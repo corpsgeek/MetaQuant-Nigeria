@@ -104,12 +104,34 @@ class LiveMarketTab:
         header_frame = ttk.Frame(self.frame)
         header_frame.pack(fill=tk.X, padx=10, pady=(10, 5))
         
+        # Heartbeat pulse canvas
+        self.heartbeat_canvas = tk.Canvas(
+            header_frame,
+            width=40,
+            height=30,
+            bg=COLORS['bg_dark'],
+            highlightthickness=0
+        )
+        self.heartbeat_canvas.pack(side=tk.LEFT, padx=(0, 10))
+        self._heartbeat_size = 8
+        self._heartbeat_growing = True
+        self._draw_heartbeat()
+        
         ttk.Label(
             header_frame,
-            text="🔴 Live Market",
+            text="Live Market",
             font=get_font('subheading'),
             foreground=COLORS['primary']
         ).pack(side=tk.LEFT)
+        
+        # Market health indicator
+        self.health_label = ttk.Label(
+            header_frame,
+            text="Health: --",
+            font=get_font('small'),
+            foreground=COLORS['text_muted']
+        )
+        self.health_label.pack(side=tk.LEFT, padx=15)
         
         # Last update time
         self.update_label = ttk.Label(
@@ -118,7 +140,7 @@ class LiveMarketTab:
             font=get_font('small'),
             foreground=COLORS['text_muted']
         )
-        self.update_label.pack(side=tk.LEFT, padx=20)
+        self.update_label.pack(side=tk.LEFT, padx=10)
         
         # Auto-refresh toggle
         self.auto_refresh_var = tk.BooleanVar(value=True)
@@ -142,14 +164,80 @@ class LiveMarketTab:
             refresh_btn = ttk.Button(header_frame, text="↻ Refresh", command=self._load_data)
         refresh_btn.pack(side=tk.RIGHT)
     
+    def _draw_heartbeat(self, color='#27ae60'):
+        """Draw the heartbeat pulse indicator."""
+        self.heartbeat_canvas.delete("all")
+        cx, cy = 20, 15
+        r = self._heartbeat_size
+        
+        # Outer glow
+        if r > 10:
+            self.heartbeat_canvas.create_oval(
+                cx - r - 3, cy - r - 3, cx + r + 3, cy + r + 3,
+                fill='', outline=color, width=1
+            )
+        
+        # Main pulse
+        self.heartbeat_canvas.create_oval(
+            cx - r, cy - r, cx + r, cy + r,
+            fill=color, outline=''
+        )
+    
+    def _animate_heartbeat(self, market_sentiment='neutral', volume_intensity=1.0):
+        """Animate the heartbeat based on market conditions."""
+        # Color based on sentiment
+        if market_sentiment == 'bullish':
+            color = '#27ae60'  # Green
+        elif market_sentiment == 'bearish':
+            color = '#e74c3c'  # Red
+        else:
+            color = '#f39c12'  # Yellow
+        
+        # Pulse animation
+        if self._heartbeat_growing:
+            self._heartbeat_size += 1
+            if self._heartbeat_size >= 12:
+                self._heartbeat_growing = False
+        else:
+            self._heartbeat_size -= 1
+            if self._heartbeat_size <= 6:
+                self._heartbeat_growing = True
+        
+        self._draw_heartbeat(color)
+        
+        # Schedule next pulse based on volume intensity
+        delay = max(50, int(300 / volume_intensity))
+        self.frame.after(delay, lambda: self._animate_heartbeat(market_sentiment, volume_intensity))
+    
     def _create_breadth_bar(self):
-        """Create market breadth indicator bar."""
+        """Create market breadth indicator bar with oscillator gauge."""
         breadth_frame = ttk.Frame(self.frame)
         breadth_frame.pack(fill=tk.X, padx=10, pady=5)
         
-        # Stats labels
+        # LEFT: Health Oscillator Gauge
+        gauge_frame = ttk.Frame(breadth_frame)
+        gauge_frame.pack(side=tk.LEFT, padx=(0, 15))
+        
+        ttk.Label(gauge_frame, text="Health", font=get_font('small'),
+                 foreground=COLORS['text_muted']).pack()
+        
+        self.gauge_canvas = tk.Canvas(
+            gauge_frame,
+            width=80,
+            height=45,
+            bg=COLORS['bg_dark'],
+            highlightthickness=0
+        )
+        self.gauge_canvas.pack()
+        
+        self.health_score_label = ttk.Label(gauge_frame, text="--",
+                                             font=get_font('body'),
+                                             foreground=COLORS['primary'])
+        self.health_score_label.pack()
+        
+        # MIDDLE: Stats labels
         stats_frame = ttk.Frame(breadth_frame)
-        stats_frame.pack(fill=tk.X)
+        stats_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
         
         self.breadth_labels = {}
         
@@ -173,7 +261,107 @@ class LiveMarketTab:
             bg=COLORS['bg_medium'],
             highlightthickness=0
         )
-        self.breadth_canvas.pack(fill=tk.X, pady=(5, 0))
+        self.breadth_canvas.pack(fill=tk.X, pady=(5, 0), side=tk.BOTTOM)
+        
+        # Volume Alerts Panel (below breadth)
+        self._create_volume_alerts()
+    
+    def _create_volume_alerts(self):
+        """Create volume spike alerts panel."""
+        self.alerts_frame = ttk.Frame(self.frame)
+        self.alerts_frame.pack(fill=tk.X, padx=10, pady=(0, 5))
+        
+        # Alert icon and label
+        ttk.Label(self.alerts_frame, text="🔔 Volume Spikes:", 
+                 font=get_font('small'),
+                 foreground=COLORS['warning']).pack(side=tk.LEFT)
+        
+        # Container for alert badges
+        self.alert_badges_frame = ttk.Frame(self.alerts_frame)
+        self.alert_badges_frame.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=10)
+        
+        self.volume_alert_labels = []  # Will hold alert labels
+    
+    def _draw_health_gauge(self, score: float):
+        """Draw the health oscillator gauge (0-100)."""
+        self.gauge_canvas.delete("all")
+        
+        width = 80
+        height = 45
+        
+        # Draw arc background (gray)
+        import math
+        cx, cy = width // 2, height - 5
+        radius = 35
+        
+        # Background arc
+        self.gauge_canvas.create_arc(
+            cx - radius, cy - radius, cx + radius, cy + radius,
+            start=0, extent=180,
+            fill='#333', outline='#555', width=1, style='pieslice'
+        )
+        
+        # Filled arc based on score
+        if score > 0:
+            fill_extent = score / 100 * 180
+            
+            if score >= 60:
+                color = '#27ae60'  # Green
+            elif score >= 40:
+                color = '#f39c12'  # Yellow
+            else:
+                color = '#e74c3c'  # Red
+            
+            self.gauge_canvas.create_arc(
+                cx - radius, cy - radius, cx + radius, cy + radius,
+                start=180 - fill_extent, extent=fill_extent,
+                fill=color, outline='', style='pieslice'
+            )
+        
+        # Update score label
+        self.health_score_label.config(text=f"{int(score)}")
+    
+    def _update_volume_alerts(self, stocks_list: list):
+        """Update volume spike alerts with flashing badges."""
+        # Clear existing alerts
+        for widget in self.alert_badges_frame.winfo_children():
+            widget.destroy()
+        self.volume_alert_labels = []
+        
+        # Find volume spikes (RVOL > 3x)
+        spikes = []
+        for stock in stocks_list:
+            rvol = stock.get('rvol', 0) or 0
+            if rvol >= 3:
+                spikes.append({
+                    'symbol': stock.get('symbol', '?'),
+                    'rvol': rvol,
+                    'change': stock.get('change', 0) or 0
+                })
+        
+        # Sort by RVOL descending
+        spikes.sort(key=lambda x: -x['rvol'])
+        
+        if not spikes:
+            ttk.Label(self.alert_badges_frame, text="No unusual volume",
+                     font=get_font('small'),
+                     foreground=COLORS['text_muted']).pack(side=tk.LEFT)
+            return
+        
+        # Show top 5 alerts with badges
+        for spike in spikes[:5]:
+            chg = spike['change']
+            color = COLORS['gain'] if chg >= 0 else COLORS['loss']
+            
+            badge = ttk.Label(
+                self.alert_badges_frame,
+                text=f" {spike['symbol']} {spike['rvol']:.0f}x ",
+                font=get_font('small'),
+                foreground=color,
+                background='#333'
+            )
+            badge.pack(side=tk.LEFT, padx=3)
+            self.volume_alert_labels.append(badge)
     
     def _create_sector_heatmap(self, parent):
         """Create sector performance heatmap."""
@@ -383,6 +571,42 @@ class LiveMarketTab:
         
         # Update breadth bar
         self._update_breadth(snapshot)
+        
+        # Update health gauge
+        gainers = snapshot.get('gainers', 0)
+        losers = snapshot.get('losers', 0)
+        total = snapshot.get('total_stocks', 1)
+        health_score = ((gainers - losers) / total * 50 + 50) if total > 0 else 50
+        self._draw_health_gauge(max(0, min(100, health_score)))
+        
+        # Update health label in header
+        if health_score >= 60:
+            health_text, health_color = "Bullish", COLORS['gain']
+        elif health_score >= 40:
+            health_text, health_color = "Neutral", COLORS['warning']
+        else:
+            health_text, health_color = "Bearish", COLORS['loss']
+        self.health_label.config(text=f"Health: {health_text}", foreground=health_color)
+        
+        # Calculate volume intensity for heartbeat
+        avg_rvol = sum(s.get('rvol', 1) or 1 for s in stocks_list) / len(stocks_list) if stocks_list else 1
+        volume_intensity = max(0.5, min(3, avg_rvol / 2))
+        
+        # Determine market sentiment for heartbeat
+        if health_score >= 60:
+            sentiment = 'bullish'
+        elif health_score <= 40:
+            sentiment = 'bearish'
+        else:
+            sentiment = 'neutral'
+        
+        # Start heartbeat animation (only if not already running)
+        if not hasattr(self, '_heartbeat_running') or not self._heartbeat_running:
+            self._heartbeat_running = True
+            self._animate_heartbeat(sentiment, volume_intensity)
+        
+        # Update volume alerts
+        self._update_volume_alerts(stocks_list)
         
         # Update sector heatmap
         self._update_sector_heatmap(stocks_list)
