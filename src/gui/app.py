@@ -132,7 +132,7 @@ class MetaQuantApp:
         )
         subtitle_label.pack(side=tk.LEFT, padx=(10, 0))
         
-        # Right side - market status and refresh
+        # Right side - market status and buttons
         right_frame = ttk.Frame(header_frame)
         right_frame.pack(side=tk.RIGHT)
         
@@ -144,6 +144,22 @@ class MetaQuantApp:
             foreground=COLORS['text_muted']
         )
         self.market_status_label.pack(side=tk.LEFT, padx=(0, 20))
+        
+        # Export PDF button
+        if TTKBOOTSTRAP_AVAILABLE:
+            export_btn = ttk_bs.Button(
+                right_frame,
+                text="📄 Export PDF",
+                bootstyle="info-outline",
+                command=self._export_pdf
+            )
+        else:
+            export_btn = ttk.Button(
+                right_frame,
+                text="📄 Export PDF",
+                command=self._export_pdf
+            )
+        export_btn.pack(side=tk.LEFT, padx=(0, 10))
         
         # Refresh button
         if TTKBOOTSTRAP_AVAILABLE:
@@ -257,6 +273,83 @@ class MetaQuantApp:
         except Exception as e:
             logger.error(f"Refresh failed: {e}")
             self.set_status(f"Refresh failed: {str(e)}")
+    
+    def _export_pdf(self):
+        """Export daily market summary as PDF."""
+        from tkinter import filedialog
+        import threading
+        
+        # Get save location
+        default_name = f"MetaQuant_Report_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf"
+        filepath = filedialog.asksaveasfilename(
+            defaultextension=".pdf",
+            filetypes=[("PDF files", "*.pdf")],
+            initialfile=default_name,
+            title="Export Market Summary"
+        )
+        
+        if not filepath:
+            return
+        
+        self.set_status("Generating PDF report...")
+        
+        def generate():
+            try:
+                from src.reports.report_generator import ReportGenerator, REPORTLAB_AVAILABLE
+                from src.collectors.tradingview_collector import TradingViewCollector
+                
+                if not REPORTLAB_AVAILABLE:
+                    self.root.after(0, lambda: messagebox.showerror(
+                        "Error", 
+                        "PDF library not installed. Run: pip install reportlab"
+                    ))
+                    return
+                
+                # Fetch current market data
+                collector = TradingViewCollector()
+                all_stocks = collector.get_all_stocks()
+                stocks_list = all_stocks.to_dict('records') if not all_stocks.empty else []
+                
+                # Create snapshot
+                gainers = len([s for s in stocks_list if (s.get('change', 0) or 0) > 0])
+                losers = len([s for s in stocks_list if (s.get('change', 0) or 0) < 0])
+                
+                # Get top movers
+                sorted_by_change = sorted(stocks_list, key=lambda x: x.get('change', 0) or 0, reverse=True)
+                top_gainers = [{'symbol': s.get('symbol'), 'price': s.get('close', 0), 'change': s.get('change', 0)} 
+                              for s in sorted_by_change[:5]]
+                top_losers = [{'symbol': s.get('symbol'), 'price': s.get('close', 0), 'change': s.get('change', 0)} 
+                             for s in sorted_by_change[-5:]]
+                
+                snapshot = {
+                    'total_stocks': len(stocks_list),
+                    'gainers': gainers,
+                    'losers': losers,
+                    'top_gainers': top_gainers,
+                    'top_losers': top_losers
+                }
+                
+                # Generate report
+                generator = ReportGenerator(self.db)
+                success = generator.generate_daily_summary(
+                    output_path=filepath,
+                    snapshot=snapshot,
+                    stocks_list=stocks_list
+                )
+                
+                if success:
+                    self.root.after(0, lambda: [
+                        self.set_status(f"PDF exported: {filepath}"),
+                        messagebox.showinfo("Success", f"Report saved to:\n{filepath}")
+                    ])
+                else:
+                    self.root.after(0, lambda: messagebox.showerror("Error", "Failed to generate PDF"))
+                    
+            except Exception as e:
+                logger.error(f"PDF export failed: {e}")
+                self.root.after(0, lambda: messagebox.showerror("Error", f"Export failed: {str(e)}"))
+        
+        threading.Thread(target=generate, daemon=True).start()
     
     def _on_tab_changed(self, event):
         """Handle tab change events."""
