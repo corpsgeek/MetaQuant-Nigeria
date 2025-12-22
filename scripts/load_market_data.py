@@ -81,7 +81,7 @@ def load_market_data(db: DatabaseManager = None) -> dict:
             
             stock_id = stock['id']
             
-            # Update stock price (simple update without ON CONFLICT issues)
+            # Update stock price and market cap
             try:
                 db.conn.execute("""
                     UPDATE stocks SET 
@@ -89,6 +89,7 @@ def load_market_data(db: DatabaseManager = None) -> dict:
                         prev_close = ?,
                         change_percent = ?,
                         volume = ?,
+                        market_cap = ?,
                         last_updated = CURRENT_TIMESTAMP
                     WHERE id = ?
                 """, [
@@ -96,6 +97,7 @@ def load_market_data(db: DatabaseManager = None) -> dict:
                     row.get('open'),
                     row.get('change'),
                     row.get('volume'),
+                    row.get('market_cap_basic'),  # Store market cap from TradingView
                     stock_id
                 ])
             except Exception as e:

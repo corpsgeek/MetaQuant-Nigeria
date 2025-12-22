@@ -9,6 +9,8 @@ from .microstructure import (
     calculate_sector_performance,
 )
 
+from .sector_analysis import SectorAnalysis
+
 __all__ = [
     'calculate_relative_volume',
     'calculate_rvol_from_history',
@@ -17,4 +19,6 @@ __all__ = [
     'calculate_breadth_indicators',
     'identify_volume_leaders',
     'calculate_sector_performance',
+    'SectorAnalysis',
 ]
+

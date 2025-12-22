@@ -16,7 +16,7 @@ except ImportError:
 
 from src.database.db_manager import DatabaseManager
 from src.gui.theme import apply_theme, COLORS, get_font
-from src.gui.tabs.live_market_tab import LiveMarketTab
+from src.gui.tabs.market_intelligence_tab import MarketIntelligenceTab
 from src.gui.tabs.screener_tab import ScreenerTab
 from src.gui.tabs.portfolio_tab import PortfolioTab
 from src.gui.tabs.watchlist_tab import WatchlistTab
@@ -173,7 +173,7 @@ class MetaQuantApp:
         self.notebook.pack(fill=tk.BOTH, expand=True)
         
         # Create tabs
-        self.live_market_tab = LiveMarketTab(self.notebook, self.db)
+        self.market_intel_tab = MarketIntelligenceTab(self.notebook, self.db)
         self.screener_tab = ScreenerTab(self.notebook, self.db)
         self.portfolio_tab = PortfolioTab(self.notebook, self.db)
         self.watchlist_tab = WatchlistTab(self.notebook, self.db)
@@ -183,7 +183,7 @@ class MetaQuantApp:
         self.history_tab = HistoryTab(self.notebook, self.db)
         
         # Add tabs to notebook
-        self.notebook.add(self.live_market_tab.frame, text="🔴 Live Market")
+        self.notebook.add(self.market_intel_tab.frame, text="🧠 Market Intel")
         self.notebook.add(self.universe_tab.frame, text="📋 Universe")
         self.notebook.add(self.screener_tab.frame, text="📈 Screener")
         self.notebook.add(self.flow_tab.frame, text="📊 Flow Analysis")
@@ -262,7 +262,7 @@ class MetaQuantApp:
         """Handle tab change events."""
         try:
             current_tab = self.notebook.index(self.notebook.select())
-            tab_names = ["Live Market", "Universe", "Screener", "Flow Analysis", "History", "Portfolio", "Watchlist", "AI Insights"]
+            tab_names = ["Market Intel", "Universe", "Screener", "Flow Analysis", "History", "Portfolio", "Watchlist", "AI Insights"]
             if current_tab < len(tab_names):
                 self.set_status(f"Viewing {tab_names[current_tab]}")
         except Exception:
