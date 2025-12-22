@@ -372,19 +372,20 @@ class DatabaseManager:
     def insert_daily_price(self, stock_id: int, date: str, ohlcv: Dict[str, Any]):
         """Insert daily price data."""
         self.conn.execute("""
-            INSERT INTO daily_prices (stock_id, date, open, high, low, close, volume)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO daily_prices (stock_id, date, open, high, low, close, volume, change_pct)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT (stock_id, date) DO UPDATE SET
                 open = EXCLUDED.open,
                 high = EXCLUDED.high,
                 low = EXCLUDED.low,
                 close = EXCLUDED.close,
-                volume = EXCLUDED.volume
+                volume = EXCLUDED.volume,
+                change_pct = EXCLUDED.change_pct
         """, [
             stock_id, date, 
             ohlcv.get('open'), ohlcv.get('high'), 
             ohlcv.get('low'), ohlcv.get('close'),
-            ohlcv.get('volume')
+            ohlcv.get('volume'), ohlcv.get('change_pct')
         ])
     
     def get_price_history(self, stock_id: int, days: int = 365) -> List[Dict[str, Any]]:
@@ -631,13 +632,14 @@ class DatabaseManager:
     def get_market_on_date(self, date: str) -> List[Dict]:
         """
         Get all stock prices as they were on a specific date.
-        Returns stocks with their prices from daily_prices table for that date.
+        Returns stocks with their prices from daily_prices table for that date,
+        including the stored change_pct for accurate day-over-day change.
         """
         results = self.conn.execute("""
             SELECT 
                 s.symbol, s.name, s.sector,
                 dp.open, dp.high, dp.low, dp.close, dp.volume,
-                dp.date
+                dp.date, dp.change_pct
             FROM stocks s
             JOIN daily_prices dp ON s.id = dp.stock_id
             WHERE dp.date = ?
@@ -647,12 +649,45 @@ class DatabaseManager:
         columns = [desc[0] for desc in self.conn.description]
         return [dict(zip(columns, row)) for row in results]
     
+    def insert_orderbook_snapshot(self, stock_id: int, orderbook_data: Dict[str, Any]):
+        """
+        Insert order book snapshot data.
+        
+        Args:
+            stock_id: Stock ID
+            orderbook_data: Dictionary with bid/ask levels
+        """
+        self.conn.execute("""
+            INSERT INTO orderbook_snapshots (
+                stock_id, timestamp,
+                bid_price_1, bid_volume_1, bid_price_2, bid_volume_2,
+                bid_price_3, bid_volume_3, bid_price_4, bid_volume_4,
+                bid_price_5, bid_volume_5,
+                ask_price_1, ask_volume_1, ask_price_2, ask_volume_2,
+                ask_price_3, ask_volume_3, ask_price_4, ask_volume_4,
+                ask_price_5, ask_volume_5
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, [
+            stock_id,
+            orderbook_data.get('timestamp', datetime.now()),
+            orderbook_data.get('bid_price_1'), orderbook_data.get('bid_volume_1'),
+            orderbook_data.get('bid_price_2'), orderbook_data.get('bid_volume_2'),
+            orderbook_data.get('bid_price_3'), orderbook_data.get('bid_volume_3'),
+            orderbook_data.get('bid_price_4'), orderbook_data.get('bid_volume_4'),
+            orderbook_data.get('bid_price_5'), orderbook_data.get('bid_volume_5'),
+            orderbook_data.get('ask_price_1'), orderbook_data.get('ask_volume_1'),
+            orderbook_data.get('ask_price_2'), orderbook_data.get('ask_volume_2'),
+            orderbook_data.get('ask_price_3'), orderbook_data.get('ask_volume_3'),
+            orderbook_data.get('ask_price_4'), orderbook_data.get('ask_volume_4'),
+            orderbook_data.get('ask_price_5'), orderbook_data.get('ask_volume_5'),
+        ])
+    
     def get_price_history_dates(self) -> List[str]:
         """Get list of dates with price history data."""
         results = self.conn.execute("""
             SELECT DISTINCT date FROM daily_prices 
             ORDER BY date DESC 
-            LIMIT 365
+            LIMIT 1000
         """).fetchall()
         return [str(row[0]) for row in results]
 

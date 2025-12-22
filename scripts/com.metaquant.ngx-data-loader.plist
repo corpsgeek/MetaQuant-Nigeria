@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.metaquant.ngx-data-loader</string>
+    
+    <key>ProgramArguments</key>
+    <array>
+        <string>/opt/miniconda3/bin/python</string>
+        <string>/Users/macbook/Documents/MetaLabs/MetaQuantNigeria/scripts/data_scheduler.py</string>
+        <string>--once</string>
+    </array>
+    
+    <key>StartCalendarInterval</key>
+    <dict>
+        <!-- Run at 3:00 PM (15:00) every weekday -->
+        <key>Hour</key>
+        <integer>15</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+    
+    <key>StandardOutPath</key>
+    <string>/Users/macbook/Documents/MetaLabs/MetaQuantNigeria/logs/launchd_stdout.log</string>
+    
+    <key>StandardErrorPath</key>
+    <string>/Users/macbook/Documents/MetaLabs/MetaQuantNigeria/logs/launchd_stderr.log</string>
+    
+    <key>WorkingDirectory</key>
+    <string>/Users/macbook/Documents/MetaLabs/MetaQuantNigeria</string>
+    
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/miniconda3/bin:/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+    
+    <!-- Run missed jobs when waking from sleep -->
+    <key>StartInterval</key>
+    <integer>0</integer>
+</dict>
+</plist>

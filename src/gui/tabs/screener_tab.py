@@ -34,9 +34,15 @@ class ScreenerTab:
         self.db = db
         self.engine = ScreeningEngine(db)
         
+        # Sorting state
+        self.sort_column = 'symbol'
+        self.sort_ascending = True
+        self.current_results = []
+        
         # Create main frame
         self.frame = ttk.Frame(parent)
         self._setup_ui()
+        self._setup_tags()
         
         # Load initial data
         self.refresh()
@@ -211,25 +217,25 @@ class ScreenerTab:
             selectmode='browse'
         )
         
-        # Column headings
-        self.results_tree.heading('symbol', text='Symbol')
-        self.results_tree.heading('name', text='Company')
-        self.results_tree.heading('price', text='Price')
-        self.results_tree.heading('change', text='Change %')
-        self.results_tree.heading('pe', text='P/E')
-        self.results_tree.heading('dividend', text='Div %')
-        self.results_tree.heading('volume', text='Volume')
-        self.results_tree.heading('sector', text='Sector')
+        # Column headings with sort functionality
+        columns_config = [
+            ('symbol', 'Symbol', 80),
+            ('name', 'Company', 200),
+            ('price', 'Price ₦', 100),
+            ('change', 'Change %', 80),
+            ('pe', 'P/E', 70),
+            ('dividend', 'Div %', 70),
+            ('volume', 'Volume', 100),
+            ('sector', 'Sector', 120)
+        ]
         
-        # Column widths
-        self.results_tree.column('symbol', width=80, minwidth=60)
-        self.results_tree.column('name', width=200, minwidth=150)
-        self.results_tree.column('price', width=100, minwidth=80)
-        self.results_tree.column('change', width=80, minwidth=60)
-        self.results_tree.column('pe', width=70, minwidth=50)
-        self.results_tree.column('dividend', width=70, minwidth=50)
-        self.results_tree.column('volume', width=100, minwidth=80)
-        self.results_tree.column('sector', width=120, minwidth=100)
+        for col_id, col_text, width in columns_config:
+            self.results_tree.heading(
+                col_id, 
+                text=col_text,
+                command=lambda c=col_id: self._sort_by_column(c)
+            )
+            self.results_tree.column(col_id, width=width, minwidth=width-20)
         
         # Scrollbars
         y_scroll = ttk.Scrollbar(table_frame, orient=tk.VERTICAL, command=self.results_tree.yview)
@@ -247,52 +253,113 @@ class ScreenerTab:
         # Bind double-click
         self.results_tree.bind('<Double-1>', self._on_stock_double_click)
     
+    def _setup_tags(self):
+        """Setup tags for row coloring."""
+        # Alternating row colors
+        self.results_tree.tag_configure('oddrow', background=COLORS['bg_medium'])
+        self.results_tree.tag_configure('evenrow', background=COLORS['bg_dark'])
+        
+        # Change colors - using foreground won't work on treeview cells
+        # So we'll format the text with indicators instead
+    
+    def _sort_by_column(self, column: str):
+        """Sort the table by clicking column header."""
+        # Toggle sort direction if same column
+        if self.sort_column == column:
+            self.sort_ascending = not self.sort_ascending
+        else:
+            self.sort_column = column
+            self.sort_ascending = True
+        
+        # Update column headers with sort indicator
+        for col in ('symbol', 'name', 'price', 'change', 'pe', 'dividend', 'volume', 'sector'):
+            text = self.results_tree.heading(col, 'text')
+            # Remove existing indicators
+            text = text.replace(' ▲', '').replace(' ▼', '')
+            if col == column:
+                indicator = ' ▲' if self.sort_ascending else ' ▼'
+                text = text + indicator
+            self.results_tree.heading(col, text=text)
+        
+        # Re-populate with sorted data
+        self._populate_results(self.current_results)
+    
     def _run_screen(self):
         """Run the screening and populate results."""
         try:
             results = self.engine.run()
-            
-            # Clear existing items
-            for item in self.results_tree.get_children():
-                self.results_tree.delete(item)
-            
-            # Populate results
-            for stock in results:
-                price = stock.get('last_price', 0) or 0
-                change = stock.get('change_percent', 0) or 0
-                pe = stock.get('pe_ratio')
-                div = stock.get('dividend_yield')
-                volume = stock.get('volume', 0) or 0
-                
-                self.results_tree.insert('', tk.END, values=(
-                    stock.get('symbol', ''),
-                    stock.get('name', '')[:30],
-                    format_currency(price),
-                    format_percent(change),
-                    f"{pe:.1f}" if pe else "N/A",
-                    f"{div:.1f}%" if div else "N/A",
-                    f"{volume:,}",
-                    stock.get('sector', '')[:15]
-                ))
-            
-            # Update count
-            self.results_count_label.config(text=f"{len(results)} stocks")
-            
-            # Update active filters
-            active = self.engine.get_active_filters()
-            if active:
-                self.active_filters_label.config(
-                    text=f"Active: {', '.join(active)}",
-                    foreground=COLORS['primary']
-                )
-            else:
-                self.active_filters_label.config(
-                    text="No filters active",
-                    foreground=COLORS['text_muted']
-                )
+            self.current_results = results
+            self._populate_results(results)
                 
         except Exception as e:
             logger.error(f"Screening failed: {e}")
+    
+    def _populate_results(self, results: List[Dict[str, Any]]):
+        """Populate the results table with sorting."""
+        # Clear existing items
+        for item in self.results_tree.get_children():
+            self.results_tree.delete(item)
+        
+        # Sort results
+        sort_key_map = {
+            'symbol': lambda x: (x.get('symbol') or '').lower(),
+            'name': lambda x: (x.get('name') or '').lower(),
+            'price': lambda x: x.get('last_price') or 0,
+            'change': lambda x: x.get('change_percent') or 0,
+            'pe': lambda x: x.get('pe_ratio') or 999,
+            'dividend': lambda x: x.get('dividend_yield') or 0,
+            'volume': lambda x: x.get('volume') or 0,
+            'sector': lambda x: (x.get('sector') or '').lower(),
+        }
+        
+        key_func = sort_key_map.get(self.sort_column, lambda x: x.get('symbol', ''))
+        sorted_results = sorted(results, key=key_func, reverse=not self.sort_ascending)
+        
+        # Populate results with alternating colors
+        for i, stock in enumerate(sorted_results):
+            price = stock.get('last_price', 0) or 0
+            change = stock.get('change_percent', 0) or 0
+            pe = stock.get('pe_ratio')
+            div = stock.get('dividend_yield')
+            volume = stock.get('volume', 0) or 0
+            
+            # Format change with color indicator
+            if change > 0:
+                change_text = f"▲ +{change:.2f}%"
+            elif change < 0:
+                change_text = f"▼ {change:.2f}%"
+            else:
+                change_text = f"  {change:.2f}%"
+            
+            # Tag for alternating row colors
+            tag = 'evenrow' if i % 2 == 0 else 'oddrow'
+            
+            self.results_tree.insert('', tk.END, values=(
+                stock.get('symbol', ''),
+                stock.get('name', '')[:30],
+                f"₦{price:,.2f}",
+                change_text,
+                f"{pe:.1f}" if pe else "N/A",
+                f"{div:.1f}%" if div else "N/A",
+                f"{volume:,}",
+                stock.get('sector', '')[:15]
+            ), tags=(tag,))
+        
+        # Update count
+        self.results_count_label.config(text=f"{len(results)} stocks")
+        
+        # Update active filters
+        active = self.engine.get_active_filters()
+        if active:
+            self.active_filters_label.config(
+                text=f"Active: {', '.join(active)}",
+                foreground=COLORS['primary']
+            )
+        else:
+            self.active_filters_label.config(
+                text="No filters active",
+                foreground=COLORS['text_muted']
+            )
     
     # ==================== Preset Filters ====================
     

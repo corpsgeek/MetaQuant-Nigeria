@@ -1,21 +1,24 @@
 """
-TradingView data collector using tvdatafeed and tradingview-ta libraries.
-Fetches historical price data and technical analysis signals.
+TradingView data collector for Nigerian Stock Exchange (NSENG).
+Uses tradingview-screener for bulk market data and tradingview-ta for individual analysis.
+
+Works with Python 3.13+
 """
 
 import logging
 from typing import Optional, List, Dict, Any
-from datetime import datetime, timedelta
+from datetime import datetime, date
 import pandas as pd
 
+# Import working TradingView packages
 try:
-    from tvDatafeed import TvDatafeed, Interval
-    TVDATAFEED_AVAILABLE = True
+    from tradingview_screener import Query, Column
+    SCREENER_AVAILABLE = True
 except ImportError:
-    TVDATAFEED_AVAILABLE = False
+    SCREENER_AVAILABLE = False
 
 try:
-    from tradingview_ta import TA_Handler, Interval as TAInterval, Exchange
+    from tradingview_ta import TA_Handler, Interval as TAInterval
     TRADINGVIEW_TA_AVAILABLE = True
 except ImportError:
     TRADINGVIEW_TA_AVAILABLE = False
@@ -26,101 +29,151 @@ logger = logging.getLogger(__name__)
 
 class TradingViewCollector:
     """
-    Collects market data from TradingView.
+    Collects market data from TradingView for Nigerian Stock Exchange (NSENG).
     
-    Uses tvdatafeed for historical OHLCV data and tradingview-ta for
-    technical analysis indicators and recommendations.
+    Uses tradingview-screener for bulk data fetching and tradingview-ta for
+    individual stock technical analysis.
     """
     
-    # Nigerian Stock Exchange symbol suffix
-    EXCHANGE = "NGSE"
+    # Nigerian Stock Exchange on TradingView
+    EXCHANGE = "NSENG"
+    SCREENER = "nigeria"
     
-    # Interval mappings
-    INTERVALS = {
-        '1m': Interval.in_1_minute if TVDATAFEED_AVAILABLE else None,
-        '5m': Interval.in_5_minute if TVDATAFEED_AVAILABLE else None,
-        '15m': Interval.in_15_minute if TVDATAFEED_AVAILABLE else None,
-        '30m': Interval.in_30_minute if TVDATAFEED_AVAILABLE else None,
-        '1h': Interval.in_1_hour if TVDATAFEED_AVAILABLE else None,
-        '4h': Interval.in_4_hour if TVDATAFEED_AVAILABLE else None,
-        'D': Interval.in_daily if TVDATAFEED_AVAILABLE else None,
-        'W': Interval.in_weekly if TVDATAFEED_AVAILABLE else None,
-        'M': Interval.in_monthly if TVDATAFEED_AVAILABLE else None,
-    }
+    # Standard columns to fetch from screener
+    STANDARD_COLUMNS = [
+        'name', 'close', 'open', 'high', 'low', 'volume', 
+        'change', 'change_abs', 'Perf.W', 'Perf.1M', 'Perf.3M', 
+        'Perf.6M', 'Perf.YTD', 'Perf.Y', 
+        'RSI', 'RSI[1]', 'MACD.macd', 'MACD.signal',
+        'SMA20', 'SMA50', 'SMA200', 'EMA20', 'EMA50', 'EMA200',
+        'ADX', 'ATR', 'Stoch.K', 'Stoch.D', 'CCI20',
+        'BB.upper', 'BB.lower', 'Pivot.M.Classic.Middle',
+        'market_cap_basic', 'average_volume_10d_calc',
+        'Recommend.All', 'Recommend.MA', 'Recommend.Other'
+    ]
     
-    def __init__(self, username: Optional[str] = None, password: Optional[str] = None):
+    def __init__(self):
+        """Initialize TradingView collector."""
+        self._check_dependencies()
+    
+    def _check_dependencies(self):
+        """Check if required packages are available."""
+        if not SCREENER_AVAILABLE:
+            logger.warning("tradingview-screener not available - install with: pip install tradingview-screener")
+        if not TRADINGVIEW_TA_AVAILABLE:
+            logger.warning("tradingview-ta not available - install with: pip install tradingview-ta")
+    
+    def get_all_stocks(self, limit: int = 200) -> pd.DataFrame:
         """
-        Initialize TradingView collector.
+        Fetch all NGX stocks with current OHLCV data and technicals.
         
         Args:
-            username: TradingView username (optional, for more data)
-            password: TradingView password (optional)
+            limit: Maximum number of stocks to fetch (default 200)
+            
+        Returns:
+            DataFrame with all stock data
         """
-        self.tv = None
-        self.username = username
-        self.password = password
+        if not SCREENER_AVAILABLE:
+            logger.error("tradingview-screener not available")
+            return pd.DataFrame()
         
-        if TVDATAFEED_AVAILABLE:
-            try:
-                if username and password:
-                    self.tv = TvDatafeed(username, password)
-                else:
-                    self.tv = TvDatafeed()
-                logger.info("TradingView datafeed initialized successfully")
-            except Exception as e:
-                logger.warning(f"Failed to initialize TradingView datafeed: {e}")
-                self.tv = None
-        else:
-            logger.warning("tvdatafeed not available - install with: pip install tvdatafeed")
+        try:
+            query = (Query()
+                .set_markets(self.SCREENER)
+                .select(*self.STANDARD_COLUMNS)
+                .limit(limit))
+            
+            count, df = query.get_scanner_data()
+            
+            if df is not None and not df.empty:
+                # Clean up ticker column (remove NSENG: prefix for consistency)
+                if 'ticker' in df.columns:
+                    df['symbol'] = df['ticker'].str.replace(f'{self.EXCHANGE}:', '', regex=False)
+                
+                # Add metadata
+                df['exchange'] = self.EXCHANGE
+                df['last_updated'] = datetime.now()
+                
+                logger.info(f"Fetched {len(df)} stocks from NSENG (total available: {count})")
+                return df
+            else:
+                logger.warning("No data returned from screener")
+                return pd.DataFrame()
+                
+        except Exception as e:
+            logger.error(f"Error fetching all stocks: {e}")
+            return pd.DataFrame()
     
-    def get_historical_data(
-        self, 
-        symbol: str, 
-        interval: str = 'D',
-        n_bars: int = 365,
-        exchange: Optional[str] = None
-    ) -> Optional[pd.DataFrame]:
+    def get_stock_data(self, symbol: str) -> Optional[Dict[str, Any]]:
         """
-        Fetch historical OHLCV data for a symbol.
+        Fetch data for a single stock.
         
         Args:
             symbol: Stock symbol (e.g., 'DANGCEM')
-            interval: Time interval ('1m', '5m', '15m', '30m', '1h', '4h', 'D', 'W', 'M')
-            n_bars: Number of bars to fetch
-            exchange: Exchange code (defaults to NGSE)
             
         Returns:
-            DataFrame with columns: datetime, open, high, low, close, volume
+            Dictionary with stock data and technicals
         """
-        if not TVDATAFEED_AVAILABLE or self.tv is None:
-            logger.warning("TradingView datafeed not available")
-            return None
-        
-        exchange = exchange or self.EXCHANGE
-        tv_interval = self.INTERVALS.get(interval)
-        
-        if tv_interval is None:
-            logger.error(f"Invalid interval: {interval}")
+        if not TRADINGVIEW_TA_AVAILABLE:
+            logger.error("tradingview-ta not available")
             return None
         
         try:
-            data = self.tv.get_hist(
+            handler = TA_Handler(
                 symbol=symbol,
-                exchange=exchange,
-                interval=tv_interval,
-                n_bars=n_bars
+                exchange=self.EXCHANGE,
+                screener=self.SCREENER,
+                interval=TAInterval.INTERVAL_1_DAY
             )
             
-            if data is not None and not data.empty:
-                # Reset index to make datetime a column
-                data = data.reset_index()
-                data.columns = ['datetime', 'symbol', 'open', 'high', 'low', 'close', 'volume']
-                logger.info(f"Fetched {len(data)} bars for {symbol}")
-                return data
-            else:
-                logger.warning(f"No data returned for {symbol}")
-                return None
-                
+            analysis = handler.get_analysis()
+            
+            return {
+                'symbol': symbol,
+                'exchange': self.EXCHANGE,
+                'last_updated': datetime.now(),
+                'price': {
+                    'open': analysis.indicators.get('open'),
+                    'high': analysis.indicators.get('high'),
+                    'low': analysis.indicators.get('low'),
+                    'close': analysis.indicators.get('close'),
+                    'volume': analysis.indicators.get('volume'),
+                    'change': analysis.indicators.get('change'),
+                    'change_percent': analysis.indicators.get('change_percent'),
+                },
+                'summary': {
+                    'recommendation': analysis.summary.get('RECOMMENDATION', 'NEUTRAL'),
+                    'buy': analysis.summary.get('BUY', 0),
+                    'sell': analysis.summary.get('SELL', 0),
+                    'neutral': analysis.summary.get('NEUTRAL', 0),
+                },
+                'oscillators': {
+                    'recommendation': analysis.oscillators.get('RECOMMENDATION', 'NEUTRAL'),
+                    'rsi': analysis.indicators.get('RSI'),
+                    'stoch_k': analysis.indicators.get('Stoch.K'),
+                    'stoch_d': analysis.indicators.get('Stoch.D'),
+                    'cci': analysis.indicators.get('CCI20'),
+                    'macd': analysis.indicators.get('MACD.macd'),
+                    'macd_signal': analysis.indicators.get('MACD.signal'),
+                },
+                'moving_averages': {
+                    'recommendation': analysis.moving_averages.get('RECOMMENDATION', 'NEUTRAL'),
+                    'sma_20': analysis.indicators.get('SMA20'),
+                    'sma_50': analysis.indicators.get('SMA50'),
+                    'sma_200': analysis.indicators.get('SMA200'),
+                    'ema_20': analysis.indicators.get('EMA20'),
+                    'ema_50': analysis.indicators.get('EMA50'),
+                    'ema_200': analysis.indicators.get('EMA200'),
+                },
+                'volatility': {
+                    'atr': analysis.indicators.get('ATR'),
+                    'adx': analysis.indicators.get('ADX'),
+                    'bb_upper': analysis.indicators.get('BB.upper'),
+                    'bb_lower': analysis.indicators.get('BB.lower'),
+                },
+                'pivot': analysis.indicators.get('Pivot.M.Classic.Middle'),
+            }
+            
         except Exception as e:
             logger.error(f"Error fetching data for {symbol}: {e}")
             return None
@@ -128,25 +181,21 @@ class TradingViewCollector:
     def get_technical_analysis(
         self, 
         symbol: str, 
-        interval: str = 'D',
-        exchange: Optional[str] = None
+        interval: str = 'D'
     ) -> Optional[Dict[str, Any]]:
         """
         Fetch technical analysis data and recommendations.
         
         Args:
             symbol: Stock symbol
-            interval: Time interval
-            exchange: Exchange code
+            interval: Time interval ('1m', '5m', '15m', '1h', '4h', 'D', 'W', 'M')
             
         Returns:
             Dictionary with indicators and recommendations
         """
         if not TRADINGVIEW_TA_AVAILABLE:
-            logger.warning("tradingview-ta not available - install with: pip install tradingview-ta")
+            logger.warning("tradingview-ta not available")
             return None
-        
-        exchange = exchange or self.EXCHANGE
         
         # Map interval to TA interval
         ta_intervals = {
@@ -166,8 +215,8 @@ class TradingViewCollector:
         try:
             handler = TA_Handler(
                 symbol=symbol,
-                screener="nigeria",
-                exchange=exchange,
+                screener=self.SCREENER,
+                exchange=self.EXCHANGE,
                 interval=ta_interval
             )
             
@@ -224,71 +273,100 @@ class TradingViewCollector:
             logger.error(f"Error fetching technical analysis for {symbol}: {e}")
             return None
     
-    def get_multiple_symbols(
-        self, 
-        symbols: List[str], 
-        interval: str = 'D',
-        n_bars: int = 100
-    ) -> Dict[str, pd.DataFrame]:
+    def get_market_snapshot(self) -> Dict[str, Any]:
         """
-        Fetch historical data for multiple symbols.
+        Get a snapshot of the entire NGX market.
         
-        Args:
-            symbols: List of stock symbols
-            interval: Time interval
-            n_bars: Number of bars per symbol
-            
         Returns:
-            Dictionary mapping symbol to DataFrame
+            Dictionary with market statistics
         """
-        results = {}
-        for symbol in symbols:
-            data = self.get_historical_data(symbol, interval, n_bars)
-            if data is not None:
-                results[symbol] = data
-        return results
+        df = self.get_all_stocks()
+        
+        if df.empty:
+            return {'error': 'No data available'}
+        
+        # Calculate market statistics
+        gainers = df[df['change'] > 0] if 'change' in df.columns else pd.DataFrame()
+        losers = df[df['change'] < 0] if 'change' in df.columns else pd.DataFrame()
+        unchanged = df[df['change'] == 0] if 'change' in df.columns else pd.DataFrame()
+        
+        return {
+            'timestamp': datetime.now().isoformat(),
+            'total_stocks': len(df),
+            'gainers': len(gainers),
+            'losers': len(losers),
+            'unchanged': len(unchanged),
+            'total_volume': df['volume'].sum() if 'volume' in df.columns else 0,
+            'top_gainers': gainers.nlargest(5, 'change')[['symbol', 'name', 'close', 'change']].to_dict('records') if not gainers.empty and 'symbol' in gainers.columns else [],
+            'top_losers': losers.nsmallest(5, 'change')[['symbol', 'name', 'close', 'change']].to_dict('records') if not losers.empty and 'symbol' in losers.columns else [],
+            'most_active': df.nlargest(5, 'volume')[['symbol', 'name', 'close', 'change', 'volume']].to_dict('records') if 'volume' in df.columns and 'symbol' in df.columns else [],
+        }
     
-    def search_symbols(self, query: str, exchange: Optional[str] = None) -> List[Dict[str, str]]:
+    def get_ohlcv_for_date(self, target_date: Optional[date] = None) -> pd.DataFrame:
         """
-        Search for symbols matching a query.
+        Get OHLCV data for all stocks (for a specific date).
+        
+        Note: TradingView screener only provides current day data.
+        For historical data, use daily snapshots stored in database.
         
         Args:
-            query: Search term
-            exchange: Optional exchange filter
+            target_date: Not used (kept for API compatibility)
             
         Returns:
-            List of matching symbols with details
+            DataFrame with OHLCV for all stocks
         """
-        if not TVDATAFEED_AVAILABLE or self.tv is None:
-            return []
+        df = self.get_all_stocks()
         
-        try:
-            results = self.tv.search_symbol(query, exchange=exchange or self.EXCHANGE)
-            return [
-                {
-                    'symbol': r.get('symbol', ''),
-                    'description': r.get('description', ''),
-                    'exchange': r.get('exchange', ''),
-                    'type': r.get('type', ''),
-                }
-                for r in results
-            ]
-        except Exception as e:
-            logger.error(f"Error searching symbols: {e}")
-            return []
+        if df.empty:
+            return df
+        
+        # Extract only OHLCV columns
+        ohlcv_columns = ['symbol', 'name', 'open', 'high', 'low', 'close', 'volume', 'change', 'last_updated']
+        available_columns = [col for col in ohlcv_columns if col in df.columns]
+        
+        return df[available_columns]
 
 
-# Convenience function for quick data fetch
+# Convenience functions
+def fetch_all_ngx_stocks() -> pd.DataFrame:
+    """Quick helper to fetch all NGX stocks."""
+    collector = TradingViewCollector()
+    return collector.get_all_stocks()
+
+
+def fetch_stock_data(symbol: str) -> Optional[Dict[str, Any]]:
+    """Quick helper to fetch single stock data."""
+    collector = TradingViewCollector()
+    return collector.get_stock_data(symbol)
+
+
+def get_market_snapshot() -> Dict[str, Any]:
+    """Quick helper to get market snapshot."""
+    collector = TradingViewCollector()
+    return collector.get_market_snapshot()
+
+
+# For backward compatibility
 def fetch_ngse_data(symbol: str, days: int = 365) -> Optional[pd.DataFrame]:
     """
-    Quick helper to fetch NGSE stock data.
+    Backward-compatible function (now returns current day data only).
     
-    Args:
-        symbol: Stock symbol (e.g., 'DANGCEM')
-        days: Number of days of data
-        
-    Returns:
-        DataFrame with OHLCV data
+    Note: Historical data is no longer available via this function.
+    Use the database for historical data.
     """
     collector = TradingViewCollector()
-    return collector.get_historical_data(symbol, 'D', days)
+    data = collector.get_stock_data(symbol)
+    
+    if data is None:
+        return None
+    
+    # Convert to DataFrame format for compatibility
+    return pd.DataFrame([{
+        'datetime': datetime.now(),
+        'symbol': symbol,
+        'open': data['price']['open'],
+        'high': data['price']['high'],
+        'low': data['price']['low'],
+        'close': data['price']['close'],
+        'volume': data['price']['volume'],
+    }])

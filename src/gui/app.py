@@ -5,6 +5,7 @@ Main application window for MetaQuant Nigeria.
 import tkinter as tk
 from tkinter import ttk, messagebox
 import logging
+from datetime import datetime
 
 try:
     import ttkbootstrap as ttk_bs
@@ -15,6 +16,7 @@ except ImportError:
 
 from src.database.db_manager import DatabaseManager
 from src.gui.theme import apply_theme, COLORS, get_font
+from src.gui.tabs.live_market_tab import LiveMarketTab
 from src.gui.tabs.screener_tab import ScreenerTab
 from src.gui.tabs.portfolio_tab import PortfolioTab
 from src.gui.tabs.watchlist_tab import WatchlistTab
@@ -25,6 +27,24 @@ from src.gui.tabs.history_tab import HistoryTab
 
 
 logger = logging.getLogger(__name__)
+
+
+def is_market_open() -> bool:
+    """Check if NGX market is currently open.
+    
+    NGX Trading Hours: Mon-Fri, 10:00 AM - 2:30 PM WAT (GMT+1)
+    """
+    now = datetime.now()
+    
+    # Weekend check
+    if now.weekday() >= 5:  # Saturday = 5, Sunday = 6
+        return False
+    
+    # Time check (10:00 AM to 2:30 PM)
+    market_open = now.replace(hour=10, minute=0, second=0, microsecond=0)
+    market_close = now.replace(hour=14, minute=30, second=0, microsecond=0)
+    
+    return market_open <= now <= market_close
 
 
 class MetaQuantApp:
@@ -153,6 +173,7 @@ class MetaQuantApp:
         self.notebook.pack(fill=tk.BOTH, expand=True)
         
         # Create tabs
+        self.live_market_tab = LiveMarketTab(self.notebook, self.db)
         self.screener_tab = ScreenerTab(self.notebook, self.db)
         self.portfolio_tab = PortfolioTab(self.notebook, self.db)
         self.watchlist_tab = WatchlistTab(self.notebook, self.db)
@@ -162,6 +183,7 @@ class MetaQuantApp:
         self.history_tab = HistoryTab(self.notebook, self.db)
         
         # Add tabs to notebook
+        self.notebook.add(self.live_market_tab.frame, text="🔴 Live Market")
         self.notebook.add(self.universe_tab.frame, text="📋 Universe")
         self.notebook.add(self.screener_tab.frame, text="📈 Screener")
         self.notebook.add(self.flow_tab.frame, text="📊 Flow Analysis")
@@ -238,9 +260,13 @@ class MetaQuantApp:
     
     def _on_tab_changed(self, event):
         """Handle tab change events."""
-        current_tab = self.notebook.index(self.notebook.select())
-        tab_names = ["Universe", "Screener", "Portfolio", "Watchlist", "AI Insights"]
-        self.set_status(f"Viewing {tab_names[current_tab]}")
+        try:
+            current_tab = self.notebook.index(self.notebook.select())
+            tab_names = ["Live Market", "Universe", "Screener", "Flow Analysis", "History", "Portfolio", "Watchlist", "AI Insights"]
+            if current_tab < len(tab_names):
+                self.set_status(f"Viewing {tab_names[current_tab]}")
+        except Exception:
+            pass  # Ignore tab change errors
     
     def _quit(self):
         """Clean shutdown of the application."""
@@ -268,9 +294,17 @@ class MetaQuantApp:
                 foreground=COLORS['text_muted']
             )
     
+    def _check_market_status(self):
+        """Check and update market status."""
+        self.update_market_status(is_market_open())
+        # Check again in 60 seconds
+        self.root.after(60000, self._check_market_status)
+    
     def run(self):
         """Start the application main loop."""
         logger.info("Starting MetaQuant Nigeria")
+        # Initial market status check
+        self._check_market_status()
         self.root.mainloop()
 
 

@@ -191,14 +191,20 @@ class HistoryTab:
         if not market_data:
             return
         
-        # Calculate changes (comparing close to open within same day)
+        # Use stored change_pct from TradingView (most accurate)
+        # Fall back to calculation if not available
         for stock in market_data:
-            open_p = float(stock.get('open') or 0)
-            close = float(stock.get('close') or 0)
-            if open_p > 0:
-                stock['change_pct'] = (close - open_p) / open_p * 100
+            stored_change = stock.get('change_pct')
+            if stored_change is not None:
+                stock['change_pct'] = float(stored_change)
             else:
-                stock['change_pct'] = 0
+                # Fallback: calculate from open/close
+                open_p = float(stock.get('open') or 0)
+                close = float(stock.get('close') or 0)
+                if open_p > 0:
+                    stock['change_pct'] = (close - open_p) / open_p * 100
+                else:
+                    stock['change_pct'] = 0
         
         # Sort by change
         gainers = sorted([s for s in market_data if s['change_pct'] > 0], 
