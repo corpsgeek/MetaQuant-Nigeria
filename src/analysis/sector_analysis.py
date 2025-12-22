@@ -404,3 +404,172 @@ class SectorAnalysis:
         leaders.sort(key=lambda x: -x['rs_momentum'])
         
         return leaders[:top_n]
+    
+    def get_sector_momentum_matrix(self, stocks_data: List[Dict] = None) -> List[Dict]:
+        """
+        Get momentum matrix with 1D/1W/1M performance for each sector.
+        
+        Args:
+            stocks_data: Optional pre-fetched stock data from TradingView
+            
+        Returns:
+            List of sector dicts with chg_1d, chg_1w, chg_1m
+        """
+        # Group stocks by sector
+        sector_stocks = {}
+        
+        if stocks_data:
+            # Use pre-fetched TradingView data
+            for stock in stocks_data:
+                sector = stock.get('sector', 'Unknown')
+                if sector and sector != 'Unknown':
+                    if sector not in sector_stocks:
+                        sector_stocks[sector] = []
+                    sector_stocks[sector].append(stock)
+        else:
+            # Fallback to DB
+            sectors = self.get_sectors()
+            for sector in sectors:
+                idx = self.calculate_sector_index(sector)
+                if 'error' not in idx:
+                    sector_stocks[sector] = idx.get('components', [])
+        
+        # Calculate averages per sector
+        matrix = []
+        for sector, stocks in sector_stocks.items():
+            if not stocks:
+                continue
+            
+            chg_1d = np.mean([s.get('chg_1d', s.get('change_pct', 0)) or 0 for s in stocks])
+            chg_1w = np.mean([s.get('chg_1w', s.get('perf_1w', 0)) or 0 for s in stocks])
+            chg_1m = np.mean([s.get('chg_1m', s.get('perf_1m', 0)) or 0 for s in stocks])
+            
+            matrix.append({
+                'sector': sector,
+                'chg_1d': chg_1d,
+                'chg_1w': chg_1w,
+                'chg_1m': chg_1m,
+                'count': len(stocks)
+            })
+        
+        # Sort by 1W performance
+        matrix.sort(key=lambda x: -x['chg_1w'])
+        return matrix
+    
+    def calculate_sector_correlations(self, stocks_data: List[Dict] = None) -> Dict[str, Dict[str, float]]:
+        """
+        Calculate correlation matrix between sectors based on stock performance.
+        
+        Uses 1W performance to determine how sectors move together.
+        
+        Args:
+            stocks_data: Optional pre-fetched stock data
+            
+        Returns:
+            Dict mapping sector -> Dict[sector -> correlation]
+        """
+        # Group stocks by sector
+        sector_perfs = {}
+        
+        if stocks_data:
+            for stock in stocks_data:
+                sector = stock.get('sector', 'Unknown')
+                if sector and sector != 'Unknown':
+                    if sector not in sector_perfs:
+                        sector_perfs[sector] = []
+                    chg = stock.get('chg_1w', stock.get('perf_1w', 0)) or 0
+                    sector_perfs[sector].append(chg)
+        
+        sectors = list(sector_perfs.keys())
+        correlations = {}
+        
+        for s1 in sectors:
+            correlations[s1] = {}
+            p1 = sector_perfs[s1]
+            
+            for s2 in sectors:
+                if s1 == s2:
+                    correlations[s1][s2] = 1.0
+                else:
+                    p2 = sector_perfs[s2]
+                    # Use mean performance comparison for correlation proxy
+                    # Higher correlation if both perform similarly
+                    mean1, mean2 = np.mean(p1), np.mean(p2)
+                    std1, std2 = np.std(p1) if len(p1) > 1 else 1, np.std(p2) if len(p2) > 1 else 1
+                    
+                    # Similarity score based on direction and magnitude
+                    if mean1 * mean2 > 0:  # Same direction
+                        diff = abs(mean1 - mean2)
+                        corr = max(0, 1 - diff / 10)  # Closer = higher correlation
+                    else:  # Opposite direction
+                        corr = -min(1, abs(mean1 - mean2) / 10)
+                    
+                    correlations[s1][s2] = round(corr, 2)
+        
+        return correlations
+    
+    def detect_rotation_phase(self, stocks_data: List[Dict] = None) -> Dict[str, Any]:
+        """
+        Detect current sector rotation phase based on leadership patterns.
+        
+        Phases:
+        - EARLY (Recovery): Financials, Consumer Discretionary leading
+        - MID (Expansion): Technology, Industrials leading
+        - LATE (Peak): Energy, Materials leading
+        - CONTRACTION: Utilities, Healthcare, Consumer Staples leading
+        
+        Args:
+            stocks_data: Optional pre-fetched stock data
+            
+        Returns:
+            Dict with phase, description, leading/lagging sectors
+        """
+        # Get momentum matrix
+        matrix = self.get_sector_momentum_matrix(stocks_data)
+        
+        if not matrix:
+            return {
+                'phase': 'UNKNOWN',
+                'description': 'Insufficient data',
+                'leading': [],
+                'lagging': [],
+                'confidence': 0
+            }
+        
+        # Phase detection based on leading sectors
+        phase_indicators = {
+            'EARLY': ['Financial Services', 'Consumer Goods', 'Insurance'],
+            'MID': ['Industrial Goods', 'Services', 'Conglomerates'],
+            'LATE': ['Oil & Gas', 'Natural Resources', 'Agriculture'],
+            'CONTRACTION': ['Healthcare', 'Consumer Goods', 'Real Estate']
+        }
+        
+        # Get top 3 performing sectors (1W)
+        leading = [s['sector'] for s in matrix[:3]]
+        lagging = [s['sector'] for s in matrix[-3:]]
+        
+        # Score each phase
+        phase_scores = {}
+        for phase, indicators in phase_indicators.items():
+            score = sum(1 for s in leading if s in indicators)
+            phase_scores[phase] = score
+        
+        # Determine phase with highest score
+        best_phase = max(phase_scores, key=phase_scores.get)
+        confidence = min(100, phase_scores[best_phase] * 33)
+        
+        phase_descriptions = {
+            'EARLY': '💹 Recovery - Risk-on rotation beginning',
+            'MID': '📈 Expansion - Growth sectors leading',
+            'LATE': '⚠️ Peak - Commodities/defensive rotation',
+            'CONTRACTION': '🛡️ Defensive - Flight to safety'
+        }
+        
+        return {
+            'phase': best_phase,
+            'description': phase_descriptions.get(best_phase, 'Unknown phase'),
+            'leading': leading,
+            'lagging': lagging,
+            'confidence': confidence,
+            'phase_scores': phase_scores
+        }

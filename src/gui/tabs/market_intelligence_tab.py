@@ -112,149 +112,176 @@ class MarketIntelligenceTab:
             refresh_btn = ttk.Button(header, text="↻ Analyze Sectors", command=self._load_sector_data)
         refresh_btn.pack(side=tk.RIGHT)
         
-        # ===== TOP ROW: Sector Heatmap + Rotation Cycle =====
-        top_row = ttk.Frame(self.sector_frame)
-        top_row.pack(fill=tk.X, padx=10, pady=5)
+        # ===== ROW 1: Sector Momentum Matrix + Rotation Clock =====
+        row1 = ttk.Frame(self.sector_frame)
+        row1.pack(fill=tk.X, padx=10, pady=5)
         
-        # LEFT: Sector Performance Heatmap
-        heatmap_frame = ttk.LabelFrame(top_row, text="📊 Sector Performance Heatmap", padding=5)
-        heatmap_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 5))
+        # LEFT: Sector Momentum Matrix (simpler table format)
+        matrix_frame = ttk.LabelFrame(row1, text="📊 Sector Momentum", padding=5)
+        matrix_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 5))
         
-        self.sector_heatmap_canvas = tk.Canvas(
-            heatmap_frame,
+        # Use Treeview instead of canvas for clarity
+        mm_columns = ('sector', 'chg_1d', 'chg_1w', 'chg_1m')
+        self.momentum_tree = ttk.Treeview(matrix_frame, columns=mm_columns, show='headings', height=6)
+        
+        self.momentum_tree.heading('sector', text='Sector')
+        self.momentum_tree.heading('chg_1d', text='1D')
+        self.momentum_tree.heading('chg_1w', text='1W')
+        self.momentum_tree.heading('chg_1m', text='1M')
+        
+        self.momentum_tree.column('sector', width=90, anchor='w')
+        self.momentum_tree.column('chg_1d', width=55, anchor='e')
+        self.momentum_tree.column('chg_1w', width=55, anchor='e')
+        self.momentum_tree.column('chg_1m', width=55, anchor='e')
+        
+        self.momentum_tree.tag_configure('hot', foreground='#00ff00')
+        self.momentum_tree.tag_configure('gain', foreground=COLORS['gain'])
+        self.momentum_tree.tag_configure('loss', foreground=COLORS['loss'])
+        self.momentum_tree.tag_configure('cold', foreground='#ff4444')
+        
+        self.momentum_tree.pack(fill=tk.BOTH, expand=True)
+        self.momentum_tree.bind('<<TreeviewSelect>>', self._on_momentum_select)
+        
+        # RIGHT: Rotation Clock + Phase Info
+        clock_frame = ttk.LabelFrame(row1, text="🕐 Rotation Cycle", padding=10)
+        clock_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=(5, 0))
+        
+        # Clock canvas
+        self.clock_canvas = tk.Canvas(
+            clock_frame,
             bg=COLORS['bg_dark'],
-            height=140,
+            width=140,
+            height=100,
             highlightthickness=0
         )
-        self.sector_heatmap_canvas.pack(fill=tk.BOTH, expand=True)
+        self.clock_canvas.pack(side=tk.LEFT, padx=5)
         
-        # RIGHT: Rotation Cycle Indicator
-        cycle_frame = ttk.LabelFrame(top_row, text="🔄 Rotation Cycle", padding=10)
-        cycle_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=(5, 0))
+        # Phase info
+        phase_info = ttk.Frame(clock_frame)
+        phase_info.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=10)
         
-        # Cycle summary
-        self.cycle_labels = {}
+        self.phase_labels = {}
         
-        cycle_row1 = ttk.Frame(cycle_frame)
-        cycle_row1.pack(fill=tk.X, pady=3)
-        ttk.Label(cycle_row1, text="Leading:", font=get_font('small'),
-                 foreground=COLORS['text_muted']).pack(side=tk.LEFT)
-        self.cycle_labels['leading'] = ttk.Label(cycle_row1, text="--", font=get_font('small'),
+        ttk.Label(phase_info, text="Phase:", font=get_font('small'),
+                 foreground=COLORS['text_muted']).pack(anchor='w')
+        self.phase_labels['phase'] = ttk.Label(phase_info, text="--", 
+                                                font=get_font('body'),
+                                                foreground=COLORS['primary'])
+        self.phase_labels['phase'].pack(anchor='w', pady=(0, 8))
+        
+        ttk.Label(phase_info, text="Leading:", font=get_font('small'),
+                 foreground=COLORS['text_muted']).pack(anchor='w')
+        self.phase_labels['leading'] = ttk.Label(phase_info, text="--", 
+                                                  font=get_font('small'),
                                                   foreground=COLORS['gain'])
-        self.cycle_labels['leading'].pack(side=tk.LEFT, padx=5)
+        self.phase_labels['leading'].pack(anchor='w', pady=(0, 5))
         
-        cycle_row2 = ttk.Frame(cycle_frame)
-        cycle_row2.pack(fill=tk.X, pady=3)
-        ttk.Label(cycle_row2, text="Lagging:", font=get_font('small'),
-                 foreground=COLORS['text_muted']).pack(side=tk.LEFT)
-        self.cycle_labels['lagging'] = ttk.Label(cycle_row2, text="--", font=get_font('small'),
+        ttk.Label(phase_info, text="Lagging:", font=get_font('small'),
+                 foreground=COLORS['text_muted']).pack(anchor='w')
+        self.phase_labels['lagging'] = ttk.Label(phase_info, text="--", 
+                                                  font=get_font('small'),
                                                   foreground=COLORS['loss'])
-        self.cycle_labels['lagging'].pack(side=tk.LEFT, padx=5)
+        self.phase_labels['lagging'].pack(anchor='w')
         
-        cycle_row3 = ttk.Frame(cycle_frame)
-        cycle_row3.pack(fill=tk.X, pady=3)
-        ttk.Label(cycle_row3, text="Spread:", font=get_font('small'),
-                 foreground=COLORS['text_muted']).pack(side=tk.LEFT)
-        self.cycle_labels['spread'] = ttk.Label(cycle_row3, text="--", font=get_font('small'),
-                                                 foreground=COLORS['primary'])
-        self.cycle_labels['spread'].pack(side=tk.LEFT, padx=5)
+        # ===== ROW 2: Correlation Heatmap + RS Leaderboard =====
+        row2 = ttk.Frame(self.sector_frame)
+        row2.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
         
-        # Sector leaders list
-        leaders_frame = ttk.LabelFrame(cycle_frame, text="🏆 Sector Leaders", padding=5)
-        leaders_frame.pack(fill=tk.BOTH, expand=True, pady=(5, 0))
+        # LEFT: Sector Correlation (simplified to top pairs only)
+        corr_frame = ttk.LabelFrame(row2, text="🔗 Correlation Pairs", padding=5)
+        corr_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 5))
         
-        # Header for leaders
-        leader_header = ttk.Frame(leaders_frame)
-        leader_header.pack(fill=tk.X)
-        ttk.Label(leader_header, text="Sector", width=12, font=get_font('small'),
-                 foreground=COLORS['text_muted']).pack(side=tk.LEFT)
-        ttk.Label(leader_header, text="Leader", width=10, font=get_font('small'),
-                 foreground=COLORS['text_muted']).pack(side=tk.LEFT)
-        ttk.Label(leader_header, text="Chg%", width=7, font=get_font('small'),
-                 foreground=COLORS['text_muted']).pack(side=tk.LEFT)
+        corr_columns = ('pair', 'correlation', 'direction')
+        self.corr_tree = ttk.Treeview(corr_frame, columns=corr_columns, show='headings', height=6)
         
-        self.sector_leader_labels = []
-        for i in range(5):
-            row = ttk.Frame(leaders_frame)
-            row.pack(fill=tk.X, pady=1)
-            sector_lbl = ttk.Label(row, text="--", width=12, font=get_font('small'))
-            sector_lbl.pack(side=tk.LEFT)
-            leader_lbl = ttk.Label(row, text="--", width=10, font=get_font('small'),
-                                   foreground=COLORS['gain'])
-            leader_lbl.pack(side=tk.LEFT)
-            chg_lbl = ttk.Label(row, text="--", width=7, font=get_font('small'))
-            chg_lbl.pack(side=tk.LEFT)
-            self.sector_leader_labels.append((sector_lbl, leader_lbl, chg_lbl))
+        self.corr_tree.heading('pair', text='Sector Pair')
+        self.corr_tree.heading('correlation', text='Corr')
+        self.corr_tree.heading('direction', text='Move')
         
-        # ===== MIDDLE ROW: Sector Rankings + Components =====
-        middle_row = ttk.Frame(self.sector_frame)
-        middle_row.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        self.corr_tree.column('pair', width=140, anchor='w')
+        self.corr_tree.column('correlation', width=50, anchor='e')
+        self.corr_tree.column('direction', width=70, anchor='center')
         
-        # LEFT: Sector Rankings with multi-period columns
-        left_frame = ttk.LabelFrame(middle_row, text="📊 Sector Rankings (Multi-Period)", padding=10)
+        self.corr_tree.tag_configure('positive', foreground=COLORS['gain'])
+        self.corr_tree.tag_configure('negative', foreground=COLORS['loss'])
+        
+        self.corr_tree.pack(fill=tk.BOTH, expand=True)
+        
+        # RIGHT: RS Leaderboard
+        rs_frame = ttk.LabelFrame(row2, text="💪 RS Leaders (vs Sector)", padding=5)
+        rs_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=(5, 0))
+        
+        rs_columns = ('symbol', 'sector', 'vs_sector')
+        self.rs_tree = ttk.Treeview(rs_frame, columns=rs_columns, show='headings', height=6)
+        
+        self.rs_tree.heading('symbol', text='Symbol')
+        self.rs_tree.heading('sector', text='Sector')
+        self.rs_tree.heading('vs_sector', text='Outperform')
+        
+        self.rs_tree.column('symbol', width=65, anchor='w')
+        self.rs_tree.column('sector', width=80, anchor='w')
+        self.rs_tree.column('vs_sector', width=70, anchor='e')
+        
+        self.rs_tree.tag_configure('outperform', foreground=COLORS['gain'])
+        self.rs_tree.tag_configure('strong', foreground='#00ff00')
+        
+        self.rs_tree.pack(fill=tk.BOTH, expand=True)
+        
+        # ===== ROW 3: Sector Rankings + Components =====
+        row3 = ttk.Frame(self.sector_frame)
+        row3.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        
+        # LEFT: Sector Rankings
+        left_frame = ttk.LabelFrame(row3, text="📊 Sector Rankings", padding=5)
         left_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 5))
         
-        columns = ('sector', 'chg_1d', 'chg_1w', 'chg_1m', 'net', 'count')
-        self.sector_tree = ttk.Treeview(left_frame, columns=columns, show='headings', height=8)
+        columns = ('sector', 'chg_1d', 'chg_1w', 'count')
+        self.sector_tree = ttk.Treeview(left_frame, columns=columns, show='headings', height=5)
         
         self.sector_tree.heading('sector', text='Sector')
         self.sector_tree.heading('chg_1d', text='1D')
         self.sector_tree.heading('chg_1w', text='1W')
-        self.sector_tree.heading('chg_1m', text='1M')
-        self.sector_tree.heading('net', text='Net')
         self.sector_tree.heading('count', text='#')
         
-        self.sector_tree.column('sector', width=110, anchor='w')
-        self.sector_tree.column('chg_1d', width=50, anchor='e')
-        self.sector_tree.column('chg_1w', width=50, anchor='e')
-        self.sector_tree.column('chg_1m', width=50, anchor='e')
-        self.sector_tree.column('net', width=55, anchor='e')
+        self.sector_tree.column('sector', width=100, anchor='w')
+        self.sector_tree.column('chg_1d', width=55, anchor='e')
+        self.sector_tree.column('chg_1w', width=55, anchor='e')
         self.sector_tree.column('count', width=30, anchor='center')
         
         self.sector_tree.tag_configure('gain', foreground=COLORS['gain'])
         self.sector_tree.tag_configure('loss', foreground=COLORS['loss'])
-        self.sector_tree.tag_configure('hot', foreground='#00ff00')
-        self.sector_tree.tag_configure('cold', foreground='#ff4444')
         
         self.sector_tree.pack(fill=tk.BOTH, expand=True)
         self.sector_tree.bind('<<TreeviewSelect>>', self._on_sector_select)
         
-        # RIGHT: Sector Components with RS
-        right_frame = ttk.LabelFrame(middle_row, text="📋 Sector Components (click sector to load)", padding=10)
+        # RIGHT: Sector Components
+        right_frame = ttk.LabelFrame(row3, text="📋 Sector Components (click to load)", padding=5)
         right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=(5, 0))
         
-        # Selected sector label
         self.selected_sector_label = ttk.Label(right_frame, text="Select a sector →", 
                                                 font=get_font('small'),
                                                 foreground=COLORS['text_muted'])
         self.selected_sector_label.pack(anchor='w')
         
-        columns = ('symbol', 'price', 'chg_1d', 'chg_1w', 'weight', 'momentum')
-        self.component_tree = ttk.Treeview(right_frame, columns=columns, show='headings', height=8)
+        columns = ('symbol', 'price', 'chg_1d', 'chg_1w', 'trend')
+        self.component_tree = ttk.Treeview(right_frame, columns=columns, show='headings', height=5)
         
         self.component_tree.heading('symbol', text='Symbol')
         self.component_tree.heading('price', text='Price')
         self.component_tree.heading('chg_1d', text='1D')
         self.component_tree.heading('chg_1w', text='1W')
-        self.component_tree.heading('weight', text='Wt%')
-        self.component_tree.heading('momentum', text='Trend')
+        self.component_tree.heading('trend', text='Trend')
         
-        self.component_tree.column('symbol', width=70, anchor='w')
-        self.component_tree.column('price', width=70, anchor='e')
+        self.component_tree.column('symbol', width=60, anchor='w')
+        self.component_tree.column('price', width=60, anchor='e')
         self.component_tree.column('chg_1d', width=50, anchor='e')
         self.component_tree.column('chg_1w', width=50, anchor='e')
-        self.component_tree.column('weight', width=45, anchor='e')
-        self.component_tree.column('momentum', width=70, anchor='center')
+        self.component_tree.column('trend', width=60, anchor='center')
         
         self.component_tree.tag_configure('gain', foreground=COLORS['gain'])
         self.component_tree.tag_configure('loss', foreground=COLORS['loss'])
-        self.component_tree.tag_configure('strong', foreground='#00ff00')
         
-        scrollbar = ttk.Scrollbar(right_frame, orient=tk.VERTICAL, command=self.component_tree.yview)
-        self.component_tree.configure(yscrollcommand=scrollbar.set)
-        
-        self.component_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.component_tree.pack(fill=tk.BOTH, expand=True)
     
     # ==================== FLOW MONITOR ====================
     
@@ -716,74 +743,142 @@ class MarketIntelligenceTab:
         if not sector_rankings:
             return
         
-        # ===== Update Rotation Cycle =====
-        leading = sector_rankings[0]
-        lagging = sector_rankings[-1]
-        spread = leading['avg_1d'] - lagging['avg_1d']
+        # ===== Update Rotation Phase =====
+        phase_data = self.sector_analysis.detect_rotation_phase(self.all_stocks_data)
         
-        self.cycle_labels['leading'].config(text=f"{leading['sector']} ({leading['avg_1d']:+.1f}%)")
-        self.cycle_labels['lagging'].config(text=f"{lagging['sector']} ({lagging['avg_1d']:+.1f}%)")
-        self.cycle_labels['spread'].config(text=f"{spread:.2f}%")
+        self.phase_labels['phase'].config(text=phase_data.get('description', 'Unknown')[:30])
+        leading = ', '.join(phase_data.get('leading', ['--'])[:2])
+        lagging = ', '.join(phase_data.get('lagging', ['--'])[:2])
+        self.phase_labels['leading'].config(text=leading[:20])
+        self.phase_labels['lagging'].config(text=lagging[:20])
         
-        # ===== Update Sector Leaders =====
-        for i, sr in enumerate(sector_rankings[:5]):
-            if i < len(self.sector_leader_labels):
-                sector_lbl, leader_lbl, chg_lbl = self.sector_leader_labels[i]
-                sector_lbl.config(text=sr['sector'][:11])
-                
-                leader = sr.get('leader')
-                if leader:
-                    leader_lbl.config(text=leader['symbol'][:9])
-                    chg = leader['chg_1d']
-                    chg_lbl.config(text=f"{chg:+.1f}%",
-                                  foreground=COLORS['gain'] if chg > 0 else COLORS['loss'])
+        # ===== Draw Rotation Clock =====
+        self._draw_rotation_clock(phase_data)
         
-        # ===== Draw Sector Heatmap =====
-        self._draw_sector_heatmap(sector_rankings)
+        # ===== Update Momentum Matrix (Treeview) =====
+        self._update_momentum_matrix(sector_rankings)
+        
+        # ===== Update Correlation Pairs (Treeview) =====
+        self._update_correlation_pairs(sector_rankings)
         
         # ===== Update Sector Rankings Table =====
         for item in self.sector_tree.get_children():
             self.sector_tree.delete(item)
         
         for sr in sector_rankings:
-            net_score = sr.get('net_score', 0)
+            avg_1w = sr.get('avg_1w', 0)
+            tag = 'gain' if avg_1w > 0 else 'loss' if avg_1w < 0 else ''
             
-            # Determine tag based on net score
-            if net_score >= 3:
-                tag = 'hot'
-            elif net_score > 0:
-                tag = 'gain'
-            elif net_score <= -3:
-                tag = 'cold'
-            elif net_score < 0:
-                tag = 'loss'
-            else:
-                tag = ''
-            
-            # Store full sector name as iid for selection
             self.sector_tree.insert('', 'end', iid=sr['sector'], values=(
-                sr['sector'][:15],
+                sr['sector'][:14],
                 f"{sr['avg_1d']:+.1f}%",
                 f"{sr['avg_1w']:+.1f}%",
-                f"{sr.get('avg_1m', 0):+.1f}%",
-                f"{net_score:+.1f}",
                 sr['count']
             ), tags=(tag,))
+        
+        # ===== Update RS Leaderboard =====
+        self._update_rs_leaderboard(sector_rankings)
         
         # Store for component loading
         self._sector_data = {sr['sector']: sr for sr in sector_rankings}
     
-    def _draw_sector_heatmap(self, sector_rankings: List[Dict]):
-        """Draw sector performance heatmap."""
-        self.sector_heatmap_canvas.delete("all")
+    def _update_momentum_matrix(self, sector_rankings: List[Dict]):
+        """Update momentum matrix treeview."""
+        for item in self.momentum_tree.get_children():
+            self.momentum_tree.delete(item)
         
-        width = self.sector_heatmap_canvas.winfo_width()
-        height = self.sector_heatmap_canvas.winfo_height()
+        for sr in sector_rankings[:8]:  # Top 8 sectors
+            chg_1d = sr.get('avg_1d', 0)
+            chg_1w = sr.get('avg_1w', 0)
+            chg_1m = sr.get('avg_1m', 0)
+            
+            # Determine tag based on overall trend
+            if chg_1w >= 3:
+                tag = 'hot'
+            elif chg_1w > 0:
+                tag = 'gain'
+            elif chg_1w <= -3:
+                tag = 'cold'
+            elif chg_1w < 0:
+                tag = 'loss'
+            else:
+                tag = ''
+            
+            self.momentum_tree.insert('', 'end', iid=sr['sector'], values=(
+                sr['sector'][:12],
+                f"{chg_1d:+.1f}%",
+                f"{chg_1w:+.1f}%",
+                f"{chg_1m:+.1f}%"
+            ), tags=(tag,))
+    
+    def _update_correlation_pairs(self, sector_rankings: List[Dict]):
+        """Update correlation pairs treeview with top correlated sector pairs."""
+        for item in self.corr_tree.get_children():
+            self.corr_tree.delete(item)
+        
+        if not sector_rankings or len(sector_rankings) < 2:
+            return
+        
+        # Calculate correlation based on sector performance patterns
+        # Compare 1W performance similarity between sectors
+        pairs = []
+        sectors = sector_rankings[:6]
+        
+        for i, s1 in enumerate(sectors):
+            for s2 in sectors[i+1:]:
+                # Use performance differentials to estimate correlation
+                avg1 = s1.get('avg_1w', 0)
+                avg2 = s2.get('avg_1w', 0)
+                
+                # Simple correlation proxy: same direction = positive
+                if avg1 * avg2 > 0:  # Same direction
+                    diff = abs(avg1 - avg2)
+                    corr = max(0.1, 1 - diff / 10)  # Similar magnitude = higher correlation
+                elif avg1 * avg2 < 0:  # Opposite direction
+                    corr = -max(0.1, min(1, abs(avg1 - avg2) / 10))
+                else:  # One is zero
+                    corr = 0
+                
+                pairs.append({
+                    'pair': f"{s1['sector'][:6]}-{s2['sector'][:6]}",
+                    'correlation': corr,
+                    's1': s1['sector'],
+                    's2': s2['sector']
+                })
+        
+        # Sort by absolute correlation
+        pairs.sort(key=lambda x: abs(x['correlation']), reverse=True)
+        
+        # Show top 6 pairs
+        for p in pairs[:6]:
+            corr = p['correlation']
+            if corr > 0.1:
+                direction = "↑↑ Together"
+                tag = 'positive'
+            elif corr < -0.1:
+                direction = "↑↓ Inverse"
+                tag = 'negative'
+            else:
+                direction = "→ Neutral"
+                tag = ''
+            
+            self.corr_tree.insert('', 'end', values=(
+                p['pair'],
+                f"{corr:.2f}",
+                direction
+            ), tags=(tag,))
+    
+    def _draw_momentum_matrix(self, momentum_matrix: List[Dict]):
+        """Draw sector momentum matrix with 1D/1W/1M bars per sector."""
+        self.momentum_canvas.delete("all")
+        
+        width = self.momentum_canvas.winfo_width()
+        height = self.momentum_canvas.winfo_height()
         
         if width <= 1 or height <= 1:
-            width, height = 400, 140
+            width, height = 400, 160
         
-        if not sector_rankings:
+        if not momentum_matrix:
             return
         
         sector_abbrev = {
@@ -802,54 +897,277 @@ class MarketIntelligenceTab:
         }
         
         cols = 4
-        rows = min(3, (len(sector_rankings) + cols - 1) // cols)
+        rows = min(3, (len(momentum_matrix) + cols - 1) // cols)
         
         cell_w = width // cols
         cell_h = height // rows
+        bar_height = 6
+        bar_spacing = 10
         
-        for i, sr in enumerate(sector_rankings[:12]):
+        for i, mm in enumerate(momentum_matrix[:12]):
             row = i // cols
             col = i % cols
             
-            x1 = col * cell_w + 2
-            y1 = row * cell_h + 2
-            x2 = x1 + cell_w - 4
-            y2 = y1 + cell_h - 4
+            x1 = col * cell_w + 4
+            y1 = row * cell_h + 4
+            x2 = x1 + cell_w - 8
+            y2 = y1 + cell_h - 8
             
-            avg = sr['avg_1d']
-            if avg > 2:
-                color = '#1a8f3c'
-            elif avg > 0:
-                color = '#2ecc71'
-            elif avg < -2:
-                color = '#922b21'
-            elif avg < 0:
-                color = '#e74c3c'
-            else:
-                color = '#555555'
+            # Draw cell background
+            self.momentum_canvas.create_rectangle(x1, y1, x2, y2, fill='#1e1e1e', outline='#333')
             
-            self.sector_heatmap_canvas.create_rectangle(x1, y1, x2, y2, fill=color, outline='#333')
-            
-            name = sector_abbrev.get(sr['sector'], sr['sector'][:7])
-            self.sector_heatmap_canvas.create_text(
-                (x1 + x2) / 2, (y1 + y2) / 2 - 8,
-                text=name, fill="white", font=('Arial', 8)
+            # Sector name
+            name = sector_abbrev.get(mm['sector'], mm['sector'][:7])
+            self.momentum_canvas.create_text(
+                (x1 + x2) / 2, y1 + 10,
+                text=name, fill="white", font=('Arial', 7)
             )
             
-            self.sector_heatmap_canvas.create_text(
-                (x1 + x2) / 2, (y1 + y2) / 2 + 10,
-                text=f"{avg:+.1f}%", fill="white", font=('Arial', 10, 'bold')
+            # Draw 3 bars for 1D, 1W, 1M
+            bar_start_y = y1 + 22
+            bar_max_width = (cell_w - 16) / 2
+            
+            for j, (period, value) in enumerate([('1D', mm['chg_1d']), ('1W', mm['chg_1w']), ('1M', mm['chg_1m'])]):
+                bar_y = bar_start_y + j * bar_spacing
+                
+                # Period label
+                self.momentum_canvas.create_text(
+                    x1 + 12, bar_y + 3,
+                    text=period, fill="#888", font=('Arial', 6)
+                )
+                
+                # Bar
+                bar_x_start = x1 + 24 + bar_max_width
+                bar_width = min(bar_max_width, abs(value) / 10 * bar_max_width)
+                
+                if value > 0:
+                    color = '#2ecc71' if value > 3 else '#27ae60'
+                    self.momentum_canvas.create_rectangle(
+                        bar_x_start, bar_y, 
+                        bar_x_start + bar_width, bar_y + bar_height,
+                        fill=color, outline=''
+                    )
+                elif value < 0:
+                    color = '#e74c3c' if value < -3 else '#c0392b'
+                    self.momentum_canvas.create_rectangle(
+                        bar_x_start - bar_width, bar_y,
+                        bar_x_start, bar_y + bar_height,
+                        fill=color, outline=''
+                    )
+                
+                # Value label
+                self.momentum_canvas.create_text(
+                    x2 - 12, bar_y + 3,
+                    text=f"{value:+.1f}", fill="white", font=('Arial', 6)
+                )
+    
+    def _draw_rotation_clock(self, phase_data: Dict):
+        """Draw visual rotation clock dial."""
+        self.clock_canvas.delete("all")
+        
+        width = self.clock_canvas.winfo_width()
+        height = self.clock_canvas.winfo_height()
+        
+        if width <= 1 or height <= 1:
+            width, height = 160, 120
+        
+        cx, cy = width // 2, height // 2
+        radius = min(width, height) // 2 - 10
+        
+        # Draw quadrants
+        phases = ['EARLY', 'MID', 'LATE', 'CONTRACTION']
+        phase_colors = {
+            'EARLY': '#27ae60',
+            'MID': '#3498db',
+            'LATE': '#f39c12',
+            'CONTRACTION': '#e74c3c'
+        }
+        phase_icons = {
+            'EARLY': '💹',
+            'MID': '📈',
+            'LATE': '⚠️',
+            'CONTRACTION': '🛡️'
+        }
+        
+        import math
+        
+        current_phase = phase_data.get('phase', 'UNKNOWN')
+        
+        for i, phase in enumerate(phases):
+            start_angle = i * 90
+            
+            # Draw arc segment
+            is_current = (phase == current_phase)
+            color = phase_colors[phase] if is_current else '#333'
+            
+            # Draw pie slice
+            self.clock_canvas.create_arc(
+                cx - radius, cy - radius, cx + radius, cy + radius,
+                start=start_angle, extent=90,
+                fill=color, outline='#555', width=1
+            )
+            
+            # Phase label
+            label_angle = math.radians(start_angle + 45)
+            lx = cx + (radius * 0.6) * math.cos(label_angle)
+            ly = cy - (radius * 0.6) * math.sin(label_angle)
+            
+            self.clock_canvas.create_text(
+                lx, ly,
+                text=phase_icons.get(phase, '?'),
+                font=('Arial', 10)
+            )
+        
+        # Center circle
+        self.clock_canvas.create_oval(
+            cx - 12, cy - 12, cx + 12, cy + 12,
+            fill='#1e1e1e', outline='#555'
+        )
+        
+        # Confidence in center
+        conf = phase_data.get('confidence', 0)
+        self.clock_canvas.create_text(
+            cx, cy,
+            text=f"{conf}%", fill="white", font=('Arial', 7, 'bold')
+        )
+    
+    def _draw_correlation_heatmap(self, correlations: Dict[str, Dict[str, float]], sector_rankings: List[Dict]):
+        """Draw sector correlation heatmap."""
+        self.correlation_canvas.delete("all")
+        
+        width = self.correlation_canvas.winfo_width()
+        height = self.correlation_canvas.winfo_height()
+        
+        if width <= 1 or height <= 1:
+            width, height = 200, 180
+        
+        sectors = [sr['sector'] for sr in sector_rankings[:6]]  # Limit to 6 for space
+        
+        if not sectors or not correlations:
+            self.correlation_canvas.create_text(
+                width // 2, height // 2,
+                text="Loading...", fill="#888"
+            )
+            return
+        
+        sector_abbrev = {
+            'Financial Services': 'Fin',
+            'Industrial Goods': 'Ind',
+            'Consumer Goods': 'Con',
+            'Oil & Gas': 'O&G',
+            'Agriculture': 'Agr',
+            'Healthcare': 'Hth',
+            'Natural Resources': 'Nat',
+            'Construction': 'Cns',
+            'Real Estate': 'RE',
+            'Services': 'Svc',
+            'Conglomerates': 'Cgl',
+            'Insurance': 'Ins',
+        }
+        
+        n = len(sectors)
+        cell_size = min((width - 30) // n, (height - 30) // n)
+        offset_x = 25
+        offset_y = 20
+        
+        # Draw grid
+        for i, s1 in enumerate(sectors):
+            for j, s2 in enumerate(sectors):
+                corr = correlations.get(s1, {}).get(s2, 0)
+                
+                x1 = offset_x + j * cell_size
+                y1 = offset_y + i * cell_size
+                
+                # Color based on correlation
+                if corr > 0.5:
+                    color = '#27ae60'
+                elif corr > 0:
+                    color = '#2ecc71'
+                elif corr < -0.5:
+                    color = '#c0392b'
+                elif corr < 0:
+                    color = '#e74c3c'
+                else:
+                    color = '#555'
+                
+                self.correlation_canvas.create_rectangle(
+                    x1, y1, x1 + cell_size - 1, y1 + cell_size - 1,
+                    fill=color, outline='#222'
+                )
+        
+        # Row labels (left side)
+        for i, sector in enumerate(sectors):
+            abbrev = sector_abbrev.get(sector, sector[:3])
+            y = offset_y + i * cell_size + cell_size // 2
+            self.correlation_canvas.create_text(
+                12, y,
+                text=abbrev, fill="#888", font=('Arial', 6)
+            )
+        
+        # Column labels (top)
+        for j, sector in enumerate(sectors):
+            abbrev = sector_abbrev.get(sector, sector[:3])
+            x = offset_x + j * cell_size + cell_size // 2
+            self.correlation_canvas.create_text(
+                x, 8,
+                text=abbrev, fill="#888", font=('Arial', 6)
             )
     
+    def _update_rs_leaderboard(self, sector_rankings: List[Dict]):
+        """Update the RS Leaderboard with stocks outperforming their sector."""
+        for item in self.rs_tree.get_children():
+            self.rs_tree.delete(item)
+        
+        # Collect all stocks with their RS vs sector
+        rs_leaders = []
+        for sr in sector_rankings:
+            sector_avg = sr.get('avg_1w', 0)
+            for stock in sr.get('stocks', []):
+                stock_1w = stock.get('chg_1w', 0)
+                vs_sector = stock_1w - sector_avg
+                rs_leaders.append({
+                    'symbol': stock.get('symbol', '?'),
+                    'sector': sr['sector'],
+                    'rs_score': stock_1w,
+                    'vs_sector': vs_sector
+                })
+        
+        # Sort by vs_sector (outperformance)
+        rs_leaders.sort(key=lambda x: -x['vs_sector'])
+        
+        # Show top 10 outperformers
+        for rs in rs_leaders[:10]:
+            vs = rs['vs_sector']
+            if vs >= 5:
+                tag = 'strong'
+            elif vs > 0:
+                tag = 'outperform'
+            else:
+                tag = 'underperform'
+            
+            self.rs_tree.insert('', 'end', values=(
+                rs['symbol'],
+                rs['sector'][:10],
+                f"{vs:+.1f}%"
+            ), tags=(tag,))
+    
     def _on_sector_select(self, event):
-        """Handle sector selection."""
+        """Handle sector selection from sector rankings."""
         selection = self.sector_tree.selection()
         if not selection:
             return
         
-        # Use the iid which stores the full sector name
         sector = selection[0]
+        if sector and hasattr(self, '_sector_data') and sector in self._sector_data:
+            self._update_components_ui(self._sector_data[sector])
+    
+    def _on_momentum_select(self, event):
+        """Handle sector selection from momentum matrix."""
+        selection = self.momentum_tree.selection()
+        if not selection:
+            return
         
+        sector = selection[0]
         if sector and hasattr(self, '_sector_data') and sector in self._sector_data:
             self._update_components_ui(self._sector_data[sector])
     
@@ -904,7 +1222,6 @@ class MarketIntelligenceTab:
                 f"₦{s.get('price', 0):,.2f}",
                 f"{chg_1d:+.1f}%",
                 f"{chg_1w:+.1f}%",
-                f"{s.get('weight', 0):.1f}%",
                 momentum
             ), tags=(tag,))
     
