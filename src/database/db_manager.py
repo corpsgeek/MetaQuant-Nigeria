@@ -280,6 +280,22 @@ class DatabaseManager:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        
+        # Intraday OHLCV data for backtesting and analysis
+        self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS intraday_ohlcv (
+                symbol VARCHAR NOT NULL,
+                interval VARCHAR NOT NULL,  -- '15m', '1h', '1d'
+                datetime TIMESTAMP NOT NULL,
+                open DOUBLE,
+                high DOUBLE,
+                low DOUBLE,
+                close DOUBLE,
+                volume DOUBLE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (symbol, interval, datetime)
+            )
+        """)
     
     def _create_indexes(self):
         """Create indexes for better query performance."""
