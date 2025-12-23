@@ -546,13 +546,46 @@ class FlowTapeTab:
     # =========================================================================
     
     def _create_alerts_tab_content(self):
-        """Create content for the Alerts sub-tab."""
+        """Create super enhanced Alerts sub-tab with comprehensive dashboard."""
         main_frame = ttk.Frame(self.alerts_tab)
         main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
         
-        # Alerts section (scrollable)
+        # ========== ROW 1: ALERT SUMMARY BAR ==========
+        summary_frame = ttk.LabelFrame(main_frame, text="🚨 Alert Summary")
+        summary_frame.pack(fill=tk.X, pady=(0, 8))
+        
+        summary_inner = ttk.Frame(summary_frame)
+        summary_inner.pack(fill=tk.X, padx=10, pady=8)
+        
+        # Configure grid weights
+        for i in range(5):
+            summary_inner.columnconfigure(i, weight=1)
+        
+        self.alert_counts = {}
+        severity_items = [
+            ('critical', '🔴 CRITICAL', COLORS['loss']),
+            ('high', '🟠 HIGH', '#FF8C00'),
+            ('medium', '🟡 MEDIUM', COLORS['warning']),
+            ('low', '🟢 LOW', COLORS['gain']),
+            ('total', '📊 TOTAL', COLORS['primary'])
+        ]
+        
+        for i, (key, label, color) in enumerate(severity_items):
+            card = ttk.Frame(summary_inner, relief='groove', borderwidth=1)
+            card.grid(row=0, column=i, padx=5, pady=3, sticky='nsew')
+            
+            ttk.Label(card, text=label, font=get_font('small'),
+                     foreground=color).pack(anchor='center', pady=(5, 0))
+            
+            count_label = ttk.Label(card, text="0", font=get_font('heading'),
+                                   foreground=color)
+            count_label.pack(anchor='center', pady=(0, 5))
+            
+            self.alert_counts[key] = count_label
+        
+        # ========== ROW 2: ACTIVE ALERTS (Scrollable) ==========
         alerts_frame = ttk.LabelFrame(main_frame, text="⚠️ Active Alerts")
-        alerts_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+        alerts_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 8))
         
         # Create canvas with scrollbar
         canvas_frame = ttk.Frame(alerts_frame)
@@ -588,32 +621,96 @@ class FlowTapeTab:
         self.alerts_container.bind('<Configure>', self._on_alerts_configure)
         self.alerts_canvas.bind('<Configure>', self._on_alerts_canvas_configure)
         
-        # Statistics section
-        stats_frame = ttk.LabelFrame(main_frame, text="📊 Statistics Summary")
-        stats_frame.pack(fill=tk.X)
+        # ========== ROW 3: ALERT STATISTICS ==========
+        stats_frame = ttk.LabelFrame(main_frame, text="📊 Alert Statistics")
+        stats_frame.pack(fill=tk.X, pady=(0, 8))
         
         stats_inner = ttk.Frame(stats_frame)
-        stats_inner.pack(fill=tk.X, padx=10, pady=10)
+        stats_inner.pack(fill=tk.X, padx=10, pady=8)
         
-        self.stats_summary_labels = {}
+        # Configure equal columns
+        for i in range(4):
+            stats_inner.columnconfigure(i, weight=1)
         
-        stats_items = [
-            ('rvol', 'RVOL'),
-            ('efficiency', 'Price Efficiency'),
-            ('trade_dist', 'Trade Distribution'),
-            ('total_vol', 'Total Volume')
+        self.alert_stats_labels = {}
+        stats_sections = [
+            ('frequency', '🔥 Most Frequent', [
+                ('freq_1', '#1'),
+                ('freq_2', '#2'),
+                ('freq_3', '#3')
+            ]),
+            ('signals', '📈 Signal Mix', [
+                ('bullish_pct', 'Bullish'),
+                ('bearish_pct', 'Bearish'),
+                ('neutral_pct', 'Neutral')
+            ]),
+            ('rvol_stats', '📊 RVOL Stats', [
+                ('current_rvol', 'Current'),
+                ('avg_rvol', 'Average'),
+                ('peak_rvol', 'Peak')
+            ]),
+            ('metrics', '⏱️ Metrics', [
+                ('total_today', 'Today'),
+                ('active_now', 'Active'),
+                ('last_update', 'Updated')
+            ])
         ]
         
-        for key, label in stats_items:
-            frame = ttk.Frame(stats_inner)
-            frame.pack(side=tk.LEFT, padx=(0, 30))
+        for col, (section_key, section_title, items) in enumerate(stats_sections):
+            section = ttk.Frame(stats_inner)
+            section.grid(row=0, column=col, padx=10, sticky='nsew')
             
-            ttk.Label(frame, text=f"{label}:", font=get_font('small'),
-                     foreground=COLORS['text_muted']).pack(side=tk.LEFT)
+            ttk.Label(section, text=section_title, font=get_font('body'),
+                     foreground=COLORS['primary']).pack(anchor='w')
             
-            self.stats_summary_labels[key] = ttk.Label(
-                frame, text="--", font=get_font('small'))
-            self.stats_summary_labels[key].pack(side=tk.LEFT, padx=(5, 0))
+            ttk.Separator(section, orient='horizontal').pack(fill=tk.X, pady=3)
+            
+            for key, label in items:
+                row = ttk.Frame(section)
+                row.pack(fill=tk.X, pady=1)
+                
+                ttk.Label(row, text=f"{label}:", font=get_font('tiny'),
+                         foreground=COLORS['text_muted']).pack(side=tk.LEFT)
+                
+                value_label = ttk.Label(row, text="--", font=get_font('small'))
+                value_label.pack(side=tk.RIGHT)
+                self.alert_stats_labels[key] = value_label
+        
+        # ========== ROW 4: ALERT HISTORY TABLE ==========
+        history_frame = ttk.LabelFrame(main_frame, text="📜 Recent Alert History")
+        history_frame.pack(fill=tk.X, pady=(0, 5))
+        
+        # Create treeview for history
+        columns = ('time', 'type', 'message', 'severity', 'signal')
+        self.alert_history_tree = ttk.Treeview(history_frame, columns=columns, show='headings', height=4)
+        
+        col_config = [
+            ('time', 'Time', 60, 'center'),
+            ('type', 'Type', 100, 'center'),
+            ('message', 'Message', 280, 'w'),
+            ('severity', 'Severity', 70, 'center'),
+            ('signal', 'Signal', 70, 'center')
+        ]
+        
+        for col, heading, width, anchor in col_config:
+            self.alert_history_tree.heading(col, text=heading)
+            self.alert_history_tree.column(col, width=width, anchor=anchor)
+        
+        # Scrollbar
+        history_scroll = ttk.Scrollbar(history_frame, orient='vertical', command=self.alert_history_tree.yview)
+        self.alert_history_tree.configure(yscrollcommand=history_scroll.set)
+        
+        self.alert_history_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(5, 0), pady=5)
+        history_scroll.pack(side=tk.RIGHT, fill=tk.Y, pady=5, padx=(0, 5))
+        
+        # Tags for coloring
+        self.alert_history_tree.tag_configure('critical', foreground=COLORS['loss'])
+        self.alert_history_tree.tag_configure('high', foreground='#FF8C00')
+        self.alert_history_tree.tag_configure('medium', foreground=COLORS['warning'])
+        self.alert_history_tree.tag_configure('low', foreground=COLORS['gain'])
+        
+        # Initialize alert history storage
+        self.alert_history = []
     
     def _on_alerts_configure(self, event):
         """Update scroll region when alerts container changes."""
@@ -834,82 +931,191 @@ class FlowTapeTab:
     # =========================================================================
     
     def _create_sessions_tab_content(self):
-        """Create content for the Sessions sub-tab."""
+        """Create super enhanced Sessions sub-tab with comprehensive analytics."""
         main_frame = ttk.Frame(self.sessions_tab)
         main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
         
-        # Intraday sessions row
-        sessions_frame = ttk.LabelFrame(main_frame, text="📅 Intraday Sessions (NGX)")
-        sessions_frame.pack(fill=tk.X, pady=(0, 10))
+        # ========== ROW 1: TODAY'S SESSION SUMMARY ==========
+        summary_frame = ttk.LabelFrame(main_frame, text="📊 Today's Session Summary")
+        summary_frame.pack(fill=tk.X, pady=(0, 8))
         
-        sessions_inner = ttk.Frame(sessions_frame)
-        sessions_inner.pack(fill=tk.X, padx=15, pady=10)
+        summary_inner = ttk.Frame(summary_frame)
+        summary_inner.pack(fill=tk.X, padx=10, pady=8)
         
-        self.session_labels = {}
+        # Configure grid weights for equal distribution
+        for i in range(5):
+            summary_inner.columnconfigure(i, weight=1)
         
-        # Session cards
-        for key, info in [
-            ('open', ('🔔 Opening', '10:00-10:30')),
-            ('core', ('⚡ Core', '10:30-13:00')),
-            ('close', ('🔔 Closing', '13:00-14:30'))
-        ]:
-            card = ttk.Frame(sessions_inner)
-            card.pack(side=tk.LEFT, padx=(0, 30))
+        self.session_cards = {}
+        session_items = [
+            ('open', '🔔 OPENING', '10:00-10:30'),
+            ('core', '⚡ CORE', '10:30-13:00'),
+            ('close', '🔔 CLOSING', '13:00-14:30'),
+            ('current', '📍 CURRENT', 'Position'),
+            ('status', '🎯 STATUS', 'Bias')
+        ]
+        
+        for i, (key, title, subtitle) in enumerate(session_items):
+            card = ttk.Frame(summary_inner, relief='groove', borderwidth=1)
+            card.grid(row=0, column=i, padx=5, pady=3, sticky='nsew')
             
-            ttk.Label(card, text=info[0], font=get_font('body'),
-                     foreground=COLORS['primary']).pack(anchor='w')
-            ttk.Label(card, text=info[1], font=get_font('small'),
-                     foreground=COLORS['text_muted']).pack(anchor='w')
+            # Title
+            ttk.Label(card, text=title, font=get_font('body'),
+                     foreground=COLORS['primary']).pack(anchor='center', pady=(5, 0))
             
-            self.session_labels[key] = ttk.Label(
-                card, text="--", font=get_font('subheading'))
-            self.session_labels[key].pack(anchor='w', pady=(5, 0))
+            # Subtitle
+            ttk.Label(card, text=subtitle, font=get_font('tiny'),
+                     foreground=COLORS['text_muted']).pack(anchor='center')
+            
+            # Delta value
+            delta_label = ttk.Label(card, text="Δ: --", font=get_font('subheading'))
+            delta_label.pack(anchor='center', pady=2)
+            
+            # Volume/Extra info
+            extra_label = ttk.Label(card, text="--", font=get_font('tiny'),
+                                   foreground=COLORS['text_muted'])
+            extra_label.pack(anchor='center', pady=(0, 5))
+            
+            self.session_cards[key] = {
+                'delta': delta_label,
+                'extra': extra_label,
+                'frame': card
+            }
         
-        # Opening Range section
-        or_frame = ttk.LabelFrame(main_frame, text="📐 Opening Range Analysis")
-        or_frame.pack(fill=tk.X, pady=(0, 10))
+        # ========== ROW 2: LEFT=OPENING RANGE, RIGHT=SESSION DELTA CHART ==========
+        row2 = ttk.Frame(main_frame)
+        row2.pack(fill=tk.BOTH, expand=True, pady=(0, 8))
+        row2.columnconfigure(0, weight=1)
+        row2.columnconfigure(1, weight=2)
+        
+        # Opening Range Analysis
+        or_frame = ttk.LabelFrame(row2, text="📐 Opening Range Analysis")
+        or_frame.grid(row=0, column=0, sticky='nsew', padx=(0, 5))
         
         or_inner = ttk.Frame(or_frame)
-        or_inner.pack(fill=tk.X, padx=15, pady=10)
+        or_inner.pack(fill=tk.BOTH, expand=True, padx=10, pady=8)
         
-        for key, label in [
-            ('or_high', 'OR High'),
-            ('or_low', 'OR Low'),
-            ('or_range', 'Range'),
-            ('or_breakout', 'Status')
-        ]:
-            frame = ttk.Frame(or_inner)
-            frame.pack(side=tk.LEFT, padx=(0, 25))
-            
-            ttk.Label(frame, text=f"{label}:", font=get_font('small'),
-                     foreground=COLORS['text_muted']).pack(side=tk.LEFT)
-            
-            self.session_labels[key] = ttk.Label(
-                frame, text="--", font=get_font('small'))
-            self.session_labels[key].pack(side=tk.LEFT, padx=(5, 0))
+        self.or_labels = {}
+        or_items = [
+            ('or_high', 'OR High', COLORS['gain']),
+            ('or_low', 'OR Low', COLORS['loss']),
+            ('or_range', 'Range', COLORS['text_primary']),
+            ('or_status', 'Status', COLORS['primary']),
+            ('or_extension', 'Extension', COLORS['warning'])
+        ]
         
-        # Session comparison
-        compare_frame = ttk.LabelFrame(main_frame, text="📊 Session Comparison")
-        compare_frame.pack(fill=tk.X)
-        
-        compare_inner = ttk.Frame(compare_frame)
-        compare_inner.pack(fill=tk.X, padx=15, pady=10)
-        
-        for key, label in [
-            ('streak', 'Streak'),
-            ('today_vs_avg', 'vs Average'),
-            ('zscore', 'Z-Score'),
-            ('percentile', 'Percentile')
-        ]:
-            frame = ttk.Frame(compare_inner)
-            frame.pack(side=tk.LEFT, padx=(0, 25))
+        for key, label, color in or_items:
+            row = ttk.Frame(or_inner)
+            row.pack(fill=tk.X, pady=2)
             
-            ttk.Label(frame, text=f"{label}:", font=get_font('small'),
-                     foreground=COLORS['text_muted']).pack(side=tk.LEFT)
+            ttk.Label(row, text=f"{label}:", font=get_font('small'),
+                     foreground=COLORS['text_muted'], width=12).pack(side=tk.LEFT)
             
-            self.session_labels[key] = ttk.Label(
-                frame, text="--", font=get_font('small'))
-            self.session_labels[key].pack(side=tk.LEFT, padx=(5, 0))
+            value_label = ttk.Label(row, text="--", font=get_font('body'),
+                                   foreground=color)
+            value_label.pack(side=tk.LEFT)
+            self.or_labels[key] = value_label
+        
+        # Session Delta Chart
+        chart_frame = ttk.LabelFrame(row2, text="📊 Session Delta Chart")
+        chart_frame.grid(row=0, column=1, sticky='nsew', padx=(5, 0))
+        
+        self.session_chart_canvas = tk.Canvas(
+            chart_frame,
+            bg=COLORS['bg_medium'],
+            highlightthickness=0,
+            height=120
+        )
+        self.session_chart_canvas.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        # ========== ROW 3: HISTORICAL SESSION PATTERNS ==========
+        history_frame = ttk.LabelFrame(main_frame, text="📅 Historical Session Patterns")
+        history_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 8))
+        
+        # Create treeview for history
+        columns = ('date', 'day', 'open_d', 'core_d', 'close_d', 'total', 'result', 'pattern')
+        self.history_tree = ttk.Treeview(history_frame, columns=columns, show='headings', height=6)
+        
+        col_config = [
+            ('date', 'Date', 80, 'center'),
+            ('day', 'Day', 45, 'center'),
+            ('open_d', 'Open Δ', 70, 'e'),
+            ('core_d', 'Core Δ', 70, 'e'),
+            ('close_d', 'Close Δ', 70, 'e'),
+            ('total', 'Total Δ', 80, 'e'),
+            ('result', 'Result', 55, 'center'),
+            ('pattern', 'Pattern', 100, 'center')
+        ]
+        
+        for col, heading, width, anchor in col_config:
+            self.history_tree.heading(col, text=heading)
+            self.history_tree.column(col, width=width, anchor=anchor)
+        
+        # Scrollbar
+        history_scroll = ttk.Scrollbar(history_frame, orient='vertical', command=self.history_tree.yview)
+        self.history_tree.configure(yscrollcommand=history_scroll.set)
+        
+        self.history_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(5, 0), pady=5)
+        history_scroll.pack(side=tk.RIGHT, fill=tk.Y, pady=5, padx=(0, 5))
+        
+        # Tags for coloring
+        self.history_tree.tag_configure('win', foreground=COLORS['gain'])
+        self.history_tree.tag_configure('loss', foreground=COLORS['loss'])
+        
+        # ========== ROW 4: SESSION ANALYTICS ==========
+        analytics_frame = ttk.LabelFrame(main_frame, text="📈 Session Analytics")
+        analytics_frame.pack(fill=tk.X, pady=(0, 5))
+        
+        analytics_inner = ttk.Frame(analytics_frame)
+        analytics_inner.pack(fill=tk.X, padx=10, pady=8)
+        
+        # Configure equal columns
+        for i in range(4):
+            analytics_inner.columnconfigure(i, weight=1)
+        
+        self.analytics_labels = {}
+        analytics_sections = [
+            ('win_rates', '🔥 Win Rates', [
+                ('open_wr', 'Opening'),
+                ('core_wr', 'Core'),
+                ('close_wr', 'Closing')
+            ]),
+            ('avg_delta', '📊 Avg Delta', [
+                ('open_avg', 'Opening'),
+                ('core_avg', 'Core'),
+                ('close_avg', 'Closing')
+            ]),
+            ('best_time', '⏱️ Best Time', [
+                ('best_session', 'Session'),
+                ('best_pct', 'Win %'),
+                ('total_days', 'Days')
+            ]),
+            ('patterns', '🎯 Patterns', [
+                ('rally_pct', 'Morning Rally'),
+                ('reversal_pct', 'Reversal'),
+                ('dist_pct', 'Distribution')
+            ])
+        ]
+        
+        for col, (section_key, section_title, items) in enumerate(analytics_sections):
+            section = ttk.Frame(analytics_inner)
+            section.grid(row=0, column=col, padx=10, sticky='nsew')
+            
+            ttk.Label(section, text=section_title, font=get_font('body'),
+                     foreground=COLORS['primary']).pack(anchor='w')
+            
+            ttk.Separator(section, orient='horizontal').pack(fill=tk.X, pady=3)
+            
+            for key, label in items:
+                row = ttk.Frame(section)
+                row.pack(fill=tk.X, pady=1)
+                
+                ttk.Label(row, text=f"{label}:", font=get_font('tiny'),
+                         foreground=COLORS['text_muted']).pack(side=tk.LEFT)
+                
+                value_label = ttk.Label(row, text="--", font=get_font('small'))
+                value_label.pack(side=tk.RIGHT)
+                self.analytics_labels[key] = value_label
     
     def _create_delta_chart(self, parent):
         """Create delta bar chart visualization."""
@@ -1220,7 +1426,7 @@ class FlowTapeTab:
             self._update_delta_metrics()
             self._update_realtime_indicators(buy_count, sell_count, block_count, sweep_count, data)
             self._update_alerts()
-            self._update_alerts_stats()
+            # Alert stats now updated inside _update_alerts
             self._update_chart_metrics(data, buy_count, sweep_count)
             self._update_price_chart(data)
             self._update_delta_chart(data)
@@ -1232,6 +1438,7 @@ class FlowTapeTab:
             self._update_volume_profile()
             self._update_cumulative_delta()
             self._update_session_analytics()
+            self._update_sessions_tab()  # Super enhanced sessions tab
             self._update_stats(len(data), avg_vol, buy_count, block_count, sweep_count, data)
             
         except Exception as e:
@@ -1538,11 +1745,13 @@ class FlowTapeTab:
             logger.error(f"Error updating imbalance detector: {e}")
     
     def _update_alerts(self):
-        """Update the alerts panel."""
+        """Update the super enhanced alerts panel."""
         if not self.flow_analysis:
             return
         
         try:
+            from datetime import datetime
+            
             # Clear existing alerts
             for widget in self.alerts_container.winfo_children():
                 widget.destroy()
@@ -1550,136 +1759,238 @@ class FlowTapeTab:
             # Generate alerts
             alerts = self.flow_analysis.generate_alerts()
             
+            # ========== UPDATE SUMMARY BAR ==========
+            severity_counts = {'critical': 0, 'high': 0, 'medium': 0, 'low': 0}
+            
+            for alert in alerts:
+                sev = alert.get('severity', 'LOW').lower()
+                if sev == 'high':
+                    # Check if it's actually critical (extreme signals)
+                    if 'EXTREME' in alert.get('signal', '') or 'ZSCORE' in alert.get('type', ''):
+                        severity_counts['critical'] += 1
+                    else:
+                        severity_counts['high'] += 1
+                elif sev == 'medium':
+                    severity_counts['medium'] += 1
+                else:
+                    severity_counts['low'] += 1
+            
+            total = sum(severity_counts.values())
+            
+            self.alert_counts['critical'].config(text=str(severity_counts['critical']))
+            self.alert_counts['high'].config(text=str(severity_counts['high']))
+            self.alert_counts['medium'].config(text=str(severity_counts['medium']))
+            self.alert_counts['low'].config(text=str(severity_counts['low']))
+            self.alert_counts['total'].config(text=str(total))
+            
+            # ========== DISPLAY ACTIVE ALERTS ==========
             if not alerts:
+                no_alert_frame = ttk.Frame(self.alerts_container)
+                no_alert_frame.pack(fill=tk.X, pady=20)
+                
                 ttk.Label(
-                    self.alerts_container,
-                    text="✓ No active alerts",
-                    font=get_font('small'),
+                    no_alert_frame,
+                    text="✓ No active alerts - Market conditions normal",
+                    font=get_font('body'),
                     foreground=COLORS['gain']
-                ).pack(anchor='w')
+                ).pack(anchor='center')
                 return
             
-            # Display all alerts
+            # Sort by severity (critical > high > medium > low)
+            severity_order = {'HIGH': 0, 'MEDIUM': 1, 'LOW': 2}
+            sorted_alerts = sorted(alerts, key=lambda x: severity_order.get(x.get('severity', 'LOW'), 2))
+            
+            for alert in sorted_alerts:
+                self._create_alert_card(alert)
+            
+            # ========== UPDATE ALERT HISTORY ==========
+            now = datetime.now()
             for alert in alerts:
-                alert_frame = ttk.Frame(self.alerts_container)
-                alert_frame.pack(fill=tk.X, pady=3)
+                history_entry = {
+                    'time': now.strftime('%H:%M'),
+                    'type': alert.get('type', 'UNKNOWN'),
+                    'message': alert.get('message', '')[:50],
+                    'severity': alert.get('severity', 'LOW'),
+                    'signal': alert.get('signal', 'NEUTRAL')
+                }
                 
-                # Severity indicator
-                if alert['severity'] == 'HIGH':
-                    icon = '🔴'
-                    color = COLORS['loss']
-                elif alert['severity'] == 'MEDIUM':
-                    icon = '🟡'
-                    color = COLORS['warning']
-                else:
-                    icon = '🔵'
-                    color = COLORS['primary']
+                # Add to history if not already there (avoid duplicates)
+                if not any(h['type'] == history_entry['type'] and 
+                          h['message'] == history_entry['message'] for h in self.alert_history[-10:]):
+                    self.alert_history.append(history_entry)
+            
+            # Update history table
+            for item in self.alert_history_tree.get_children():
+                self.alert_history_tree.delete(item)
+            
+            for entry in reversed(self.alert_history[-10:]):  # Last 10 entries
+                sev = entry['severity'].lower()
+                tag = 'critical' if 'EXTREME' in str(entry.get('signal', '')) else sev
                 
-                # Top row - alert type and message
-                top_row = ttk.Frame(alert_frame)
-                top_row.pack(fill=tk.X)
+                sev_display = {'HIGH': '🟠 HIGH', 'MEDIUM': '🟡 MED', 'LOW': '🟢 LOW'}
                 
-                ttk.Label(
-                    top_row,
-                    text=icon,
-                    font=('Arial', 10)
-                ).pack(side=tk.LEFT)
-                
-                ttk.Label(
-                    top_row,
-                    text=f" [{alert['type']}]",
-                    font=get_font('small'),
-                    foreground=color
-                ).pack(side=tk.LEFT)
-                
-                ttk.Label(
-                    top_row,
-                    text=f" {alert['message']}",
-                    font=get_font('small'),
-                    foreground=COLORS['text_secondary']
-                ).pack(side=tk.LEFT)
-                
-                # Context row - explanation
-                if alert.get('context'):
-                    context_row = ttk.Frame(alert_frame)
-                    context_row.pack(fill=tk.X, padx=(20, 0))
-                    
-                    ttk.Label(
-                        context_row,
-                        text=f"📋 {alert['context']}",
-                        font=get_font('small'),
-                        foreground=COLORS['text_muted'],
-                        wraplength=600
-                    ).pack(anchor='w')
-                
-                # Action row - what to do
-                if alert.get('action'):
-                    action_row = ttk.Frame(alert_frame)
-                    action_row.pack(fill=tk.X, padx=(20, 0))
-                    
-                    ttk.Label(
-                        action_row,
-                        text=f"➡️ {alert['action']}",
-                        font=get_font('small'),
-                        foreground=COLORS['primary']
-                    ).pack(anchor='w')
-                
-                # Price info row - key levels
-                if alert.get('price_info'):
-                    price_row = ttk.Frame(alert_frame)
-                    price_row.pack(fill=tk.X, padx=(20, 0))
-                    
-                    ttk.Label(
-                        price_row,
-                        text=f"💰 {alert['price_info']}",
-                        font=get_font('small'),
-                        foreground=COLORS['gain']
-                    ).pack(anchor='w')
-                
+                self.alert_history_tree.insert('', 'end', values=(
+                    entry['time'],
+                    entry['type'],
+                    entry['message'],
+                    sev_display.get(entry['severity'], entry['severity']),
+                    entry['signal']
+                ), tags=(tag,))
+            
+            # ========== UPDATE ALERT STATISTICS ==========
+            self._update_alert_statistics(alerts)
+            
         except Exception as e:
             logger.error(f"Error updating alerts: {e}")
     
-    def _update_alerts_stats(self):
-        """Update the statistics summary in the alerts tab."""
-        if not self.flow_analysis:
-            return
+    def _create_alert_card(self, alert):
+        """Create a styled alert card."""
+        # Determine severity colors
+        severity = alert.get('severity', 'LOW')
+        if severity == 'HIGH':
+            if 'EXTREME' in alert.get('signal', '') or 'ZSCORE' in alert.get('type', ''):
+                icon = '🔴'
+                border_color = COLORS['loss']
+                severity_text = 'CRITICAL'
+            else:
+                icon = '🟠'
+                border_color = '#FF8C00'
+                severity_text = 'HIGH'
+        elif severity == 'MEDIUM':
+            icon = '🟡'
+            border_color = COLORS['warning']
+            severity_text = 'MEDIUM'
+        else:
+            icon = '🟢'
+            border_color = COLORS['gain']
+            severity_text = 'LOW'
         
+        # Alert card container
+        card = ttk.Frame(self.alerts_container, relief='groove', borderwidth=1)
+        card.pack(fill=tk.X, pady=4, padx=2)
+        
+        # Header row
+        header = ttk.Frame(card)
+        header.pack(fill=tk.X, padx=8, pady=(6, 3))
+        
+        ttk.Label(
+            header,
+            text=f"{icon} {severity_text} • {alert.get('type', 'UNKNOWN')}",
+            font=get_font('body'),
+            foreground=border_color
+        ).pack(side=tk.LEFT)
+        
+        # Timestamp
+        from datetime import datetime
+        ttk.Label(
+            header,
+            text=datetime.now().strftime('%H:%M:%S'),
+            font=get_font('tiny'),
+            foreground=COLORS['text_muted']
+        ).pack(side=tk.RIGHT)
+        
+        # Message
+        ttk.Label(
+            card,
+            text=alert.get('message', ''),
+            font=get_font('body'),
+            foreground=COLORS['text_primary'],
+            wraplength=550
+        ).pack(anchor='w', padx=8, pady=2)
+        
+        # Context
+        if alert.get('context'):
+            ttk.Label(
+                card,
+                text=f"📌 {alert['context']}",
+                font=get_font('small'),
+                foreground=COLORS['text_muted'],
+                wraplength=550
+            ).pack(anchor='w', padx=8, pady=1)
+        
+        # Action
+        if alert.get('action'):
+            ttk.Label(
+                card,
+                text=f"💡 {alert['action']}",
+                font=get_font('small'),
+                foreground=COLORS['primary'],
+                wraplength=550
+            ).pack(anchor='w', padx=8, pady=1)
+        
+        # Price info
+        if alert.get('price_info'):
+            ttk.Label(
+                card,
+                text=f"📊 {alert['price_info']}",
+                font=get_font('small'),
+                foreground=COLORS['gain']
+            ).pack(anchor='w', padx=8, pady=(1, 6))
+    
+    def _update_alert_statistics(self, alerts):
+        """Update alert statistics section."""
         try:
-            # RVOL
-            rvol_info = self.flow_analysis.rvol_percentile()
-            if rvol_info:
-                rank = rvol_info.get('rank', 'NORMAL')
-                pct = rvol_info.get('percentile', 50)
-                color = COLORS['gain'] if rank in ['EXTREME', 'HIGH'] else COLORS['text_secondary']
-                self.stats_summary_labels['rvol'].config(
-                    text=f"{pct:.0f}% ({rank})",
-                    foreground=color
-                )
+            # Frequency analysis
+            type_counts = {}
+            signal_counts = {'BULLISH': 0, 'BEARISH': 0, 'NEUTRAL': 0}
             
-            # Price efficiency
-            efficiency = self.flow_analysis.price_efficiency()
-            if efficiency:
-                eff_val = efficiency.get('efficiency', 0)
-                self.stats_summary_labels['efficiency'].config(
-                    text=f"{eff_val:.4f} $/vol"
-                )
-            
-            # Trade distribution
-            dist = self.flow_analysis.trade_size_distribution()
-            if dist:
-                dominance = dist.get('dominance', 'MIXED')
-                self.stats_summary_labels['trade_dist'].config(text=dominance)
-            
-            # Total volume
-            summary = self.flow_analysis.summary_stats()
-            if summary:
-                total_vol = summary.get('total_volume', 0)
-                self.stats_summary_labels['total_vol'].config(
-                    text=f"{total_vol:,.0f}"
-                )
+            for alert in alerts:
+                t = alert.get('type', 'UNKNOWN')
+                type_counts[t] = type_counts.get(t, 0) + 1
                 
+                signal = alert.get('signal', 'NEUTRAL')
+                if 'BUY' in signal or 'BULLISH' in signal or signal == 'ACCUMULATION':
+                    signal_counts['BULLISH'] += 1
+                elif 'SELL' in signal or 'BEARISH' in signal or signal == 'DISTRIBUTION':
+                    signal_counts['BEARISH'] += 1
+                else:
+                    signal_counts['NEUTRAL'] += 1
+            
+            # Top 3 most frequent
+            sorted_types = sorted(type_counts.items(), key=lambda x: x[1], reverse=True)[:3]
+            for i, (key, label) in enumerate([('freq_1', '#1'), ('freq_2', '#2'), ('freq_3', '#3')]):
+                if i < len(sorted_types):
+                    self.alert_stats_labels[key].config(text=sorted_types[i][0])
+                else:
+                    self.alert_stats_labels[key].config(text="--")
+            
+            # Signal mix
+            total_signals = sum(signal_counts.values()) or 1
+            self.alert_stats_labels['bullish_pct'].config(
+                text=f"{signal_counts['BULLISH']/total_signals*100:.0f}%",
+                foreground=COLORS['gain']
+            )
+            self.alert_stats_labels['bearish_pct'].config(
+                text=f"{signal_counts['BEARISH']/total_signals*100:.0f}%",
+                foreground=COLORS['loss']
+            )
+            self.alert_stats_labels['neutral_pct'].config(
+                text=f"{signal_counts['NEUTRAL']/total_signals*100:.0f}%",
+                foreground=COLORS['warning']
+            )
+            
+            # RVOL stats
+            if self.flow_analysis:
+                rvol_info = self.flow_analysis.rvol_percentile()
+                if rvol_info:
+                    self.alert_stats_labels['current_rvol'].config(
+                        text=f"{rvol_info.get('rvol', 1):.1f}x"
+                    )
+                    self.alert_stats_labels['avg_rvol'].config(
+                        text=f"{rvol_info.get('avg_volume', 0):,.0f}"
+                    )
+                    self.alert_stats_labels['peak_rvol'].config(
+                        text=f"{rvol_info.get('percentile', 50):.0f}%ile"
+                    )
+            
+            # Metrics
+            from datetime import datetime
+            self.alert_stats_labels['total_today'].config(text=str(len(self.alert_history)))
+            self.alert_stats_labels['active_now'].config(text=str(len(alerts)))
+            self.alert_stats_labels['last_update'].config(text=datetime.now().strftime('%H:%M'))
+            
         except Exception as e:
-            logger.error(f"Error updating alerts stats: {e}")
+            logger.error(f"Error updating alert statistics: {e}")
     
     def _update_chart_metrics(self, data, buy_count, sweep_count):
         """Update the key metrics bar in charts tab."""
@@ -1739,6 +2050,258 @@ class FlowTapeTab:
             
         except Exception as e:
             logger.error(f"Error updating chart metrics: {e}")
+    
+    def _update_sessions_tab(self):
+        """Update the super enhanced Sessions tab with live data."""
+        if not self.flow_analysis:
+            return
+        
+        try:
+            # ========== UPDATE SESSION SUMMARY CARDS ==========
+            sessions = self.flow_analysis.intraday_session_breakdown()
+            
+            for key in ['open', 'core', 'close']:
+                if key in sessions and key in self.session_cards:
+                    session = sessions[key]
+                    delta = session.get('delta', 0)
+                    volume = session.get('volume', 0)
+                    trend = session.get('trend', 'NEUTRAL')
+                    
+                    # Delta label
+                    color = COLORS['gain'] if delta >= 0 else COLORS['loss']
+                    self.session_cards[key]['delta'].config(
+                        text=f"Δ: {delta:+,.0f}",
+                        foreground=color
+                    )
+                    
+                    # Volume label
+                    vol_str = f"{volume/1000:.1f}K" if volume >= 1000 else f"{volume:.0f}"
+                    self.session_cards[key]['extra'].config(text=f"Vol: {vol_str}")
+            
+            # Current position card
+            from datetime import datetime
+            now = datetime.now()
+            hour = now.hour + now.minute / 60
+            
+            if hour < 10:
+                position = "Pre-Market"
+                progress = 0
+            elif hour < 10.5:
+                position = "In Opening"
+                progress = (hour - 10) / 0.5 * 100
+            elif hour < 13:
+                position = "In Core"
+                progress = (hour - 10.5) / 2.5 * 100
+            elif hour < 14.5:
+                position = "In Closing"
+                progress = (hour - 13) / 1.5 * 100
+            else:
+                position = "After Hours"
+                progress = 100
+            
+            self.session_cards['current']['delta'].config(text=position)
+            self.session_cards['current']['extra'].config(text=f"{progress:.0f}% done")
+            
+            # Status/Bias card
+            total_delta = sum(s.get('delta', 0) for s in sessions.values())
+            if total_delta > 0:
+                bias = "🟢 BULLISH"
+                color = COLORS['gain']
+            elif total_delta < 0:
+                bias = "🔴 BEARISH"
+                color = COLORS['loss']
+            else:
+                bias = "⚪ NEUTRAL"
+                color = COLORS['warning']
+            
+            self.session_cards['status']['delta'].config(text=bias, foreground=color)
+            self.session_cards['status']['extra'].config(text=f"Tot: {total_delta:+,.0f}")
+            
+            # ========== UPDATE OPENING RANGE ==========
+            or_data = self.flow_analysis.opening_range_analysis()
+            if or_data:
+                or_high = or_data.get('or_high', 0)
+                or_low = or_data.get('or_low', 0)
+                or_range = or_data.get('or_range', 0)
+                breakout = or_data.get('breakout', 'NO_BREAKOUT')
+                current_price = or_data.get('current_price', 0)
+                
+                self.or_labels['or_high'].config(text=f"₦{or_high:,.2f}")
+                self.or_labels['or_low'].config(text=f"₦{or_low:,.2f}")
+                
+                range_pct = (or_range / or_low * 100) if or_low else 0
+                self.or_labels['or_range'].config(text=f"₦{or_range:,.2f} ({range_pct:.1f}%)")
+                
+                # Status with color
+                if breakout == 'BULLISH_BREAKOUT':
+                    status_text = "🟢 ABOVE OR HIGH"
+                    color = COLORS['gain']
+                elif breakout == 'BEARISH_BREAKDOWN':
+                    status_text = "🔴 BELOW OR LOW"
+                    color = COLORS['loss']
+                else:
+                    status_text = "⚪ INSIDE OR"
+                    color = COLORS['warning']
+                
+                self.or_labels['or_status'].config(text=status_text, foreground=color)
+                
+                # Extension
+                if or_range > 0:
+                    if current_price > or_high:
+                        extension = current_price - or_high
+                        ext_r = extension / or_range
+                        self.or_labels['or_extension'].config(
+                            text=f"+₦{extension:,.2f} (+{ext_r:.1f}R)",
+                            foreground=COLORS['gain']
+                        )
+                    elif current_price < or_low:
+                        extension = or_low - current_price
+                        ext_r = extension / or_range
+                        self.or_labels['or_extension'].config(
+                            text=f"-₦{extension:,.2f} (-{ext_r:.1f}R)",
+                            foreground=COLORS['loss']
+                        )
+                    else:
+                        self.or_labels['or_extension'].config(
+                            text="Inside Range",
+                            foreground=COLORS['text_muted']
+                        )
+            
+            # ========== UPDATE SESSION DELTA CHART ==========
+            self._draw_session_delta_chart(sessions)
+            
+            # ========== UPDATE HISTORICAL PATTERNS TABLE ==========
+            history = self.flow_analysis.session_history(num_days=10)
+            
+            # Clear existing items
+            for item in self.history_tree.get_children():
+                self.history_tree.delete(item)
+            
+            for record in history:
+                date_str = record['date'].strftime('%b %d')
+                day = record['day_name']
+                open_d = f"{record['open_delta']:+,.0f}"
+                core_d = f"{record['core_delta']:+,.0f}"
+                close_d = f"{record['close_delta']:+,.0f}"
+                total = f"{record['total_delta']:+,.0f}"
+                result = "🟢" if record['result'] == 'WIN' else "🔴"
+                pattern = record['pattern']
+                
+                tag = 'win' if record['result'] == 'WIN' else 'loss'
+                
+                self.history_tree.insert('', 'end', values=(
+                    date_str, day, open_d, core_d, close_d, total, result, pattern
+                ), tags=(tag,))
+            
+            # ========== UPDATE SESSION ANALYTICS ==========
+            if history:
+                # Win rates by session
+                open_wins = sum(1 for r in history if r['open_delta'] > 0)
+                core_wins = sum(1 for r in history if r['core_delta'] > 0)
+                close_wins = sum(1 for r in history if r['close_delta'] > 0)
+                n = len(history)
+                
+                self.analytics_labels['open_wr'].config(text=f"{open_wins/n*100:.0f}%")
+                self.analytics_labels['core_wr'].config(text=f"{core_wins/n*100:.0f}%")
+                self.analytics_labels['close_wr'].config(text=f"{close_wins/n*100:.0f}%")
+                
+                # Average delta
+                avg_open = sum(r['open_delta'] for r in history) / n
+                avg_core = sum(r['core_delta'] for r in history) / n
+                avg_close = sum(r['close_delta'] for r in history) / n
+                
+                self.analytics_labels['open_avg'].config(text=f"{avg_open:+,.0f}")
+                self.analytics_labels['core_avg'].config(text=f"{avg_core:+,.0f}")
+                self.analytics_labels['close_avg'].config(text=f"{avg_close:+,.0f}")
+                
+                # Best time
+                win_rates = {'Opening': open_wins/n, 'Core': core_wins/n, 'Closing': close_wins/n}
+                best = max(win_rates, key=win_rates.get)
+                
+                self.analytics_labels['best_session'].config(text=best)
+                self.analytics_labels['best_pct'].config(text=f"{win_rates[best]*100:.0f}%")
+                self.analytics_labels['total_days'].config(text=str(n))
+                
+                # Pattern counts
+                patterns = [r['pattern'] for r in history]
+                rally_pct = patterns.count('Morning Rally') / n * 100
+                reversal_pct = patterns.count('Reversal') / n * 100
+                dist_pct = patterns.count('Distribution') / n * 100
+                
+                self.analytics_labels['rally_pct'].config(text=f"{rally_pct:.0f}%")
+                self.analytics_labels['reversal_pct'].config(text=f"{reversal_pct:.0f}%")
+                self.analytics_labels['dist_pct'].config(text=f"{dist_pct:.0f}%")
+                
+        except Exception as e:
+            logger.error(f"Error updating sessions tab: {e}")
+    
+    def _draw_session_delta_chart(self, sessions):
+        """Draw session delta bar chart."""
+        canvas = self.session_chart_canvas
+        canvas.delete('all')
+        
+        canvas.update_idletasks()
+        width = canvas.winfo_width()
+        height = canvas.winfo_height()
+        
+        if width < 50 or height < 30:
+            width, height = 400, 120
+        
+        # Data
+        session_keys = ['open', 'core', 'close']
+        deltas = [sessions.get(k, {}).get('delta', 0) for k in session_keys]
+        labels = ['Opening', 'Core', 'Closing']
+        
+        if max(abs(d) for d in deltas) == 0:
+            canvas.create_text(width/2, height/2, text="No session data", 
+                             fill=COLORS['text_muted'], font=get_font('small'))
+            return
+        
+        # Chart dimensions
+        padding = 40
+        chart_width = width - padding * 2
+        chart_height = height - padding
+        bar_width = chart_width / (len(deltas) * 2)
+        
+        max_delta = max(abs(d) for d in deltas) or 1
+        
+        # Zero line
+        zero_y = padding + chart_height / 2
+        canvas.create_line(padding, zero_y, width - padding, zero_y, 
+                          fill=COLORS['text_muted'], dash=(2, 2))
+        
+        # Bars
+        for i, (delta, label) in enumerate(zip(deltas, labels)):
+            x = padding + (i * 2 + 0.5) * bar_width
+            bar_h = (delta / max_delta) * (chart_height / 2 - 10)
+            
+            color = COLORS['gain'] if delta >= 0 else COLORS['loss']
+            
+            if delta >= 0:
+                canvas.create_rectangle(
+                    x, zero_y - bar_h,
+                    x + bar_width, zero_y,
+                    fill=color, outline=''
+                )
+            else:
+                canvas.create_rectangle(
+                    x, zero_y,
+                    x + bar_width, zero_y - bar_h,
+                    fill=color, outline=''
+                )
+            
+            # Value label
+            canvas.create_text(
+                x + bar_width / 2, 
+                zero_y - bar_h - 8 if delta >= 0 else zero_y - bar_h + 12,
+                text=f"{delta:+,.0f}", fill=color, font=get_font('tiny')
+            )
+            
+            # Session label
+            canvas.create_text(
+                x + bar_width / 2, height - 10,
+                text=label, fill=COLORS['text_muted'], font=get_font('tiny')
+            )
     
     def _update_momentum_chart(self, data):
         """Update delta momentum oscillator."""

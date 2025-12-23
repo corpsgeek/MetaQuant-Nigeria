@@ -1295,6 +1295,94 @@ class FlowAnalysis:
             'dominant_side': 'BUY' if buy_volume > sell_volume else 'SELL'
         }
     
+    def session_history(self, num_days: int = 10) -> List[Dict]:
+        """
+        Get historical session data for the last N trading days.
+        
+        Args:
+            num_days: Number of trading days to analyze
+            
+        Returns:
+            List of session history records
+        """
+        if not self.data:
+            return []
+        
+        # Group data by date
+        days_data = defaultdict(list)
+        for bar in self.data:
+            dt = bar['datetime']
+            if isinstance(dt, str):
+                try:
+                    dt = datetime.fromisoformat(dt.replace('Z', '+00:00'))
+                except:
+                    continue
+            days_data[dt.date()].append(bar)
+        
+        # Get last N days
+        sorted_dates = sorted(days_data.keys(), reverse=True)[:num_days]
+        
+        history = []
+        for date in sorted_dates:
+            bars = days_data[date]
+            
+            # Session breakdown for this day
+            sessions = {
+                'open': {'start': 10, 'end': 10.5, 'delta': 0, 'vol': 0},
+                'core': {'start': 10.5, 'end': 13, 'delta': 0, 'vol': 0},
+                'close': {'start': 13, 'end': 14.5, 'delta': 0, 'vol': 0}
+            }
+            
+            for bar in bars:
+                dt = bar['datetime']
+                if isinstance(dt, str):
+                    try:
+                        dt = datetime.fromisoformat(dt.replace('Z', '+00:00'))
+                    except:
+                        continue
+                
+                hour = dt.hour + dt.minute / 60
+                delta = bar.get('delta', 0)
+                vol = bar.get('volume', 0) or 0
+                
+                for session_name, session_info in sessions.items():
+                    if session_info['start'] <= hour < session_info['end']:
+                        session_info['delta'] += delta
+                        session_info['vol'] += vol
+                        break
+            
+            # Calculate totals
+            total_delta = sum(s['delta'] for s in sessions.values())
+            total_vol = sum(s['vol'] for s in sessions.values())
+            
+            # Classify pattern
+            if sessions['open']['delta'] > 0 and sessions['core']['delta'] > 0:
+                pattern = 'Morning Rally'
+            elif sessions['open']['delta'] < 0 and total_delta > 0:
+                pattern = 'Reversal'
+            elif sessions['core']['delta'] < 0 and abs(sessions['core']['delta']) > abs(sessions['open']['delta']):
+                pattern = 'Distribution'
+            elif sessions['close']['delta'] > sessions['open']['delta']:
+                pattern = 'Late Strength'
+            elif sessions['close']['delta'] < 0 and total_delta < 0:
+                pattern = 'Sell-Off'
+            else:
+                pattern = 'Mixed'
+            
+            history.append({
+                'date': date,
+                'day_name': date.strftime('%a'),
+                'open_delta': sessions['open']['delta'],
+                'core_delta': sessions['core']['delta'],
+                'close_delta': sessions['close']['delta'],
+                'total_delta': total_delta,
+                'total_volume': total_vol,
+                'result': 'WIN' if total_delta > 0 else 'LOSS',
+                'pattern': pattern
+            })
+        
+        return history
+    
     # =========================================================================
     # SESSION ANALYTICS (PHASE 4)
     # =========================================================================
