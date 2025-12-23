@@ -24,6 +24,8 @@ from src.gui.tabs.insights_tab import InsightsTab
 from src.gui.tabs.universe_tab import UniverseTab
 from src.gui.tabs.flow_tab import FlowTab
 from src.gui.tabs.history_tab import HistoryTab
+from src.gui.tabs.flow_tape_tab import FlowTapeTab
+from src.gui.components.tv_login_dialog import show_tv_login_dialog
 
 
 logger = logging.getLogger(__name__)
@@ -176,6 +178,22 @@ class MetaQuantApp:
                 command=self._refresh_data
             )
         refresh_btn.pack(side=tk.LEFT)
+        
+        # Settings button (TradingView login)
+        if TTKBOOTSTRAP_AVAILABLE:
+            settings_btn = ttk_bs.Button(
+                right_frame,
+                text="⚙️ Settings",
+                bootstyle="secondary-outline",
+                command=self._show_settings
+            )
+        else:
+            settings_btn = ttk.Button(
+                right_frame,
+                text="⚙️ Settings",
+                command=self._show_settings
+            )
+        settings_btn.pack(side=tk.LEFT, padx=(10, 0))
     
     def _create_notebook(self):
         """Create the tabbed notebook interface."""
@@ -197,12 +215,14 @@ class MetaQuantApp:
         self.universe_tab = UniverseTab(self.notebook, self.db)
         self.flow_tab = FlowTab(self.notebook, self.db)
         self.history_tab = HistoryTab(self.notebook, self.db)
+        self.flow_tape_tab = FlowTapeTab(self.notebook, self.db)
         
         # Add tabs to notebook
         self.notebook.add(self.market_intel_tab.frame, text="🧠 Market Intel")
         self.notebook.add(self.universe_tab.frame, text="📋 Universe")
         self.notebook.add(self.screener_tab.frame, text="📈 Screener")
         self.notebook.add(self.flow_tab.frame, text="📊 Flow Analysis")
+        self.notebook.add(self.flow_tape_tab.frame, text="📊 Flow Tape")
         self.notebook.add(self.history_tab.frame, text="📅 History")
         self.notebook.add(self.portfolio_tab.frame, text="💼 Portfolio")
         self.notebook.add(self.watchlist_tab.frame, text="👁 Watchlist")
@@ -392,6 +412,31 @@ class MetaQuantApp:
         self.update_market_status(is_market_open())
         # Check again in 60 seconds
         self.root.after(60000, self._check_market_status)
+    
+    def _show_settings(self):
+        """Show settings dialog (TradingView login)."""
+        def on_login(username, password):
+            """Callback when login is attempted."""
+            try:
+                # Try to create a new TvDatafeed instance with credentials
+                from tvDatafeed import TvDatafeed
+                tv = TvDatafeed(username=username, password=password)
+                
+                # Test fetch to verify login
+                test_data = tv.get_hist(symbol='DANGCEM', exchange='NSENG', n_bars=5)
+                if test_data is not None and not test_data.empty:
+                    messagebox.showinfo(
+                        "Success",
+                        "TradingView login successful!\n\nRestart the app to use premium data."
+                    )
+                    return True
+                else:
+                    return False
+            except Exception as e:
+                logger.error(f"TradingView login test failed: {e}")
+                return False
+        
+        show_tv_login_dialog(self.root, on_login)
     
     def run(self):
         """Start the application main loop."""

@@ -4,9 +4,11 @@ Fetches and stores historical OHLCV data at multiple timeframes.
 """
 
 import logging
+import os
 from typing import List, Dict, Optional
 from datetime import datetime, timedelta
 import time
+import threading
 
 try:
     from tvDatafeed import TvDatafeed, Interval
@@ -30,16 +32,32 @@ class IntradayCollector:
     
     def __init__(self, db):
         """
-        Initialize the collector.
+        Initialize the collector with TradingView login from .env.
         
         Args:
             db: DatabaseManager instance
         """
         self.db = db
         self.tv = None
+        self._sync_lock = threading.Lock()
+        self._background_thread = None
+        self._stop_background = False
         
         if TVDATAFEED_AVAILABLE:
-            self.tv = TvDatafeed()
+            # Try to get TradingView credentials from environment
+            tv_username = os.getenv('TV_USERNAME')
+            tv_password = os.getenv('TV_PASSWORD')
+            
+            if tv_username and tv_password:
+                try:
+                    self.tv = TvDatafeed(username=tv_username, password=tv_password)
+                    logger.info(f"TradingView: Logged in as {tv_username} (Premium)")
+                except Exception as e:
+                    logger.warning(f"TradingView login failed: {e}, falling back to nologin")
+                    self.tv = TvDatafeed()
+            else:
+                logger.info("TradingView: No credentials found, using nologin mode")
+                self.tv = TvDatafeed()
     
     def get_all_symbols(self) -> List[str]:
         """Get all stock symbols from the database."""
@@ -77,36 +95,54 @@ class IntradayCollector:
             logger.error(f"Invalid interval: {interval}")
             return None
         
-        try:
-            data = self.tv.get_hist(
-                symbol=symbol,
-                exchange='NSENG',
-                interval=INTERVALS[interval],
-                n_bars=n_bars
-            )
-            
-            if data is None or data.empty:
-                logger.warning(f"No data for {symbol} at {interval}")
-                return None
-            
-            # Convert to list of dicts
-            records = []
-            for dt, row in data.iterrows():
-                records.append({
-                    'symbol': symbol,
-                    'interval': interval,
-                    'datetime': dt,
-                    'open': float(row['open']) if row['open'] else None,
-                    'high': float(row['high']) if row['high'] else None,
-                    'low': float(row['low']) if row['low'] else None,
-                    'close': float(row['close']) if row['close'] else None,
-                    'volume': float(row['volume']) if row['volume'] else None,
-                })
-            
-            return records
-            
-        except Exception as e:
-            logger.error(f"Error fetching {symbol} at {interval}: {e}")
+        # Strip .NG suffix if present (TradingView uses base symbol)
+        tv_symbol = symbol.replace('.NG', '').replace('.ng', '')
+        
+        # Retry logic with exponential backoff
+        max_retries = 3
+        retry_delays = [1, 2, 4]  # seconds
+        
+        for attempt in range(max_retries):
+            try:
+                data = self.tv.get_hist(
+                    symbol=tv_symbol,
+                    exchange='NSENG',
+                    interval=INTERVALS[interval],
+                    n_bars=n_bars
+                )
+                
+                if data is None or data.empty:
+                    if attempt < max_retries - 1:
+                        time.sleep(retry_delays[attempt])
+                        continue
+                    logger.warning(f"No data for {symbol} at {interval} after {max_retries} attempts")
+                    return None
+                
+                # Convert to list of dicts
+                records = []
+                for dt, row in data.iterrows():
+                    records.append({
+                        'symbol': symbol,
+                        'interval': interval,
+                        'datetime': dt,
+                        'open': float(row['open']) if row['open'] else None,
+                        'high': float(row['high']) if row['high'] else None,
+                        'low': float(row['low']) if row['low'] else None,
+                        'close': float(row['close']) if row['close'] else None,
+                        'volume': float(row['volume']) if row['volume'] else None,
+                    })
+                
+                logger.info(f"Fetched {len(records)} bars for {symbol} at {interval}")
+                return records
+                
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    # Silent retry - only log at debug level
+                    logger.debug(f"Retry {attempt + 1}/{max_retries} for {symbol}: {e}")
+                    time.sleep(retry_delays[attempt])
+                else:
+                    # Only log final failure
+                    logger.warning(f"Could not fetch {symbol} at {interval} - using cached data")
             return None
     
     def store_ohlcv(self, records: List[Dict]) -> int:
@@ -372,3 +408,79 @@ class IntradayCollector:
         except Exception as e:
             logger.error(f"Error getting stats: {e}")
             return {'error': str(e)}
+    
+    def start_background_sync(self, interval_seconds: int = 300):
+        """
+        Start background sync thread that fetches all symbols periodically.
+        
+        Args:
+            interval_seconds: Time between sync cycles (default 5 minutes)
+        """
+        if self._background_thread and self._background_thread.is_alive():
+            logger.warning("Background sync already running")
+            return
+        
+        self._stop_background = False
+        self._background_thread = threading.Thread(
+            target=self._background_sync_loop,
+            args=(interval_seconds,),
+            daemon=True
+        )
+        self._background_thread.start()
+        logger.info(f"Started background sync (every {interval_seconds}s)")
+    
+    def stop_background_sync(self):
+        """Stop the background sync thread."""
+        self._stop_background = True
+        if self._background_thread:
+            self._background_thread.join(timeout=5)
+        logger.info("Stopped background sync")
+    
+    def _background_sync_loop(self, interval_seconds: int):
+        """Background thread that syncs all symbols periodically."""
+        while not self._stop_background:
+            try:
+                self.sync_all_symbols()
+            except Exception as e:
+                logger.error(f"Background sync error: {e}")
+            
+            # Sleep in small increments to allow quick shutdown
+            for _ in range(interval_seconds):
+                if self._stop_background:
+                    break
+                time.sleep(1)
+    
+    def sync_all_symbols(self, interval: str = '15m', n_bars: int = 50):
+        """
+        Sync all active symbols with fresh data from TradingView.
+        
+        Args:
+            interval: Timeframe to sync
+            n_bars: Number of bars to fetch per symbol
+        """
+        with self._sync_lock:
+            symbols = self.get_all_symbols()
+            
+            if not symbols:
+                logger.warning("No symbols to sync")
+                return
+            
+            logger.info(f"Syncing {len(symbols)} symbols at {interval}...")
+            
+            synced = 0
+            for symbol in symbols:
+                try:
+                    records = self.fetch_history(symbol, interval, n_bars)
+                    if records:
+                        count = self.store_ohlcv(records)
+                        if count > 0:
+                            synced += 1
+                    
+                    # Small delay to avoid rate limiting
+                    time.sleep(0.3)
+                    
+                except Exception as e:
+                    logger.warning(f"Failed to sync {symbol}: {e}")
+            
+            logger.info(f"Synced {synced}/{len(symbols)} symbols")
+

@@ -8,6 +8,7 @@ from tkinter import ttk
 from typing import List, Dict
 import logging
 import threading
+import queue
 from datetime import datetime
 
 try:
@@ -39,6 +40,7 @@ class MarketIntelligenceTab:
         self.collector = TradingViewCollector()
         self.sector_analysis = SectorAnalysis(db)
         self.all_stocks_data = []
+        self._update_queue = queue.Queue()  # Thread-safe queue for UI updates
         
         # Create main frame
         self.frame = ttk.Frame(parent)
@@ -731,12 +733,30 @@ class MarketIntelligenceTab:
                 # Sort by net score
                 sector_rankings.sort(key=lambda x: x['net_score'], reverse=True)
                 
-                self.frame.after(0, lambda: self._update_sector_ui(sector_rankings))
+                # Put result in queue (thread-safe)
+                self._update_queue.put(('sector', sector_rankings))
             except Exception as e:
                 logger.error(f"Error loading sector data: {e}")
         
         thread = threading.Thread(target=fetch, daemon=True)
         thread.start()
+        
+        # Poll for results from main thread
+        self._poll_sector_queue()
+    
+    def _poll_sector_queue(self):
+        """Poll the update queue for sector data."""
+        try:
+            result = self._update_queue.get_nowait()
+            if result[0] == 'sector':
+                self._update_sector_ui(result[1])
+            elif result[0] == 'flow':
+                self._update_flow_ui(result[1])
+            elif result[0] == 'smart_money':
+                self._update_smart_money_ui(result[1], result[2])
+        except queue.Empty:
+            # No result yet, check again in 100ms
+            self.frame.after(100, self._poll_sector_queue)
     
     def _update_sector_ui(self, sector_rankings: List[Dict]):
         """Update rich sector rotation UI."""
@@ -1288,12 +1308,16 @@ class MarketIntelligenceTab:
                 # Sort by 1W performance
                 stocks.sort(key=lambda x: x['chg_1w'], reverse=True)
                 
-                self.frame.after(0, lambda: self._update_flow_ui(stocks))
+                # Put result in queue (thread-safe)
+                self._update_queue.put(('flow', stocks))
             except Exception as e:
                 logger.error(f"Error loading flow data: {e}")
         
         thread = threading.Thread(target=fetch, daemon=True)
         thread.start()
+        
+        # Poll for results
+        self._poll_sector_queue()
     
     def _update_flow_ui(self, stocks: List[Dict]):
         """Update rich flow monitor UI."""
@@ -2016,12 +2040,16 @@ class MarketIntelligenceTab:
                 analysis = self.smart_money_detector.analyze_stocks(stocks_list)
                 alerts = self.anomaly_scanner.scan(stocks_list)
                 
-                self.frame.after(0, lambda: self._update_smart_money_ui(analysis, alerts))
+                # Put result in queue (thread-safe)
+                self._update_queue.put(('smart_money', analysis, alerts))
             except Exception as e:
                 logger.error(f"Error loading smart money data: {e}")
         
         thread = threading.Thread(target=fetch, daemon=True)
         thread.start()
+        
+        # Poll for results
+        self._poll_sector_queue()
     
     def _update_smart_money_ui(self, analysis: Dict, alerts: List[Dict]):
         """Update Smart Money UI with analysis results."""

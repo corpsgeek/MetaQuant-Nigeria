@@ -8,6 +8,7 @@ from tkinter import ttk
 from typing import Optional, List, Dict, Any
 import logging
 import threading
+import queue
 from datetime import datetime
 
 try:
@@ -48,6 +49,7 @@ class LiveMarketTab:
     REFRESH_INTERVAL_MS = 60000  # 1 minute
     
     def __init__(self, parent: ttk.Notebook, db: DatabaseManager):
+        self._update_queue = queue.Queue()  # Thread-safe queue for UI updates
         self.parent = parent
         self.db = db
         self.collector = TradingViewCollector()
@@ -521,7 +523,7 @@ class LiveMarketTab:
             show_stock_detail(self.frame.winfo_toplevel(), symbol, stock_data, self.db)
     
     def _load_data(self):
-        """Load market data."""
+        """Load market data using thread-safe queue."""
         def fetch():
             try:
                 # Get market snapshot
@@ -539,14 +541,30 @@ class LiveMarketTab:
                     symbol = stock.get('symbol', '')
                     stock['sector'] = sector_map.get(symbol, 'Other')
                 
-                self.frame.after(0, lambda: self._update_ui(snapshot, stocks_list))
+                # Put result in queue (thread-safe)
+                self._update_queue.put(('success', snapshot, stocks_list))
             except Exception as e:
                 logger.error(f"Failed to load market data: {e}")
-                self.frame.after(0, lambda: self._show_error(str(e)))
+                self._update_queue.put(('error', str(e), None))
         
         thread = threading.Thread(target=fetch, daemon=True)
         thread.start()
         self.update_label.config(text="Loading...")
+        
+        # Poll for results from main thread
+        self._poll_update_queue()
+    
+    def _poll_update_queue(self):
+        """Poll the update queue from main thread."""
+        try:
+            result = self._update_queue.get_nowait()
+            if result[0] == 'success':
+                self._update_ui(result[1], result[2])
+            elif result[0] == 'error':
+                self._show_error(result[1])
+        except queue.Empty:
+            # No result yet, check again in 100ms
+            self.frame.after(100, self._poll_update_queue)
     
     def _get_sector_mapping(self) -> Dict[str, str]:
         """Get symbol to sector mapping from database."""
