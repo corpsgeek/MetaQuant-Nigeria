@@ -296,6 +296,30 @@ class DatabaseManager:
                 PRIMARY KEY (symbol, interval, datetime)
             )
         """)
+        
+        # Fundamental snapshots - daily P/E, EPS, etc. for historical tracking
+        self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS fundamental_snapshots (
+                symbol VARCHAR NOT NULL,
+                date DATE NOT NULL,
+                price DOUBLE,
+                pe_ratio DOUBLE,
+                eps DOUBLE,
+                pb_ratio DOUBLE,
+                ps_ratio DOUBLE,
+                dividend_yield DOUBLE,
+                market_cap DOUBLE,
+                volume DOUBLE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (symbol, date)
+            )
+        """)
+        
+        # Add ps_ratio column if it doesn't exist (for existing databases)
+        try:
+            self.conn.execute("ALTER TABLE fundamental_snapshots ADD COLUMN ps_ratio DOUBLE")
+        except Exception:
+            pass  # Column already exists
     
     def _create_indexes(self):
         """Create indexes for better query performance."""
@@ -706,4 +730,175 @@ class DatabaseManager:
             LIMIT 1000
         """).fetchall()
         return [str(row[0]) for row in results]
+    
+    # ===== Fundamental Snapshots (Historical P/E, EPS, etc.) =====
+    
+    def save_fundamental_snapshot(self, symbol: str, date: str, data: Dict[str, Any]) -> int:
+        """
+        Save a fundamental snapshot for a stock on a specific date.
+        
+        Args:
+            symbol: Stock symbol
+            date: Date string in YYYY-MM-DD format
+            data: Dictionary with price, pe_ratio, eps, etc.
+        """
+        self.conn.execute("""
+            INSERT INTO fundamental_snapshots (
+                symbol, date, price, pe_ratio, eps, pb_ratio, ps_ratio,
+                dividend_yield, market_cap, volume
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT (symbol, date) DO UPDATE SET
+                price = EXCLUDED.price,
+                pe_ratio = EXCLUDED.pe_ratio,
+                eps = EXCLUDED.eps,
+                pb_ratio = EXCLUDED.pb_ratio,
+                ps_ratio = EXCLUDED.ps_ratio,
+                dividend_yield = EXCLUDED.dividend_yield,
+                market_cap = EXCLUDED.market_cap,
+                volume = EXCLUDED.volume
+        """, [
+            symbol.upper(),
+            date,
+            data.get('price'),
+            data.get('pe_ratio'),
+            data.get('eps'),
+            data.get('pb_ratio'),
+            data.get('ps_ratio'),
+            data.get('dividend_yield'),
+            data.get('market_cap'),
+            data.get('volume')
+        ])
+        return 1
+    
+    def get_fundamental_history(self, symbol: str, limit: int = 365) -> List[Dict]:
+        """
+        Get historical fundamental snapshots for a stock.
+        
+        Args:
+            symbol: Stock symbol
+            limit: Maximum number of days to return
+            
+        Returns:
+            List of dictionaries with date and metrics
+        """
+        results = self.conn.execute("""
+            SELECT symbol, date, price, pe_ratio, eps, pb_ratio, ps_ratio,
+                   dividend_yield, market_cap, volume, created_at
+            FROM fundamental_snapshots 
+            WHERE symbol = ?
+            ORDER BY date DESC
+            LIMIT ?
+        """, [symbol.upper(), limit]).fetchall()
+        
+        columns = ['symbol', 'date', 'price', 'pe_ratio', 'eps', 'pb_ratio', 'ps_ratio',
+                   'dividend_yield', 'market_cap', 'volume', 'created_at']
+        return [dict(zip(columns, row)) for row in results]
+    
+    def save_all_fundamental_snapshots(self, stocks_data: List[Dict], date: str = None) -> int:
+        """
+        Save fundamental snapshots for multiple stocks at once.
+        
+        Args:
+            stocks_data: List of stock data dictionaries
+            date: Date string (defaults to today)
+            
+        Returns:
+            Number of snapshots saved
+        """
+        if date is None:
+            date = datetime.now().strftime('%Y-%m-%d')
+        
+        count = 0
+        for stock in stocks_data:
+            symbol = stock.get('symbol') or stock.get('ticker', '').replace('NSENG:', '')
+            if symbol:
+                self.save_fundamental_snapshot(symbol, date, {
+                    'price': stock.get('close'),
+                    'pe_ratio': stock.get('price_earnings_ttm'),
+                    'eps': stock.get('earnings_per_share_basic_ttm'),
+                    'pb_ratio': stock.get('price_book_ratio'),
+                    'dividend_yield': stock.get('dividend_yield_recent'),
+                    'market_cap': stock.get('market_cap_basic'),
+                    'volume': stock.get('volume')
+                })
+                count += 1
+        return count
+    
+    def backfill_fundamental_history(self, symbol: str, current_fundamentals: Dict[str, Any], 
+                                      interval: str = '1d', limit: int = 365) -> int:
+        """
+        Backfill historical fundamental data by deriving P/E, P/S, P/BV from price history.
+        
+        Uses current EPS, Revenue, Book Value and applies to historical prices.
+        Formula:
+        - P/E = Price / EPS
+        - P/S = Market Cap / Revenue (approximated as Price * Shares / Revenue)
+        - P/B = Price / Book Value per Share
+        
+        Args:
+            symbol: Stock symbol
+            current_fundamentals: Dict with current eps, book_value, shares_outstanding, revenue
+            interval: Price interval to use ('15m', '1h', '1d')
+            limit: Maximum number of historical days
+            
+        Returns:
+            Number of snapshots created
+        """
+        eps = current_fundamentals.get('eps')
+        book_value = current_fundamentals.get('book_value')
+        shares = current_fundamentals.get('shares_outstanding')
+        revenue = current_fundamentals.get('revenue')
+        dividend_yield = current_fundamentals.get('dividend_yield')
+        
+        # Get historical prices - aggregate by date
+        results = self.conn.execute("""
+            SELECT 
+                DATE(datetime) as date,
+                AVG(close) as avg_close,
+                SUM(volume) as total_volume
+            FROM intraday_ohlcv
+            WHERE symbol = ? AND interval = ?
+            GROUP BY DATE(datetime)
+            ORDER BY date DESC
+            LIMIT ?
+        """, [symbol, interval, limit]).fetchall()
+        
+        if not results:
+            return 0
+        
+        count = 0
+        for row in results:
+            date_str = str(row[0])
+            price = row[1]
+            volume = row[2]
+            
+            if price is None or price <= 0:
+                continue
+            
+            # Calculate derived ratios
+            pe_ratio = price / eps if eps and eps > 0 else None
+            pb_ratio = price / book_value if book_value and book_value > 0 else None
+            
+            # P/S = Market Cap / Revenue = (Price * Shares) / Revenue
+            ps_ratio = None
+            market_cap = None
+            if shares and shares > 0:
+                market_cap = price * shares
+                if revenue and revenue > 0:
+                    ps_ratio = market_cap / revenue
+            
+            # Save snapshot
+            self.save_fundamental_snapshot(symbol, date_str, {
+                'price': price,
+                'pe_ratio': pe_ratio,
+                'eps': eps,
+                'pb_ratio': pb_ratio,
+                'ps_ratio': ps_ratio,
+                'dividend_yield': dividend_yield,
+                'market_cap': market_cap,
+                'volume': volume
+            })
+            count += 1
+        
+        return count
 

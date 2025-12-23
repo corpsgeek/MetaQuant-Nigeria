@@ -53,7 +53,7 @@ class TradingViewCollector:
         'Recommend.All', 'Recommend.MA', 'Recommend.Other',
         # Available fundamental columns for Nigeria
         'price_earnings_ttm', 'earnings_per_share_basic_ttm',
-        'dividend_yield_recent'
+        'dividend_yield_recent', 'price_book_ratio'
     ]
     
     def __init__(self):
