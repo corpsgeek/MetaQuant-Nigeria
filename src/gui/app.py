@@ -25,6 +25,7 @@ from src.gui.tabs.universe_tab import UniverseTab
 from src.gui.tabs.flow_tab import FlowTab
 from src.gui.tabs.history_tab import HistoryTab
 from src.gui.tabs.flow_tape_tab import FlowTapeTab
+from src.gui.tabs.fundamentals_tab import FundamentalsTab
 from src.gui.components.tv_login_dialog import show_tv_login_dialog
 
 
@@ -216,6 +217,7 @@ class MetaQuantApp:
         self.flow_tab = FlowTab(self.notebook, self.db)
         self.history_tab = HistoryTab(self.notebook, self.db)
         self.flow_tape_tab = FlowTapeTab(self.notebook, self.db)
+        self.fundamentals_tab = FundamentalsTab(self.notebook, self.db)
         
         # Add tabs to notebook
         self.notebook.add(self.market_intel_tab.frame, text="🧠 Market Intel")
@@ -223,6 +225,7 @@ class MetaQuantApp:
         self.notebook.add(self.screener_tab.frame, text="📈 Screener")
         self.notebook.add(self.flow_tab.frame, text="📊 Flow Analysis")
         self.notebook.add(self.flow_tape_tab.frame, text="📊 Flow Tape")
+        self.notebook.add(self.fundamentals_tab.frame, text="💰 Fundamentals")
         self.notebook.add(self.history_tab.frame, text="📅 History")
         self.notebook.add(self.portfolio_tab.frame, text="💼 Portfolio")
         self.notebook.add(self.watchlist_tab.frame, text="👁 Watchlist")

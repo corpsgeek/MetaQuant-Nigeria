@@ -40,6 +40,7 @@ class TradingViewCollector:
     SCREENER = "nigeria"
     
     # Standard columns to fetch from screener
+    # Note: Nigeria market has limited fundamental data available
     STANDARD_COLUMNS = [
         'name', 'close', 'open', 'high', 'low', 'volume', 
         'change', 'change_abs', 'Perf.W', 'Perf.1M', 'Perf.3M', 
@@ -49,7 +50,10 @@ class TradingViewCollector:
         'ADX', 'ATR', 'Stoch.K', 'Stoch.D', 'CCI20',
         'BB.upper', 'BB.lower', 'Pivot.M.Classic.Middle',
         'market_cap_basic', 'average_volume_10d_calc',
-        'Recommend.All', 'Recommend.MA', 'Recommend.Other'
+        'Recommend.All', 'Recommend.MA', 'Recommend.Other',
+        # Available fundamental columns for Nigeria
+        'price_earnings_ttm', 'earnings_per_share_basic_ttm',
+        'dividend_yield_recent'
     ]
     
     def __init__(self):
@@ -103,6 +107,79 @@ class TradingViewCollector:
         except Exception as e:
             logger.error(f"Error fetching all stocks: {e}")
             return pd.DataFrame()
+    
+    def get_fundamental_data(self, symbol: str) -> Optional[Dict[str, Any]]:
+        """
+        Fetch fundamental data for a specific stock.
+        
+        Args:
+            symbol: Stock symbol (e.g., 'DANGCEM')
+            
+        Returns:
+            Dictionary with fundamental metrics
+        """
+        df = self.get_all_stocks()
+        
+        if df.empty:
+            return None
+        
+        # Find the stock in the dataframe
+        symbol_clean = symbol.upper().replace('.NS', '').replace('NSENG:', '')
+        
+        # Try to match by symbol or ticker
+        stock_row = None
+        if 'symbol' in df.columns:
+            matches = df[df['symbol'].str.upper() == symbol_clean]
+            if not matches.empty:
+                stock_row = matches.iloc[0]
+        
+        if stock_row is None and 'ticker' in df.columns:
+            matches = df[df['ticker'].str.contains(symbol_clean, case=False, na=False)]
+            if not matches.empty:
+                stock_row = matches.iloc[0]
+        
+        if stock_row is None:
+            logger.warning(f"Stock {symbol} not found in screener data")
+            return None
+        
+        # Extract fundamental data
+        return {
+            'symbol': symbol,
+            'name': stock_row.get('name', symbol),
+            'last_updated': datetime.now(),
+            'price': {
+                'close': stock_row.get('close', 0),
+                'change': stock_row.get('change', 0),
+                'change_pct': stock_row.get('change_abs', 0)
+            },
+            'fundamentals': {
+                'market_cap': stock_row.get('market_cap_basic', 0),
+                'pe_ratio': stock_row.get('price_earnings_ttm', None),
+                'pb_ratio': stock_row.get('price_book_ratio', None),
+                'ps_ratio': stock_row.get('price_sales_ratio', None),
+                'eps': stock_row.get('earnings_per_share_basic_ttm', None),
+                'book_value': stock_row.get('book_value_per_share', None),
+                'shares_outstanding': stock_row.get('total_shares_outstanding', None),
+                'dividend_yield': stock_row.get('dividend_yield_recent', None),
+                'roe': stock_row.get('return_on_equity', None),
+                'debt_to_equity': stock_row.get('debt_to_equity', None),
+                'current_ratio': stock_row.get('current_ratio', None),
+                'revenue': stock_row.get('total_revenue', None),
+                'net_income': stock_row.get('net_income', None)
+            },
+            'performance': {
+                'week': stock_row.get('Perf.W', None),
+                'month': stock_row.get('Perf.1M', None),
+                'quarter': stock_row.get('Perf.3M', None),
+                'half_year': stock_row.get('Perf.6M', None),
+                'ytd': stock_row.get('Perf.YTD', None),
+                'year': stock_row.get('Perf.Y', None)
+            },
+            'volume': {
+                'current': stock_row.get('volume', 0),
+                'avg_10d': stock_row.get('average_volume_10d_calc', 0)
+            }
+        }
     
     def get_stock_data(self, symbol: str) -> Optional[Dict[str, Any]]:
         """

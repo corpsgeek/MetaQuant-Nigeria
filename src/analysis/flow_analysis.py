@@ -1384,6 +1384,455 @@ class FlowAnalysis:
         return history
     
     # =========================================================================
+    # TRADE SIGNAL GENERATOR (PHASE 5)
+    # =========================================================================
+    
+    def generate_trade_signals(self) -> List[Dict]:
+        """
+        Generate automated trade signals based on flow analysis.
+        
+        Signal Types:
+        - Delta Divergence (Accumulation/Distribution)
+        - Volume Profile Breakouts (POC, VAH, VAL)
+        - Session-Based Triggers (OR breakout, Core momentum)
+        
+        Returns:
+            List of trade signals with entry, target, stop, and confidence
+        """
+        if not self.data or len(self.data) < 10:
+            return []
+        
+        signals = []
+        
+        # Get current market context
+        current_price = self.data[-1].get('close', 0)
+        profile = self.volume_profile(num_levels=15)
+        poc = profile.get('poc', current_price) if profile else current_price
+        vah = profile.get('vah', current_price * 1.02) if profile else current_price * 1.02
+        val = profile.get('val', current_price * 0.98) if profile else current_price * 0.98
+        
+        # Check each signal type
+        divergence_signal = self._detect_divergence_signal(current_price, poc, vah, val)
+        if divergence_signal:
+            signals.append(divergence_signal)
+        
+        volume_signal = self._detect_volume_breakout(current_price, poc, vah, val, profile)
+        if volume_signal:
+            signals.append(volume_signal)
+        
+        session_signal = self._detect_session_trigger(current_price, poc, vah, val)
+        if session_signal:
+            signals.append(session_signal)
+        
+        # Sort by confidence
+        signals.sort(key=lambda x: x.get('confidence', 0), reverse=True)
+        
+        return signals
+    
+    def _detect_divergence_signal(self, price: float, poc: float, vah: float, val: float) -> Optional[Dict]:
+        """Detect delta divergence signals (accumulation/distribution)."""
+        try:
+            divergences = self.delta_divergence(lookback=10)
+            if not divergences:
+                return None
+            
+            latest = divergences[-1]
+            div_type = latest.get('type', '')
+            
+            if not div_type:
+                return None
+            
+            # Get supporting data
+            zscore_data = self.delta_zscore()
+            zscore = zscore_data[-1].get('zscore', 0) if zscore_data else 0
+            
+            momentum_data = self.delta_momentum()
+            momentum = momentum_data[-1].get('delta_momentum', 0) if momentum_data else 0
+            
+            rvol_info = self.rvol_analysis()
+            rvol = rvol_info.get('rvol', 1) if rvol_info else 1
+            
+            # Calculate confidence
+            confidence = self._calculate_signal_confidence(
+                divergence_strength=abs(zscore),
+                price_vs_profile=(price, poc, vah, val),
+                rvol=rvol,
+                momentum=momentum
+            )
+            
+            if div_type == 'ACCUMULATION':
+                # BUY signal - price down, delta up
+                entry = price
+                stop = val * 0.995  # Just below VAL
+                target = vah  # Target VAH
+                risk = entry - stop
+                reward = target - entry
+                
+                return {
+                    'signal_type': 'BUY',
+                    'pattern': 'ACCUMULATION',
+                    'description': 'Delta rising while price falling - Smart money buying',
+                    'entry': entry,
+                    'target': target,
+                    'stop': stop,
+                    'risk_reward': reward / risk if risk > 0 else 0,
+                    'confidence': confidence,
+                    'components': {
+                        'divergence': f'ACCUMULATION (Z: {zscore:+.1f}σ)',
+                        'volume': f'RVOL {rvol:.1f}x',
+                        'momentum': f'Delta Mom: {momentum:+,.0f}'
+                    },
+                    'context': f'Price at ₦{price:,.2f} with accumulation. Target VAH ₦{vah:,.2f}'
+                }
+            
+            elif div_type == 'DISTRIBUTION':
+                # SELL signal - price up, delta down
+                entry = price
+                stop = vah * 1.005  # Just above VAH
+                target = val  # Target VAL
+                risk = stop - entry
+                reward = entry - target
+                
+                return {
+                    'signal_type': 'SELL',
+                    'pattern': 'DISTRIBUTION',
+                    'description': 'Delta falling while price rising - Smart money selling',
+                    'entry': entry,
+                    'target': target,
+                    'stop': stop,
+                    'risk_reward': reward / risk if risk > 0 else 0,
+                    'confidence': confidence,
+                    'components': {
+                        'divergence': f'DISTRIBUTION (Z: {zscore:+.1f}σ)',
+                        'volume': f'RVOL {rvol:.1f}x',
+                        'momentum': f'Delta Mom: {momentum:+,.0f}'
+                    },
+                    'context': f'Price at ₦{price:,.2f} with distribution. Target VAL ₦{val:,.2f}'
+                }
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error detecting divergence signal: {e}")
+            return None
+    
+    def _detect_volume_breakout(self, price: float, poc: float, vah: float, val: float, profile: Dict) -> Optional[Dict]:
+        """Detect volume profile breakout signals."""
+        try:
+            if not profile:
+                return None
+            
+            # Get recent bars for breakout detection
+            recent_bars = self.data[-5:] if len(self.data) >= 5 else self.data
+            
+            # Check for VAH breakout (bullish)
+            if price > vah:
+                prev_close = recent_bars[-2].get('close', 0) if len(recent_bars) >= 2 else 0
+                if prev_close <= vah:  # Just broke out
+                    rvol_info = self.rvol_analysis()
+                    rvol = rvol_info.get('rvol', 1) if rvol_info else 1
+                    
+                    if rvol >= 1.5:  # Volume confirmation
+                        range_size = vah - val
+                        entry = price
+                        target = vah + range_size  # 1R extension
+                        stop = poc  # Stop at POC
+                        risk = entry - stop
+                        reward = target - entry
+                        
+                        confidence = min(85, 50 + (rvol * 10) + ((price - vah) / vah * 100))
+                        
+                        return {
+                            'signal_type': 'BUY',
+                            'pattern': 'VAH_BREAKOUT',
+                            'description': 'Price broke above Value Area High with volume',
+                            'entry': entry,
+                            'target': target,
+                            'stop': stop,
+                            'risk_reward': reward / risk if risk > 0 else 0,
+                            'confidence': confidence,
+                            'components': {
+                                'divergence': 'N/A',
+                                'volume': f'VAH Break (RVOL {rvol:.1f}x)',
+                                'profile': f'Above ₦{vah:,.2f}'
+                            },
+                            'context': f'Bullish breakout above VAH. Target +1R at ₦{target:,.2f}'
+                        }
+            
+            # Check for VAL breakdown (bearish)
+            if price < val:
+                prev_close = recent_bars[-2].get('close', 0) if len(recent_bars) >= 2 else 0
+                if prev_close >= val:  # Just broke down
+                    rvol_info = self.rvol_analysis()
+                    rvol = rvol_info.get('rvol', 1) if rvol_info else 1
+                    
+                    if rvol >= 1.5:
+                        range_size = vah - val
+                        entry = price
+                        target = val - range_size  # 1R extension
+                        stop = poc
+                        risk = stop - entry
+                        reward = entry - target
+                        
+                        confidence = min(85, 50 + (rvol * 10) + ((val - price) / val * 100))
+                        
+                        return {
+                            'signal_type': 'SELL',
+                            'pattern': 'VAL_BREAKDOWN',
+                            'description': 'Price broke below Value Area Low with volume',
+                            'entry': entry,
+                            'target': target,
+                            'stop': stop,
+                            'risk_reward': reward / risk if risk > 0 else 0,
+                            'confidence': confidence,
+                            'components': {
+                                'divergence': 'N/A',
+                                'volume': f'VAL Break (RVOL {rvol:.1f}x)',
+                                'profile': f'Below ₦{val:,.2f}'
+                            },
+                            'context': f'Bearish breakdown below VAL. Target -1R at ₦{target:,.2f}'
+                        }
+            
+            # Check for POC reclaim
+            if len(recent_bars) >= 3:
+                prices = [b.get('close', 0) for b in recent_bars[-3:]]
+                if prices[0] < poc < prices[-1]:  # Reclaimed POC from below
+                    cum_delta = self.cumulative_delta()
+                    if cum_delta and cum_delta[-1].get('cumulative_delta', 0) > 0:
+                        entry = price
+                        target = vah
+                        stop = val
+                        risk = entry - stop
+                        reward = target - entry
+                        
+                        return {
+                            'signal_type': 'BUY',
+                            'pattern': 'POC_RECLAIM',
+                            'description': 'Price reclaimed POC from below with positive delta',
+                            'entry': entry,
+                            'target': target,
+                            'stop': stop,
+                            'risk_reward': reward / risk if risk > 0 else 0,
+                            'confidence': 65,
+                            'components': {
+                                'divergence': 'Delta Positive',
+                                'volume': 'POC Reclaimed',
+                                'profile': f'Above ₦{poc:,.2f}'
+                            },
+                            'context': f'Bullish POC reclaim. Target VAH ₦{vah:,.2f}'
+                        }
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error detecting volume breakout: {e}")
+            return None
+    
+    def _detect_session_trigger(self, price: float, poc: float, vah: float, val: float) -> Optional[Dict]:
+        """Detect session-based trade triggers."""
+        try:
+            # Get opening range data
+            or_data = self.opening_range_analysis()
+            if not or_data:
+                return None
+            
+            or_high = or_data.get('or_high', 0)
+            or_low = or_data.get('or_low', 0)
+            breakout = or_data.get('breakout', 'NO_BREAKOUT')
+            
+            # Get session breakdown
+            sessions = self.intraday_session_breakdown()
+            core_session = sessions.get('core', {})
+            core_delta = core_session.get('delta', 0)
+            core_trend = core_session.get('trend', 'NEUTRAL')
+            
+            # Opening Range Breakout
+            if breakout == 'BULLISH_BREAKOUT':
+                or_range = or_high - or_low
+                if or_range > 0:
+                    entry = price
+                    target = or_high + (or_range * 2)  # 2R target
+                    stop = or_low
+                    risk = entry - stop
+                    reward = target - entry
+                    
+                    # Higher confidence if core session confirms
+                    conf = 60
+                    if core_delta > 0:
+                        conf += 15
+                    if core_trend == 'BULLISH':
+                        conf += 10
+                    
+                    return {
+                        'signal_type': 'BUY',
+                        'pattern': 'OR_BREAKOUT',
+                        'description': 'Opening Range breakout to upside',
+                        'entry': entry,
+                        'target': target,
+                        'stop': stop,
+                        'risk_reward': reward / risk if risk > 0 else 0,
+                        'confidence': min(90, conf),
+                        'components': {
+                            'divergence': 'N/A',
+                            'volume': 'OR Break Up',
+                            'session': f'Core: {core_trend}'
+                        },
+                        'context': f'OR high ₦{or_high:,.2f} broken. Target +2R ₦{target:,.2f}'
+                    }
+            
+            elif breakout == 'BEARISH_BREAKDOWN':
+                or_range = or_high - or_low
+                if or_range > 0:
+                    entry = price
+                    target = or_low - (or_range * 2)  # 2R target
+                    stop = or_high
+                    risk = stop - entry
+                    reward = entry - target
+                    
+                    conf = 60
+                    if core_delta < 0:
+                        conf += 15
+                    if core_trend == 'BEARISH':
+                        conf += 10
+                    
+                    return {
+                        'signal_type': 'SELL',
+                        'pattern': 'OR_BREAKDOWN',
+                        'description': 'Opening Range breakdown to downside',
+                        'entry': entry,
+                        'target': target,
+                        'stop': stop,
+                        'risk_reward': reward / risk if risk > 0 else 0,
+                        'confidence': min(90, conf),
+                        'components': {
+                            'divergence': 'N/A',
+                            'volume': 'OR Break Down',
+                            'session': f'Core: {core_trend}'
+                        },
+                        'context': f'OR low ₦{or_low:,.2f} broken. Target -2R ₦{target:,.2f}'
+                    }
+            
+            # Core session momentum signal
+            if abs(core_delta) > 0:
+                zscore_data = self.delta_zscore()
+                zscore = zscore_data[-1].get('zscore', 0) if zscore_data else 0
+                
+                if zscore > 2 and core_delta > 0 and core_trend in ['BULLISH', 'ACCUMULATION']:
+                    entry = price
+                    target = vah
+                    stop = poc
+                    risk = entry - stop
+                    reward = target - entry
+                    
+                    return {
+                        'signal_type': 'BUY',
+                        'pattern': 'CORE_MOMENTUM',
+                        'description': 'Strong bullish momentum in core session',
+                        'entry': entry,
+                        'target': target,
+                        'stop': stop,
+                        'risk_reward': reward / risk if risk > 0 else 0,
+                        'confidence': min(80, 55 + abs(zscore) * 10),
+                        'components': {
+                            'divergence': f'Z-Score +{zscore:.1f}σ',
+                            'volume': f'Core Δ: {core_delta:+,.0f}',
+                            'session': core_trend
+                        },
+                        'context': f'Core session bullish with extreme Z-score'
+                    }
+                
+                elif zscore < -2 and core_delta < 0 and core_trend in ['BEARISH', 'DISTRIBUTION']:
+                    entry = price
+                    target = val
+                    stop = poc
+                    risk = stop - entry
+                    reward = entry - target
+                    
+                    return {
+                        'signal_type': 'SELL',
+                        'pattern': 'CORE_MOMENTUM',
+                        'description': 'Strong bearish momentum in core session',
+                        'entry': entry,
+                        'target': target,
+                        'stop': stop,
+                        'risk_reward': reward / risk if risk > 0 else 0,
+                        'confidence': min(80, 55 + abs(zscore) * 10),
+                        'components': {
+                            'divergence': f'Z-Score {zscore:.1f}σ',
+                            'volume': f'Core Δ: {core_delta:+,.0f}',
+                            'session': core_trend
+                        },
+                        'context': f'Core session bearish with extreme Z-score'
+                    }
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error detecting session trigger: {e}")
+            return None
+    
+    def _calculate_signal_confidence(self, divergence_strength: float, price_vs_profile: tuple, 
+                                     rvol: float, momentum: float) -> float:
+        """
+        Calculate signal confidence score (0-100).
+        
+        Scoring:
+        - Divergence strength (0-30 points)
+        - Volume profile position (0-25 points)
+        - RVOL confirmation (0-15 points)
+        - Momentum alignment (0-15 points)
+        - Base score (15 points)
+        """
+        score = 15  # Base
+        
+        # Divergence strength (Z-score based)
+        if divergence_strength >= 3:
+            score += 30
+        elif divergence_strength >= 2:
+            score += 25
+        elif divergence_strength >= 1.5:
+            score += 20
+        elif divergence_strength >= 1:
+            score += 15
+        else:
+            score += divergence_strength * 10
+        
+        # Volume profile position
+        price, poc, vah, val = price_vs_profile
+        value_range = vah - val if vah > val else 1
+        
+        # Near VAL (buy) or VAH (sell) is better
+        dist_to_val = abs(price - val) / value_range
+        dist_to_vah = abs(price - vah) / value_range
+        
+        if min(dist_to_val, dist_to_vah) < 0.2:
+            score += 25
+        elif min(dist_to_val, dist_to_vah) < 0.5:
+            score += 15
+        else:
+            score += 10
+        
+        # RVOL confirmation
+        if rvol >= 3:
+            score += 15
+        elif rvol >= 2:
+            score += 12
+        elif rvol >= 1.5:
+            score += 8
+        else:
+            score += 5
+        
+        # Momentum alignment
+        if abs(momentum) > 1000:
+            score += 15
+        elif abs(momentum) > 500:
+            score += 10
+        else:
+            score += 5
+        
+        return min(100, max(0, score))
+    
+    # =========================================================================
     # SESSION ANALYTICS (PHASE 4)
     # =========================================================================
     

@@ -74,6 +74,14 @@ class FlowTapeTab:
         self.sessions_tab = ttk.Frame(self.sub_notebook)
         self.sub_notebook.add(self.sessions_tab, text="📅 Sessions")
         self._create_sessions_tab_content()
+        
+        # Tab 5: Trade Signals
+        self.signals_tab = ttk.Frame(self.sub_notebook)
+        self.sub_notebook.add(self.signals_tab, text="🎯 Signals")
+        self._create_signals_tab_content()
+        
+        # Note: Fundamentals moved to standalone tab
+    
     
     def _create_header(self):
         """Create header with controls."""
@@ -1117,6 +1125,301 @@ class FlowTapeTab:
                 value_label.pack(side=tk.RIGHT)
                 self.analytics_labels[key] = value_label
     
+    # =========================================================================
+    # SIGNALS TAB
+    # =========================================================================
+    
+    def _create_signals_tab_content(self):
+        """Create Trade Signals sub-tab with comprehensive signal dashboard."""
+        main_frame = ttk.Frame(self.signals_tab)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        
+        # ========== ROW 1: CURRENT SIGNAL STATUS ==========
+        signal_frame = ttk.LabelFrame(main_frame, text="🎯 Current Signal Status")
+        signal_frame.pack(fill=tk.X, pady=(0, 8))
+        
+        signal_inner = ttk.Frame(signal_frame)
+        signal_inner.pack(fill=tk.X, padx=15, pady=12)
+        
+        # No signal placeholder (will be replaced dynamically)
+        self.signal_status_frame = ttk.Frame(signal_inner)
+        self.signal_status_frame.pack(fill=tk.X)
+        
+        self.no_signal_label = ttk.Label(
+            self.signal_status_frame,
+            text="⏳ Analyzing... waiting for signals",
+            font=get_font('body'),
+            foreground=COLORS['text_muted']
+        )
+        self.no_signal_label.pack(anchor='center', pady=10)
+        
+        # ========== ROW 2: SIGNAL COMPONENTS ==========
+        components_frame = ttk.LabelFrame(main_frame, text="📋 Signal Components")
+        components_frame.pack(fill=tk.X, pady=(0, 8))
+        
+        components_inner = ttk.Frame(components_frame)
+        components_inner.pack(fill=tk.X, padx=10, pady=8)
+        
+        # Configure equal columns
+        for i in range(4):
+            components_inner.columnconfigure(i, weight=1)
+        
+        self.signal_components = {}
+        component_items = [
+            ('divergence', '⚡ Delta Divergence', 'Pattern'),
+            ('volume', '📊 Volume Profile', 'Level'),
+            ('session', '⏱️ Session Trigger', 'Status'),
+            ('confluence', '🎯 Confluence', 'Score')
+        ]
+        
+        for i, (key, title, subtitle) in enumerate(component_items):
+            card = ttk.Frame(components_inner, relief='groove', borderwidth=1)
+            card.grid(row=0, column=i, padx=5, pady=3, sticky='nsew')
+            
+            ttk.Label(card, text=title, font=get_font('body'),
+                     foreground=COLORS['primary']).pack(anchor='center', pady=(5, 0))
+            
+            ttk.Label(card, text=subtitle, font=get_font('tiny'),
+                     foreground=COLORS['text_muted']).pack(anchor='center')
+            
+            value_label = ttk.Label(card, text="--", font=get_font('subheading'))
+            value_label.pack(anchor='center', pady=(3, 5))
+            
+            self.signal_components[key] = value_label
+        
+        # ========== ROW 3: RECENT SIGNALS TABLE ==========
+        history_frame = ttk.LabelFrame(main_frame, text="📜 Recent Signals")
+        history_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 8))
+        
+        # Create treeview
+        columns = ('time', 'ticker', 'signal', 'pattern', 'entry', 'target', 'stop', 'rr', 'conf', 'status')
+        self.signals_tree = ttk.Treeview(history_frame, columns=columns, show='headings', height=6)
+        
+        col_config = [
+            ('time', 'Time', 50, 'center'),
+            ('ticker', 'Ticker', 70, 'center'),
+            ('signal', 'Signal', 50, 'center'),
+            ('pattern', 'Pattern', 90, 'center'),
+            ('entry', 'Entry', 70, 'e'),
+            ('target', 'Target', 70, 'e'),
+            ('stop', 'Stop', 65, 'e'),
+            ('rr', 'R:R', 45, 'center'),
+            ('conf', 'Conf', 40, 'center'),
+            ('status', 'Status', 60, 'center')
+        ]
+        
+        for col, heading, width, anchor in col_config:
+            self.signals_tree.heading(col, text=heading)
+            self.signals_tree.column(col, width=width, anchor=anchor)
+        
+        # Scrollbar
+        signals_scroll = ttk.Scrollbar(history_frame, orient='vertical', command=self.signals_tree.yview)
+        self.signals_tree.configure(yscrollcommand=signals_scroll.set)
+        
+        self.signals_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(5, 0), pady=5)
+        signals_scroll.pack(side=tk.RIGHT, fill=tk.Y, pady=5, padx=(0, 5))
+        
+        # Tags for coloring
+        self.signals_tree.tag_configure('buy', foreground=COLORS['gain'])
+        self.signals_tree.tag_configure('sell', foreground=COLORS['loss'])
+        self.signals_tree.tag_configure('hit', foreground=COLORS['gain'])
+        self.signals_tree.tag_configure('stopped', foreground=COLORS['loss'])
+        
+        # ========== ROW 4: SIGNAL STATISTICS ==========
+        stats_frame = ttk.LabelFrame(main_frame, text="📈 Signal Statistics")
+        stats_frame.pack(fill=tk.X, pady=(0, 5))
+        
+        stats_inner = ttk.Frame(stats_frame)
+        stats_inner.pack(fill=tk.X, padx=10, pady=8)
+        
+        # Configure equal columns
+        for i in range(4):
+            stats_inner.columnconfigure(i, weight=1)
+        
+        self.signal_stats = {}
+        stats_items = [
+            ('signals_today', '📊 Today', 'Total Signals'),
+            ('buy_sell', '📈 Buy/Sell', 'Ratio'),
+            ('avg_conf', '🎯 Avg Conf', 'Confidence'),
+            ('best_pattern', '🏆 Best Pattern', 'Type')
+        ]
+        
+        for i, (key, title, subtitle) in enumerate(stats_items):
+            card = ttk.Frame(stats_inner)
+            card.grid(row=0, column=i, padx=10, sticky='nsew')
+            
+            ttk.Label(card, text=title, font=get_font('body'),
+                     foreground=COLORS['primary']).pack(anchor='w')
+            
+            ttk.Label(card, text=subtitle, font=get_font('tiny'),
+                     foreground=COLORS['text_muted']).pack(anchor='w')
+            
+            value_label = ttk.Label(card, text="--", font=get_font('subheading'))
+            value_label.pack(anchor='w', pady=(3, 0))
+            
+            self.signal_stats[key] = value_label
+        
+        # Initialize signal history storage
+        self.signal_history = []
+    
+    # =========================================================================
+    # FUNDAMENTALS TAB
+    # =========================================================================
+    
+    def _create_fundamentals_tab_content(self):
+        """Create Fundamentals sub-tab with key financial metrics."""
+        main_frame = ttk.Frame(self.fundamentals_tab)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        
+        # ========== ROW 1: KEY METRICS HEADER ==========
+        header_frame = ttk.LabelFrame(main_frame, text="📊 Key Metrics")
+        header_frame.pack(fill=tk.X, pady=(0, 8))
+        
+        header_inner = ttk.Frame(header_frame)
+        header_inner.pack(fill=tk.X, padx=10, pady=10)
+        
+        # Configure equal columns
+        for i in range(5):
+            header_inner.columnconfigure(i, weight=1)
+        
+        self.fundamental_cards = {}
+        key_metrics = [
+            ('market_cap', '💰 Market Cap', '₦0'),
+            ('pe_ratio', '📈 P/E Ratio', '--'),
+            ('pb_ratio', '📊 P/B Ratio', '--'),
+            ('eps', '💵 EPS', '₦0'),
+            ('dividend', '🎁 Dividend', '--%')
+        ]
+        
+        for i, (key, label, default) in enumerate(key_metrics):
+            card = ttk.Frame(header_inner, relief='groove', borderwidth=1)
+            card.grid(row=0, column=i, padx=4, pady=3, sticky='nsew')
+            
+            ttk.Label(card, text=label, font=get_font('body'),
+                     foreground=COLORS['primary']).pack(anchor='center', pady=(6, 0))
+            
+            value_label = ttk.Label(card, text=default, font=get_font('heading'))
+            value_label.pack(anchor='center', pady=(3, 6))
+            
+            self.fundamental_cards[key] = value_label
+        
+        # ========== ROW 2: VALUATION & FINANCIAL HEALTH ==========
+        mid_frame = ttk.Frame(main_frame)
+        mid_frame.pack(fill=tk.X, pady=(0, 8))
+        mid_frame.columnconfigure(0, weight=1)
+        mid_frame.columnconfigure(1, weight=1)
+        
+        # Left: Valuation Ratios
+        valuation_frame = ttk.LabelFrame(mid_frame, text="📐 Valuation Ratios")
+        valuation_frame.grid(row=0, column=0, padx=(0, 5), sticky='nsew')
+        
+        val_inner = ttk.Frame(valuation_frame)
+        val_inner.pack(fill=tk.X, padx=10, pady=8)
+        
+        self.valuation_labels = {}
+        val_items = [
+            ('pe_ratio', 'P/E Ratio (TTM)'),
+            ('pb_ratio', 'Price to Book'),
+            ('ps_ratio', 'Price to Sales'),
+            ('book_value', 'Book Value/Share'),
+            ('shares_out', 'Shares Outstanding')
+        ]
+        
+        for key, label in val_items:
+            row = ttk.Frame(val_inner)
+            row.pack(fill=tk.X, pady=2)
+            
+            ttk.Label(row, text=label, font=get_font('small'),
+                     foreground=COLORS['text_muted']).pack(side=tk.LEFT)
+            
+            value = ttk.Label(row, text="--", font=get_font('body'))
+            value.pack(side=tk.RIGHT)
+            self.valuation_labels[key] = value
+        
+        # Right: Financial Health
+        health_frame = ttk.LabelFrame(mid_frame, text="🏥 Financial Health")
+        health_frame.grid(row=0, column=1, padx=(5, 0), sticky='nsew')
+        
+        health_inner = ttk.Frame(health_frame)
+        health_inner.pack(fill=tk.X, padx=10, pady=8)
+        
+        self.health_labels = {}
+        health_items = [
+            ('roe', 'Return on Equity'),
+            ('debt_equity', 'Debt to Equity'),
+            ('current_ratio', 'Current Ratio'),
+            ('revenue', 'Revenue'),
+            ('net_income', 'Net Income')
+        ]
+        
+        for key, label in health_items:
+            row = ttk.Frame(health_inner)
+            row.pack(fill=tk.X, pady=2)
+            
+            ttk.Label(row, text=label, font=get_font('small'),
+                     foreground=COLORS['text_muted']).pack(side=tk.LEFT)
+            
+            value = ttk.Label(row, text="--", font=get_font('body'))
+            value.pack(side=tk.RIGHT)
+            self.health_labels[key] = value
+        
+        # ========== ROW 3: PRICE PERFORMANCE ==========
+        perf_frame = ttk.LabelFrame(main_frame, text="📈 Price Performance")
+        perf_frame.pack(fill=tk.X, pady=(0, 8))
+        
+        perf_inner = ttk.Frame(perf_frame)
+        perf_inner.pack(fill=tk.X, padx=10, pady=8)
+        
+        # Configure equal columns
+        for i in range(6):
+            perf_inner.columnconfigure(i, weight=1)
+        
+        self.perf_labels = {}
+        perf_items = [
+            ('week', '1 Week'),
+            ('month', '1 Month'),
+            ('quarter', '3 Months'),
+            ('half_year', '6 Months'),
+            ('ytd', 'YTD'),
+            ('year', '1 Year')
+        ]
+        
+        for i, (key, label) in enumerate(perf_items):
+            card = ttk.Frame(perf_inner)
+            card.grid(row=0, column=i, padx=5, sticky='nsew')
+            
+            ttk.Label(card, text=label, font=get_font('tiny'),
+                     foreground=COLORS['text_muted']).pack(anchor='center')
+            
+            value = ttk.Label(card, text="--%", font=get_font('subheading'))
+            value.pack(anchor='center')
+            self.perf_labels[key] = value
+        
+        # ========== ROW 4: VALUATION GAUGE ==========
+        gauge_frame = ttk.LabelFrame(main_frame, text="🎯 Valuation Assessment")
+        gauge_frame.pack(fill=tk.X, pady=(0, 5))
+        
+        gauge_inner = ttk.Frame(gauge_frame)
+        gauge_inner.pack(fill=tk.X, padx=15, pady=10)
+        
+        # Valuation status
+        self.valuation_status = ttk.Label(
+            gauge_inner,
+            text="⏳ Loading fundamental data...",
+            font=get_font('body'),
+            foreground=COLORS['text_muted']
+        )
+        self.valuation_status.pack(anchor='center')
+        
+        # Valuation details
+        self.valuation_details = ttk.Label(
+            gauge_inner,
+            text="",
+            font=get_font('small'),
+            foreground=COLORS['text_secondary']
+        )
+        self.valuation_details.pack(anchor='center', pady=(5, 0))
+    
     def _create_delta_chart(self, parent):
         """Create delta bar chart visualization."""
         container = ttk.Frame(parent)
@@ -1439,6 +1742,8 @@ class FlowTapeTab:
             self._update_cumulative_delta()
             self._update_session_analytics()
             self._update_sessions_tab()  # Super enhanced sessions tab
+            self._update_signals_tab()  # Trade signal generator
+            # Note: Fundamentals now handled by standalone FundamentalsTab
             self._update_stats(len(data), avg_vol, buy_count, block_count, sweep_count, data)
             
         except Exception as e:
@@ -2235,6 +2540,423 @@ class FlowTapeTab:
         except Exception as e:
             logger.error(f"Error updating sessions tab: {e}")
     
+    def _update_signals_tab(self):
+        """Update the Trade Signals tab with generated signals."""
+        if not self.flow_analysis:
+            return
+        
+        try:
+            from datetime import datetime
+            
+            # Generate signals
+            signals = self.flow_analysis.generate_trade_signals()
+            
+            # ========== UPDATE CURRENT SIGNAL STATUS ==========
+            for widget in self.signal_status_frame.winfo_children():
+                widget.destroy()
+            
+            if not signals:
+                ttk.Label(
+                    self.signal_status_frame,
+                    text="⏳ No active signals - Waiting for trade setup",
+                    font=get_font('body'),
+                    foreground=COLORS['text_muted']
+                ).pack(anchor='center', pady=10)
+            else:
+                # Show top signal
+                top_signal = signals[0]
+                signal_type = top_signal.get('signal_type', 'NONE')
+                
+                if signal_type == 'BUY':
+                    icon = "🟢"
+                    color = COLORS['gain']
+                    label_text = "BUY SIGNAL"
+                else:
+                    icon = "🔴"
+                    color = COLORS['loss']
+                    label_text = "SELL SIGNAL"
+                
+                # Signal header row
+                header_row = ttk.Frame(self.signal_status_frame)
+                header_row.pack(fill=tk.X)
+                
+                ttk.Label(
+                    header_row,
+                    text=f"{icon} {label_text} - {top_signal.get('pattern', '')}",
+                    font=get_font('heading'),
+                    foreground=color
+                ).pack(side=tk.LEFT)
+                
+                conf = top_signal.get('confidence', 0)
+                conf_color = COLORS['gain'] if conf >= 70 else COLORS['warning'] if conf >= 50 else COLORS['loss']
+                ttk.Label(
+                    header_row,
+                    text=f"Confidence: {conf:.0f}%",
+                    font=get_font('body'),
+                    foreground=conf_color
+                ).pack(side=tk.RIGHT)
+                
+                # Price levels row
+                levels_row = ttk.Frame(self.signal_status_frame)
+                levels_row.pack(fill=tk.X, pady=(5, 0))
+                
+                entry = top_signal.get('entry', 0)
+                target = top_signal.get('target', 0)
+                stop = top_signal.get('stop', 0)
+                rr = top_signal.get('risk_reward', 0)
+                
+                ttk.Label(
+                    levels_row,
+                    text=f"Entry: ₦{entry:,.2f}  |  Target: ₦{target:,.2f}  |  Stop: ₦{stop:,.2f}  |  R:R: {rr:.1f}:1",
+                    font=get_font('body'),
+                    foreground=COLORS['text_secondary']
+                ).pack(side=tk.LEFT)
+                
+                # Context row
+                if top_signal.get('context'):
+                    ctx_row = ttk.Frame(self.signal_status_frame)
+                    ctx_row.pack(fill=tk.X, pady=(3, 0))
+                    
+                    ttk.Label(
+                        ctx_row,
+                        text=f"💡 {top_signal['context']}",
+                        font=get_font('small'),
+                        foreground=COLORS['primary']
+                    ).pack(side=tk.LEFT)
+            
+            # ========== UPDATE SIGNAL COMPONENTS ==========
+            if signals:
+                top = signals[0]
+                components = top.get('components', {})
+                
+                self.signal_components['divergence'].config(
+                    text=components.get('divergence', 'N/A'),
+                    foreground=COLORS['gain'] if 'ACCUM' in str(components.get('divergence', '')) else COLORS['loss'] if 'DIST' in str(components.get('divergence', '')) else COLORS['text_secondary']
+                )
+                self.signal_components['volume'].config(
+                    text=components.get('volume', components.get('profile', 'N/A'))
+                )
+                self.signal_components['session'].config(
+                    text=components.get('session', 'N/A')
+                )
+                
+                # Confluence score
+                conf = top.get('confidence', 0)
+                if conf >= 70:
+                    conf_text = f"{conf:.0f}% HIGH"
+                    conf_color = COLORS['gain']
+                elif conf >= 50:
+                    conf_text = f"{conf:.0f}% MED"
+                    conf_color = COLORS['warning']
+                else:
+                    conf_text = f"{conf:.0f}% LOW"
+                    conf_color = COLORS['loss']
+                
+                self.signal_components['confluence'].config(text=conf_text, foreground=conf_color)
+            else:
+                for key in ['divergence', 'volume', 'session', 'confluence']:
+                    self.signal_components[key].config(text="--", foreground=COLORS['text_muted'])
+            
+            # ========== UPDATE SIGNAL HISTORY ==========
+            now = datetime.now()
+            
+            for signal in signals:
+                entry = {
+                    'time': now.strftime('%H:%M'),
+                    'ticker': self.current_symbol or 'N/A',
+                    'signal_type': signal.get('signal_type', 'NONE'),
+                    'pattern': signal.get('pattern', ''),
+                    'entry': signal.get('entry', 0),
+                    'target': signal.get('target', 0),
+                    'stop': signal.get('stop', 0),
+                    'risk_reward': signal.get('risk_reward', 0),
+                    'confidence': signal.get('confidence', 0),
+                    'status': '⏳ Active'
+                }
+                
+                # Check for duplicates
+                if not any(h['pattern'] == entry['pattern'] and 
+                          h.get('ticker') == entry['ticker'] and
+                          abs(h['entry'] - entry['entry']) < 0.01 
+                          for h in self.signal_history[-10:]):
+                    self.signal_history.append(entry)
+            
+            # Update tree
+            for item in self.signals_tree.get_children():
+                self.signals_tree.delete(item)
+            
+            for entry in reversed(self.signal_history[-15:]):
+                signal_icon = "🟢" if entry['signal_type'] == 'BUY' else "🔴"
+                tag = 'buy' if entry['signal_type'] == 'BUY' else 'sell'
+                
+                self.signals_tree.insert('', 'end', values=(
+                    entry['time'],
+                    entry.get('ticker', 'N/A'),
+                    signal_icon,
+                    entry['pattern'],
+                    f"₦{entry['entry']:,.2f}",
+                    f"₦{entry['target']:,.2f}",
+                    f"₦{entry['stop']:,.2f}",
+                    f"{entry['risk_reward']:.1f}:1",
+                    f"{entry['confidence']:.0f}%",
+                    entry['status']
+                ), tags=(tag,))
+            
+            # ========== UPDATE SIGNAL STATISTICS ==========
+            total = len(self.signal_history)
+            buy_count = sum(1 for s in self.signal_history if s['signal_type'] == 'BUY')
+            sell_count = total - buy_count
+            
+            self.signal_stats['signals_today'].config(text=str(total))
+            self.signal_stats['buy_sell'].config(
+                text=f"{buy_count} / {sell_count}",
+                foreground=COLORS['gain'] if buy_count > sell_count else COLORS['loss'] if sell_count > buy_count else COLORS['warning']
+            )
+            
+            if self.signal_history:
+                avg_conf = sum(s['confidence'] for s in self.signal_history) / len(self.signal_history)
+                self.signal_stats['avg_conf'].config(text=f"{avg_conf:.0f}%")
+                
+                # Best pattern
+                pattern_counts = {}
+                for s in self.signal_history:
+                    p = s['pattern']
+                    pattern_counts[p] = pattern_counts.get(p, 0) + 1
+                
+                if pattern_counts:
+                    best = max(pattern_counts, key=pattern_counts.get)
+                    self.signal_stats['best_pattern'].config(text=best)
+            
+        except Exception as e:
+            logger.error(f"Error updating signals tab: {e}")
+    
+    def _update_fundamentals_tab(self):
+        """Update the Fundamentals tab with data from TradingView screener."""
+        if not self.current_symbol:
+            return
+        
+        try:
+            from src.collectors.tradingview_collector import TradingViewCollector
+            
+            collector = TradingViewCollector()
+            fund_data = collector.get_fundamental_data(self.current_symbol)
+            
+            if not fund_data:
+                self.valuation_status.config(
+                    text="❌ Fundamental data not available for this stock",
+                    foreground=COLORS['loss']
+                )
+                return
+            
+            fundamentals = fund_data.get('fundamentals', {})
+            performance = fund_data.get('performance', {})
+            
+            # ========== UPDATE KEY METRICS CARDS ==========
+            # Market Cap
+            mcap = fundamentals.get('market_cap', 0)
+            if mcap and mcap > 0:
+                if mcap >= 1e12:
+                    mcap_text = f"₦{mcap/1e12:.1f}T"
+                elif mcap >= 1e9:
+                    mcap_text = f"₦{mcap/1e9:.1f}B"
+                elif mcap >= 1e6:
+                    mcap_text = f"₦{mcap/1e6:.1f}M"
+                else:
+                    mcap_text = f"₦{mcap:,.0f}"
+                self.fundamental_cards['market_cap'].config(text=mcap_text)
+            
+            # P/E Ratio
+            pe = fundamentals.get('pe_ratio')
+            if pe is not None:
+                pe_color = COLORS['gain'] if pe < 15 else COLORS['loss'] if pe > 25 else COLORS['warning']
+                self.fundamental_cards['pe_ratio'].config(text=f"{pe:.1f}x", foreground=pe_color)
+                self.valuation_labels['pe_ratio'].config(text=f"{pe:.2f}")
+            
+            # P/B Ratio
+            pb = fundamentals.get('pb_ratio')
+            if pb is not None:
+                pb_color = COLORS['gain'] if pb < 1.5 else COLORS['loss'] if pb > 3 else COLORS['warning']
+                self.fundamental_cards['pb_ratio'].config(text=f"{pb:.1f}x", foreground=pb_color)
+                self.valuation_labels['pb_ratio'].config(text=f"{pb:.2f}")
+            
+            # EPS
+            eps = fundamentals.get('eps')
+            if eps is not None:
+                eps_color = COLORS['gain'] if eps > 0 else COLORS['loss']
+                self.fundamental_cards['eps'].config(text=f"₦{eps:.2f}", foreground=eps_color)
+            
+            # Dividend Yield
+            div_yield = fundamentals.get('dividend_yield')
+            if div_yield is not None:
+                div_color = COLORS['gain'] if div_yield > 3 else COLORS['text_secondary']
+                self.fundamental_cards['dividend'].config(text=f"{div_yield:.1f}%", foreground=div_color)
+            else:
+                self.fundamental_cards['dividend'].config(text="N/A", foreground=COLORS['text_muted'])
+            
+            # ========== UPDATE VALUATION RATIOS ==========
+            ps = fundamentals.get('ps_ratio')
+            if ps is not None:
+                self.valuation_labels['ps_ratio'].config(text=f"{ps:.2f}")
+            
+            bv = fundamentals.get('book_value')
+            if bv is not None:
+                self.valuation_labels['book_value'].config(text=f"₦{bv:.2f}")
+            
+            shares = fundamentals.get('shares_outstanding')
+            if shares is not None:
+                if shares >= 1e9:
+                    shares_text = f"{shares/1e9:.1f}B"
+                elif shares >= 1e6:
+                    shares_text = f"{shares/1e6:.1f}M"
+                else:
+                    shares_text = f"{shares:,.0f}"
+                self.valuation_labels['shares_out'].config(text=shares_text)
+            
+            # ========== UPDATE FINANCIAL HEALTH ==========
+            roe = fundamentals.get('roe')
+            if roe is not None:
+                roe_color = COLORS['gain'] if roe > 15 else COLORS['loss'] if roe < 0 else COLORS['warning']
+                self.health_labels['roe'].config(text=f"{roe:.1f}%", foreground=roe_color)
+            
+            de = fundamentals.get('debt_to_equity')
+            if de is not None:
+                de_color = COLORS['gain'] if de < 1 else COLORS['loss'] if de > 2 else COLORS['warning']
+                self.health_labels['debt_equity'].config(text=f"{de:.2f}", foreground=de_color)
+            
+            cr = fundamentals.get('current_ratio')
+            if cr is not None:
+                cr_color = COLORS['gain'] if cr > 1.5 else COLORS['loss'] if cr < 1 else COLORS['warning']
+                self.health_labels['current_ratio'].config(text=f"{cr:.2f}", foreground=cr_color)
+            
+            revenue = fundamentals.get('revenue')
+            if revenue is not None and revenue > 0:
+                if revenue >= 1e12:
+                    rev_text = f"₦{revenue/1e12:.1f}T"
+                elif revenue >= 1e9:
+                    rev_text = f"₦{revenue/1e9:.1f}B"
+                elif revenue >= 1e6:
+                    rev_text = f"₦{revenue/1e6:.1f}M"
+                else:
+                    rev_text = f"₦{revenue:,.0f}"
+                self.health_labels['revenue'].config(text=rev_text)
+            
+            net_inc = fundamentals.get('net_income')
+            if net_inc is not None:
+                ni_color = COLORS['gain'] if net_inc > 0 else COLORS['loss']
+                if abs(net_inc) >= 1e9:
+                    ni_text = f"₦{net_inc/1e9:.1f}B"
+                elif abs(net_inc) >= 1e6:
+                    ni_text = f"₦{net_inc/1e6:.1f}M"
+                else:
+                    ni_text = f"₦{net_inc:,.0f}"
+                self.health_labels['net_income'].config(text=ni_text, foreground=ni_color)
+            
+            # ========== UPDATE PERFORMANCE ==========
+            for key in ['week', 'month', 'quarter', 'half_year', 'ytd', 'year']:
+                perf_val = performance.get(key)
+                if perf_val is not None:
+                    color = COLORS['gain'] if perf_val > 0 else COLORS['loss']
+                    self.perf_labels[key].config(
+                        text=f"{perf_val:+.1f}%",
+                        foreground=color
+                    )
+            
+            # ========== VALUATION ASSESSMENT ==========
+            self._calculate_valuation_assessment(fundamentals)
+            
+        except Exception as e:
+            logger.error(f"Error updating fundamentals tab: {e}")
+            self.valuation_status.config(
+                text=f"⚠️ Error loading data: {str(e)[:50]}",
+                foreground=COLORS['warning']
+            )
+    
+    def _calculate_valuation_assessment(self, fundamentals):
+        """Calculate overall valuation assessment."""
+        try:
+            scores = []
+            details = []
+            
+            # P/E Score
+            pe = fundamentals.get('pe_ratio')
+            if pe is not None and pe > 0:
+                if pe < 10:
+                    scores.append(2)
+                    details.append("P/E < 10 (Undervalued)")
+                elif pe < 20:
+                    scores.append(1)
+                    details.append("P/E 10-20 (Fair)")
+                elif pe < 30:
+                    scores.append(0)
+                    details.append("P/E 20-30 (Premium)")
+                else:
+                    scores.append(-1)
+                    details.append("P/E > 30 (Expensive)")
+            
+            # P/B Score
+            pb = fundamentals.get('pb_ratio')
+            if pb is not None and pb > 0:
+                if pb < 1:
+                    scores.append(2)
+                    details.append("P/B < 1 (Below Book)")
+                elif pb < 2:
+                    scores.append(1)
+                    details.append("P/B 1-2 (Fair)")
+                elif pb < 3:
+                    scores.append(0)
+                    details.append("P/B 2-3 (Premium)")
+                else:
+                    scores.append(-1)
+                    details.append("P/B > 3 (Expensive)")
+            
+            # ROE Score
+            roe = fundamentals.get('roe')
+            if roe is not None:
+                if roe > 20:
+                    scores.append(2)
+                    details.append("ROE > 20% (Excellent)")
+                elif roe > 10:
+                    scores.append(1)
+                    details.append("ROE > 10% (Good)")
+                elif roe > 0:
+                    scores.append(0)
+                    details.append("ROE > 0% (Moderate)")
+                else:
+                    scores.append(-1)
+                    details.append("ROE < 0% (Unprofitable)")
+            
+            if scores:
+                avg_score = sum(scores) / len(scores)
+                
+                if avg_score >= 1.5:
+                    status = "🟢 UNDERVALUED"
+                    color = COLORS['gain']
+                elif avg_score >= 0.5:
+                    status = "🟡 FAIRLY VALUED"
+                    color = COLORS['warning']
+                elif avg_score >= -0.5:
+                    status = "🟠 PREMIUM VALUED"
+                    color = '#FF8C00'
+                else:
+                    status = "🔴 OVERVALUED"
+                    color = COLORS['loss']
+                
+                self.valuation_status.config(
+                    text=f"{status} (Score: {avg_score:.1f})",
+                    foreground=color
+                )
+                self.valuation_details.config(
+                    text=" • ".join(details[:3])
+                )
+            else:
+                self.valuation_status.config(
+                    text="⚪ Insufficient data for assessment",
+                    foreground=COLORS['text_muted']
+                )
+                
+        except Exception as e:
+            logger.error(f"Error calculating valuation: {e}")
+    
     def _draw_session_delta_chart(self, sessions):
         """Draw session delta bar chart."""
         canvas = self.session_chart_canvas
@@ -2973,71 +3695,8 @@ class FlowTapeTab:
                 )
     
     def _update_session_analytics(self):
-        """Update the session analytics panel."""
-        if not self.flow_analysis:
-            return
-        
-        try:
-            # Intraday session breakdown
-            sessions = self.flow_analysis.intraday_session_breakdown()
-            
-            for key in ['open', 'core', 'close']:
-                session = sessions.get(key, {})
-                delta = session.get('delta', 0)
-                trend = session.get('trend', 'NO_DATA')
-                
-                if trend == 'NO_DATA':
-                    text = '--'
-                    color = COLORS['text_muted']
-                else:
-                    # Show delta with icon
-                    if delta > 0:
-                        icon = '↑'
-                        color = COLORS['gain']
-                    elif delta < 0:
-                        icon = '↓'
-                        color = COLORS['loss']
-                    else:
-                        icon = '→'
-                        color = COLORS['warning']
-                    
-                    text = f"{icon} {abs(delta):,.0f}"
-                
-                self.session_labels[key].config(text=text, foreground=color)
-            
-            # Opening range status
-            or_data = self.flow_analysis.opening_range_analysis()
-            if or_data:
-                breakout = or_data.get('breakout', 'NO_BREAKOUT')
-                if breakout == 'BULLISH_BREAKOUT':
-                    text = "↑ Above OR"
-                    color = COLORS['gain']
-                elif breakout == 'BEARISH_BREAKDOWN':
-                    text = "↓ Below OR"
-                    color = COLORS['loss']
-                else:
-                    text = "⬌ Inside OR"
-                    color = COLORS['warning']
-                
-                self.session_labels['or_breakout'].config(text=text, foreground=color)
-            
-            # Streak info
-            comparison = self.flow_analysis.session_comparison()
-            if comparison:
-                streak = comparison.get('streak', 0)
-                streak_type = comparison.get('streak_type', 'BUY')
-                
-                if streak_type == 'BUY':
-                    text = f"🟢 {streak}d Buy"
-                    color = COLORS['gain']
-                else:
-                    text = f"🔴 {streak}d Sell"
-                    color = COLORS['loss']
-                
-                self.session_labels['streak'].config(text=text, foreground=color)
-            
-        except Exception as e:
-            logger.error(f"Error updating session analytics: {e}")
+        """Legacy method - now handled by _update_sessions_tab."""
+        pass  # All session analytics now in _update_sessions_tab
     
     def refresh(self):
         """Refresh the current display."""
