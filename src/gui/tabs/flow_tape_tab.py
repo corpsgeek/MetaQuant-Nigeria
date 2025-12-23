@@ -6,6 +6,7 @@ Institutional-grade flow analysis with volume profile, delta metrics, and patter
 import tkinter as tk
 from tkinter import ttk
 import logging
+import os
 from typing import List, Dict, Optional
 from datetime import datetime, timedelta
 import math
@@ -14,6 +15,13 @@ from src.gui.theme import COLORS, get_font
 from src.database.db_manager import DatabaseManager
 from src.collectors.intraday_collector import IntradayCollector
 from src.analysis.flow_analysis import FlowAnalysis
+
+# Try to import AI Insight Engine
+try:
+    from src.ai.insight_engine import InsightEngine
+    INSIGHT_ENGINE_AVAILABLE = True
+except ImportError:
+    INSIGHT_ENGINE_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +39,19 @@ class FlowTapeTab:
         self.all_symbols = []
         self.flow_analysis = None  # Will hold FlowAnalysis instance
         self.auto_refresh_id = None  # Timer ID for auto-refresh
+        self.insight_engine = None  # AI Insight Engine for Groq
+        
+        # Initialize AI Insight Engine if available
+        if INSIGHT_ENGINE_AVAILABLE:
+            try:
+                groq_api_key = os.environ.get('GROQ_API_KEY')
+                if groq_api_key:
+                    self.insight_engine = InsightEngine(groq_api_key=groq_api_key)
+                    logger.info("AI Insight Engine initialized with Groq")
+                else:
+                    logger.warning("GROQ_API_KEY not found in environment")
+            except Exception as e:
+                logger.warning(f"Failed to initialize AI Insight Engine: {e}")
         
         # Create main frame
         self.frame = ttk.Frame(parent)
@@ -79,6 +100,11 @@ class FlowTapeTab:
         self.signals_tab = ttk.Frame(self.sub_notebook)
         self.sub_notebook.add(self.signals_tab, text="🎯 Signals")
         self._create_signals_tab_content()
+        
+        # Tab 6: AI Synthesis
+        self.synthesis_tab = ttk.Frame(self.sub_notebook)
+        self.sub_notebook.add(self.synthesis_tab, text="🤖 AI Synthesis")
+        self._create_synthesis_tab_content()
         
         # Note: Fundamentals moved to standalone tab
     
@@ -1263,6 +1289,256 @@ class FlowTapeTab:
         self.signal_history = []
     
     # =========================================================================
+    # AI SYNTHESIS TAB
+    # =========================================================================
+    
+    def _create_synthesis_tab_content(self):
+        """Create super enhanced AI Synthesis sub-tab with comprehensive dashboard."""
+        # Main scrollable frame
+        canvas = tk.Canvas(self.synthesis_tab, bg=COLORS['bg_dark'], highlightthickness=0)
+        scrollbar = ttk.Scrollbar(self.synthesis_tab, orient="vertical", command=canvas.yview)
+        self.synthesis_scrollable = ttk.Frame(canvas)
+        
+        self.synthesis_scrollable.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=self.synthesis_scrollable, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # Enable mouse wheel scrolling
+        def _on_mousewheel(event):
+            canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        canvas.bind_all("<MouseWheel>", _on_mousewheel)
+        
+        main = self.synthesis_scrollable
+        
+        # ========== ROW 1: SYNTHESIS OVERVIEW ==========
+        overview_frame = ttk.LabelFrame(main, text="🧠 Synthesis Overview")
+        overview_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        overview_cards = ttk.Frame(overview_frame)
+        overview_cards.pack(fill=tk.X, padx=10, pady=10)
+        
+        # Store synthesis overview card references
+        self.synthesis_overview = {}
+        
+        overview_items = [
+            ('score', '🎯 Synthesis Score', 'Overall market score'),
+            ('bias', '📊 Market Bias', 'Directional tendency'),
+            ('confidence', '💪 Confidence', 'Signal reliability'),
+            ('action', '⚡ Recommended Action', 'Trading suggestion')
+        ]
+        
+        for i, (key, title, desc) in enumerate(overview_items):
+            card = ttk.Frame(overview_cards, relief='ridge', borderwidth=1)
+            card.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=5, pady=5)
+            
+            # Title
+            ttk.Label(card, text=title, font=get_font('small'),
+                     foreground=COLORS['text_muted']).pack(anchor='w', padx=10, pady=(5, 0))
+            
+            # Main value
+            value_label = ttk.Label(card, text="--", font=get_font('heading'),
+                                   foreground=COLORS['primary'])
+            value_label.pack(anchor='w', padx=10)
+            
+            # Drivers sub-layer
+            drivers_frame = ttk.Frame(card)
+            drivers_frame.pack(fill=tk.X, padx=10, pady=(0, 5))
+            
+            driver_label = ttk.Label(drivers_frame, text="Drivers: --",
+                                    font=get_font('small'), foreground=COLORS['text_secondary'],
+                                    wraplength=180, justify='left')
+            driver_label.pack(anchor='w')
+            
+            self.synthesis_overview[key] = {
+                'value': value_label,
+                'drivers': driver_label
+            }
+        
+        # ========== ROW 2: COMPONENT SCORES ==========
+        components_frame = ttk.LabelFrame(main, text="📈 Component Scores")
+        components_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        components_cards = ttk.Frame(components_frame)
+        components_cards.pack(fill=tk.X, padx=10, pady=10)
+        
+        # Store component score references
+        self.synthesis_components = {}
+        
+        component_items = [
+            ('tape', '📋 Tape & Profile', 'Order flow analysis'),
+            ('alerts', '⚠️ Alerts', 'Market alerts'),
+            ('charts', '📈 Charts', 'Technical indicators'),
+            ('sessions', '📅 Sessions', 'Session analytics'),
+            ('signals', '🎯 Signals', 'Trade signals')
+        ]
+        
+        for i, (key, title, desc) in enumerate(component_items):
+            card = ttk.Frame(components_cards, relief='ridge', borderwidth=1)
+            card.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=5, pady=5)
+            
+            # Title
+            ttk.Label(card, text=title, font=get_font('small'),
+                     foreground=COLORS['text_muted']).pack(anchor='w', padx=10, pady=(5, 0))
+            
+            # Score value (out of 10)
+            score_frame = ttk.Frame(card)
+            score_frame.pack(anchor='w', padx=10)
+            
+            score_label = ttk.Label(score_frame, text="--", font=get_font('heading'),
+                                   foreground=COLORS['primary'])
+            score_label.pack(side=tk.LEFT)
+            
+            ttk.Label(score_frame, text="/10", font=get_font('body'),
+                     foreground=COLORS['text_muted']).pack(side=tk.LEFT)
+            
+            # Score bar
+            bar_canvas = tk.Canvas(card, width=120, height=8, bg=COLORS['bg_medium'],
+                                  highlightthickness=0)
+            bar_canvas.pack(anchor='w', padx=10, pady=2)
+            
+            # Drivers sub-layer
+            drivers_frame = ttk.Frame(card)
+            drivers_frame.pack(fill=tk.X, padx=10, pady=(0, 5))
+            
+            driver_label = ttk.Label(drivers_frame, text="• --",
+                                    font=get_font('small'), foreground=COLORS['text_secondary'],
+                                    wraplength=140, justify='left')
+            driver_label.pack(anchor='w')
+            
+            self.synthesis_components[key] = {
+                'score': score_label,
+                'bar': bar_canvas,
+                'drivers': driver_label
+            }
+        
+        # ========== ROW 3: AI NARRATIVE REPORT ==========
+        narrative_frame = ttk.LabelFrame(main, text="📝 AI Narrative Report")
+        narrative_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        
+        # Report text area
+        text_container = ttk.Frame(narrative_frame)
+        text_container.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        self.narrative_text = tk.Text(
+            text_container,
+            wrap=tk.WORD,
+            font=get_font('body'),
+            bg=COLORS['bg_medium'],
+            fg=COLORS['text_primary'],
+            padx=10,
+            pady=10,
+            height=10,
+            state='disabled'
+        )
+        self.narrative_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        
+        narrative_scroll = ttk.Scrollbar(text_container, command=self.narrative_text.yview)
+        narrative_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        self.narrative_text.config(yscrollcommand=narrative_scroll.set)
+        
+        # ========== ROW 4: KEY INSIGHTS ==========
+        insights_frame = ttk.LabelFrame(main, text="💡 Key Insights")
+        insights_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        self.insights_container = ttk.Frame(insights_frame)
+        self.insights_container.pack(fill=tk.X, padx=10, pady=10)
+        
+        # Placeholder for insights
+        ttk.Label(self.insights_container, text="⏳ Loading insights...",
+                 font=get_font('body'), foreground=COLORS['text_muted']).pack(anchor='w')
+        
+        # ========== ROW 5: SIGNAL SUMMARY ==========
+        signal_summary_frame = ttk.LabelFrame(main, text="🎯 Signal Summary")
+        signal_summary_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        signal_content = ttk.Frame(signal_summary_frame)
+        signal_content.pack(fill=tk.X, padx=10, pady=10)
+        
+        # Left side: Signal info
+        signal_left = ttk.Frame(signal_content)
+        signal_left.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        
+        self.synthesis_signal = {}
+        
+        # Signal type row
+        signal_row = ttk.Frame(signal_left)
+        signal_row.pack(fill=tk.X)
+        
+        self.synthesis_signal['icon'] = ttk.Label(signal_row, text="⚪",
+                                                  font=get_font('heading'))
+        self.synthesis_signal['icon'].pack(side=tk.LEFT)
+        
+        self.synthesis_signal['type'] = ttk.Label(signal_row, text="NO SIGNAL",
+                                                  font=get_font('heading'),
+                                                  foreground=COLORS['text_muted'])
+        self.synthesis_signal['type'].pack(side=tk.LEFT, padx=(5, 15))
+        
+        self.synthesis_signal['pattern'] = ttk.Label(signal_row, text="--",
+                                                     font=get_font('body'),
+                                                     foreground=COLORS['text_secondary'])
+        self.synthesis_signal['pattern'].pack(side=tk.LEFT)
+        
+        # Price levels row
+        levels_row = ttk.Frame(signal_left)
+        levels_row.pack(fill=tk.X, pady=(5, 0))
+        
+        self.synthesis_signal['levels'] = ttk.Label(levels_row, 
+            text="Entry: -- | Target: -- | Stop: -- | R:R: --",
+            font=get_font('body'), foreground=COLORS['text_secondary'])
+        self.synthesis_signal['levels'].pack(side=tk.LEFT)
+        
+        # Right side: Confluence meter
+        signal_right = ttk.Frame(signal_content)
+        signal_right.pack(side=tk.RIGHT)
+        
+        ttk.Label(signal_right, text="Confluence",
+                 font=get_font('small'), foreground=COLORS['text_muted']).pack(anchor='e')
+        
+        confluence_row = ttk.Frame(signal_right)
+        confluence_row.pack(anchor='e')
+        
+        self.synthesis_signal['confluence_bar'] = tk.Canvas(
+            confluence_row, width=150, height=15, bg=COLORS['bg_medium'], highlightthickness=0
+        )
+        self.synthesis_signal['confluence_bar'].pack(side=tk.LEFT, padx=(0, 5))
+        
+        self.synthesis_signal['confluence_pct'] = ttk.Label(confluence_row, text="0%",
+                                                            font=get_font('body'),
+                                                            foreground=COLORS['text_muted'])
+        self.synthesis_signal['confluence_pct'].pack(side=tk.LEFT)
+        
+        # ========== ROW 6: LIVE STATUS BAR ==========
+        status_frame = ttk.Frame(main)
+        status_frame.pack(fill=tk.X, padx=10, pady=10)
+        
+        # Left: Live indicator
+        status_left = ttk.Frame(status_frame)
+        status_left.pack(side=tk.LEFT)
+        
+        self.synthesis_status = {}
+        
+        self.synthesis_status['live'] = ttk.Label(status_left, text="📡 Waiting...",
+                                                  font=get_font('small'),
+                                                  foreground=COLORS['text_muted'])
+        self.synthesis_status['live'].pack(side=tk.LEFT)
+        
+        # Right: Last update
+        status_right = ttk.Frame(status_frame)
+        status_right.pack(side=tk.RIGHT)
+        
+        self.synthesis_status['update'] = ttk.Label(status_right, text="Last Update: --",
+                                                    font=get_font('small'),
+                                                    foreground=COLORS['text_muted'])
+        self.synthesis_status['update'].pack(side=tk.RIGHT)
+    
+    # =========================================================================
     # FUNDAMENTALS TAB
     # =========================================================================
     
@@ -1743,6 +2019,7 @@ class FlowTapeTab:
             self._update_session_analytics()
             self._update_sessions_tab()  # Super enhanced sessions tab
             self._update_signals_tab()  # Trade signal generator
+            self._update_synthesis_tab()  # AI Synthesis dashboard
             # Note: Fundamentals now handled by standalone FundamentalsTab
             self._update_stats(len(data), avg_vol, buy_count, block_count, sweep_count, data)
             
@@ -2729,6 +3006,1155 @@ class FlowTapeTab:
             
         except Exception as e:
             logger.error(f"Error updating signals tab: {e}")
+    
+    def _update_synthesis_tab(self):
+        """Update the AI Synthesis tab with comprehensive analysis from all data sources."""
+        if not self.flow_analysis:
+            return
+        
+        try:
+            from datetime import datetime
+            
+            # ========== GENERATE SYNTHESIS ==========
+            synthesis = self._generate_ai_synthesis()
+            
+            # ========== UPDATE SYNTHESIS OVERVIEW ==========
+            # Score
+            score = synthesis.get('synthesis_score', 0)
+            score_color = COLORS['gain'] if score >= 70 else COLORS['warning'] if score >= 40 else COLORS['loss']
+            self.synthesis_overview['score']['value'].config(
+                text=f"{score:.0f}/100",
+                foreground=score_color
+            )
+            self.synthesis_overview['score']['drivers'].config(
+                text=f"Drivers: {synthesis.get('score_drivers', '--')}"
+            )
+            
+            # Bias
+            bias = synthesis.get('bias', 'NEUTRAL')
+            if bias == 'BULLISH':
+                bias_icon = "🟢"
+                bias_color = COLORS['gain']
+            elif bias == 'BEARISH':
+                bias_icon = "🔴"
+                bias_color = COLORS['loss']
+            else:
+                bias_icon = "⚪"
+                bias_color = COLORS['warning']
+            
+            self.synthesis_overview['bias']['value'].config(
+                text=f"{bias_icon} {bias}",
+                foreground=bias_color
+            )
+            self.synthesis_overview['bias']['drivers'].config(
+                text=f"Drivers: {synthesis.get('bias_drivers', '--')}"
+            )
+            
+            # Confidence
+            confidence = synthesis.get('confidence', 0)
+            conf_level = "HIGH" if confidence >= 70 else "MEDIUM" if confidence >= 50 else "LOW"
+            conf_color = COLORS['gain'] if confidence >= 70 else COLORS['warning'] if confidence >= 50 else COLORS['loss']
+            self.synthesis_overview['confidence']['value'].config(
+                text=f"{conf_level} ({confidence:.0f}%)",
+                foreground=conf_color
+            )
+            self.synthesis_overview['confidence']['drivers'].config(
+                text=f"Drivers: {synthesis.get('confidence_drivers', '--')}"
+            )
+            
+            # Action
+            action = synthesis.get('action', 'HOLD')
+            if action == 'BUY':
+                action_icon = "🟢"
+                action_color = COLORS['gain']
+            elif action == 'SELL':
+                action_icon = "🔴"
+                action_color = COLORS['loss']
+            else:
+                action_icon = "⚪"
+                action_color = COLORS['warning']
+            
+            self.synthesis_overview['action']['value'].config(
+                text=f"{action_icon} {action}",
+                foreground=action_color
+            )
+            self.synthesis_overview['action']['drivers'].config(
+                text=f"Drivers: {synthesis.get('action_drivers', '--')}"
+            )
+            
+            # ========== UPDATE COMPONENT SCORES ==========
+            component_scores = synthesis.get('component_scores', {})
+            
+            for key, data in component_scores.items():
+                if key in self.synthesis_components:
+                    score = data.get('score', 0)
+                    drivers = data.get('drivers', '--')
+                    
+                    # Update score
+                    score_color = COLORS['gain'] if score >= 7 else COLORS['warning'] if score >= 4 else COLORS['loss']
+                    self.synthesis_components[key]['score'].config(
+                        text=f"{score:.1f}",
+                        foreground=score_color
+                    )
+                    
+                    # Update bar
+                    bar = self.synthesis_components[key]['bar']
+                    bar.delete('all')
+                    bar_width = min(120, int(score * 12))
+                    bar.create_rectangle(0, 0, bar_width, 8, fill=score_color, outline='')
+                    
+                    # Update drivers
+                    self.synthesis_components[key]['drivers'].config(
+                        text=f"• {drivers}"
+                    )
+            
+            # ========== UPDATE AI NARRATIVE ==========
+            narrative = synthesis.get('narrative', 'No analysis available.')
+            self.narrative_text.config(state='normal')
+            self.narrative_text.delete('1.0', tk.END)
+            self.narrative_text.insert('1.0', narrative)
+            self.narrative_text.config(state='disabled')
+            
+            # ========== UPDATE KEY INSIGHTS ==========
+            for widget in self.insights_container.winfo_children():
+                widget.destroy()
+            
+            insights = synthesis.get('key_insights', [])
+            if not insights:
+                ttk.Label(self.insights_container, text="No key insights at this time.",
+                         font=get_font('body'), foreground=COLORS['text_muted']).pack(anchor='w')
+            else:
+                insights_row = ttk.Frame(self.insights_container)
+                insights_row.pack(fill=tk.X)
+                
+                for insight in insights[:4]:  # Max 4 insights
+                    card = ttk.Frame(insights_row, relief='ridge', borderwidth=1)
+                    card.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=5, pady=5)
+                    
+                    icon = insight.get('icon', '💡')
+                    title = insight.get('title', 'Insight')
+                    detail = insight.get('detail', '')
+                    color = insight.get('color', COLORS['primary'])
+                    
+                    ttk.Label(card, text=f"{icon} {title}",
+                             font=get_font('body'), foreground=color).pack(anchor='w', padx=10, pady=(5, 0))
+                    ttk.Label(card, text=detail,
+                             font=get_font('small'), foreground=COLORS['text_secondary']).pack(anchor='w', padx=10, pady=(0, 5))
+            
+            # ========== UPDATE SIGNAL SUMMARY ==========
+            signal_summary = synthesis.get('signal_summary', {})
+            
+            signal_type = signal_summary.get('type', 'NONE')
+            if signal_type == 'BUY':
+                self.synthesis_signal['icon'].config(text="🟢")
+                self.synthesis_signal['type'].config(text="BUY", foreground=COLORS['gain'])
+            elif signal_type == 'SELL':
+                self.synthesis_signal['icon'].config(text="🔴")
+                self.synthesis_signal['type'].config(text="SELL", foreground=COLORS['loss'])
+            else:
+                self.synthesis_signal['icon'].config(text="⚪")
+                self.synthesis_signal['type'].config(text="NO SIGNAL", foreground=COLORS['text_muted'])
+            
+            self.synthesis_signal['pattern'].config(
+                text=signal_summary.get('pattern', '--')
+            )
+            
+            entry = signal_summary.get('entry', 0)
+            target = signal_summary.get('target', 0)
+            stop = signal_summary.get('stop', 0)
+            rr = signal_summary.get('risk_reward', 0)
+            
+            self.synthesis_signal['levels'].config(
+                text=f"Entry: ₦{entry:,.2f} | Target: ₦{target:,.2f} | Stop: ₦{stop:,.2f} | R:R: {rr:.1f}:1"
+            )
+            
+            # Confluence bar
+            confluence = signal_summary.get('confluence', 0)
+            bar = self.synthesis_signal['confluence_bar']
+            bar.delete('all')
+            
+            conf_color = COLORS['gain'] if confluence >= 70 else COLORS['warning'] if confluence >= 50 else COLORS['loss']
+            bar_width = int(150 * confluence / 100)
+            bar.create_rectangle(0, 0, bar_width, 15, fill=conf_color, outline='')
+            
+            self.synthesis_signal['confluence_pct'].config(
+                text=f"{confluence:.0f}%",
+                foreground=conf_color
+            )
+            
+            # ========== UPDATE STATUS BAR ==========
+            now = datetime.now()
+            self.synthesis_status['live'].config(
+                text="📡 LIVE" if self.auto_refresh_id else "📡 Manual",
+                foreground=COLORS['gain'] if self.auto_refresh_id else COLORS['text_muted']
+            )
+            self.synthesis_status['update'].config(
+                text=f"Last Update: {now.strftime('%H:%M:%S')}"
+            )
+            
+        except Exception as e:
+            logger.error(f"Error updating synthesis tab: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def _generate_ai_synthesis(self) -> dict:
+        """Generate comprehensive AI synthesis from all data sources."""
+        from datetime import datetime
+        
+        synthesis = {
+            'synthesis_score': 0,
+            'bias': 'NEUTRAL',
+            'confidence': 0,
+            'action': 'HOLD',
+            'score_drivers': '',
+            'bias_drivers': '',
+            'confidence_drivers': '',
+            'action_drivers': '',
+            'component_scores': {},
+            'narrative': '',
+            'key_insights': [],
+            'signal_summary': {}
+        }
+        
+        try:
+            # ========== 1. TAPE SCORE ==========
+            tape_score, tape_drivers = self._score_tape_data()
+            synthesis['component_scores']['tape'] = {
+                'score': tape_score,
+                'drivers': tape_drivers
+            }
+            
+            # ========== 2. ALERTS SCORE ==========
+            alert_score, alert_drivers = self._score_alert_data()
+            synthesis['component_scores']['alerts'] = {
+                'score': alert_score,
+                'drivers': alert_drivers
+            }
+            
+            # ========== 3. CHARTS SCORE ==========
+            chart_score, chart_drivers = self._score_chart_data()
+            synthesis['component_scores']['charts'] = {
+                'score': chart_score,
+                'drivers': chart_drivers
+            }
+            
+            # ========== 4. SESSIONS SCORE ==========
+            session_score, session_drivers = self._score_session_data()
+            synthesis['component_scores']['sessions'] = {
+                'score': session_score,
+                'drivers': session_drivers
+            }
+            
+            # ========== 5. SIGNALS SCORE ==========
+            signal_score, signal_drivers = self._score_signal_data()
+            synthesis['component_scores']['signals'] = {
+                'score': signal_score,
+                'drivers': signal_drivers
+            }
+            
+            # ========== COMPUTE WEIGHTED SYNTHESIS SCORE ==========
+            weights = {
+                'tape': 0.25,
+                'charts': 0.20,
+                'signals': 0.25,
+                'sessions': 0.15,
+                'alerts': 0.15
+            }
+            
+            total_score = (
+                tape_score * weights['tape'] +
+                chart_score * weights['charts'] +
+                signal_score * weights['signals'] +
+                session_score * weights['sessions'] +
+                alert_score * weights['alerts']
+            ) * 10  # Scale to 0-100
+            
+            synthesis['synthesis_score'] = min(100, max(0, total_score))
+            
+            # Identify top drivers for score
+            sorted_scores = sorted(
+                [(k, v['score']) for k, v in synthesis['component_scores'].items()],
+                key=lambda x: x[1], reverse=True
+            )
+            top_drivers = [f"{k.title()}: {s:.1f}" for k, s in sorted_scores[:2]]
+            synthesis['score_drivers'] = ", ".join(top_drivers)
+            
+            # ========== DETERMINE BIAS ==========
+            bullish_signals = 0
+            bearish_signals = 0
+            bias_drivers = []
+            
+            # Delta direction
+            cum_delta = self.flow_analysis.cumulative_delta()
+            if cum_delta:
+                latest_delta = cum_delta[-1].get('cumulative_delta', 0)
+                if latest_delta > 0:
+                    bullish_signals += 2
+                    bias_drivers.append("Δ+")
+                elif latest_delta < 0:
+                    bearish_signals += 2
+                    bias_drivers.append("Δ-")
+            
+            # Session bias
+            sessions = self.flow_analysis.intraday_session_breakdown()
+            total_delta = sum(s.get('delta', 0) for s in sessions.values())
+            if total_delta > 0:
+                bullish_signals += 1
+                bias_drivers.append("Session+")
+            elif total_delta < 0:
+                bearish_signals += 1
+                bias_drivers.append("Session-")
+            
+            # VWAP position
+            vwap = self.flow_analysis.vwap_analysis()
+            if vwap:
+                current_price = vwap.get('current_price', 0)
+                vwap_val = vwap.get('vwap', 0)
+                if current_price > vwap_val:
+                    bullish_signals += 1
+                    bias_drivers.append("AboveVWAP")
+                elif current_price < vwap_val:
+                    bearish_signals += 1
+                    bias_drivers.append("BelowVWAP")
+            
+            if bullish_signals > bearish_signals:
+                synthesis['bias'] = 'BULLISH'
+            elif bearish_signals > bullish_signals:
+                synthesis['bias'] = 'BEARISH'
+            else:
+                synthesis['bias'] = 'NEUTRAL'
+            
+            synthesis['bias_drivers'] = ", ".join(bias_drivers[:3])
+            
+            # ========== DETERMINE CONFIDENCE ==========
+            conf_factors = []
+            confidence = 50  # Base
+            
+            # Volume confirmation
+            rvol = self.flow_analysis.rvol_analysis()
+            if rvol and rvol.get('rvol', 1) > 1.5:
+                confidence += 15
+                conf_factors.append("HighVol")
+            elif rvol and rvol.get('rvol', 1) < 0.7:
+                confidence -= 10
+                conf_factors.append("LowVol")
+            
+            # Signal alignment
+            signals = self.flow_analysis.generate_trade_signals()
+            if signals:
+                sig_conf = signals[0].get('confidence', 0)
+                if sig_conf >= 70:
+                    confidence += 20
+                    conf_factors.append("StrongSig")
+                elif sig_conf >= 50:
+                    confidence += 10
+                    conf_factors.append("ModSig")
+            
+            # Component alignment
+            avg_score = (tape_score + chart_score + signal_score + session_score + alert_score) / 5
+            if avg_score >= 7:
+                confidence += 15
+                conf_factors.append("Aligned")
+            elif avg_score <= 4:
+                confidence -= 10
+                conf_factors.append("Mixed")
+            
+            synthesis['confidence'] = min(100, max(0, confidence))
+            synthesis['confidence_drivers'] = ", ".join(conf_factors[:3])
+            
+            # ========== DETERMINE ACTION ==========
+            action_drivers = []
+            
+            if synthesis['bias'] == 'BULLISH' and synthesis['confidence'] >= 60 and synthesis['synthesis_score'] >= 60:
+                synthesis['action'] = 'BUY'
+                action_drivers = ["Bullish bias", f"Conf {synthesis['confidence']:.0f}%", f"Score {synthesis['synthesis_score']:.0f}"]
+            elif synthesis['bias'] == 'BEARISH' and synthesis['confidence'] >= 60 and synthesis['synthesis_score'] >= 60:
+                synthesis['action'] = 'SELL'
+                action_drivers = ["Bearish bias", f"Conf {synthesis['confidence']:.0f}%", f"Score {synthesis['synthesis_score']:.0f}"]
+            else:
+                synthesis['action'] = 'HOLD'
+                if synthesis['confidence'] < 60:
+                    action_drivers.append("Low conf")
+                if synthesis['bias'] == 'NEUTRAL':
+                    action_drivers.append("Neutral bias")
+                if synthesis['synthesis_score'] < 60:
+                    action_drivers.append("Weak score")
+            
+            synthesis['action_drivers'] = ", ".join(action_drivers[:3])
+            
+            # ========== BUILD NARRATIVE ==========
+            synthesis['narrative'] = self._build_narrative(synthesis)
+            
+            # ========== KEY INSIGHTS ==========
+            synthesis['key_insights'] = self._generate_key_insights(synthesis)
+            
+            # ========== SIGNAL SUMMARY ==========
+            # Validate and select best valid signal
+            valid_signal = None
+            if signals:
+                for sig in signals:
+                    sig_type = sig.get('signal_type', 'NONE')
+                    entry = sig.get('entry', 0)
+                    target = sig.get('target', 0)
+                    stop = sig.get('stop', 0)
+                    
+                    # Validate signal logic
+                    is_valid = False
+                    if sig_type == 'BUY':
+                        # BUY: target > entry > stop
+                        is_valid = target > entry > stop and entry > 0
+                    elif sig_type == 'SELL':
+                        # SELL: stop > entry > target
+                        is_valid = stop > entry > target and entry > 0
+                    
+                    if is_valid:
+                        valid_signal = sig
+                        break
+                    else:
+                        logger.debug(f"Invalid signal rejected: {sig_type} entry={entry}, target={target}, stop={stop}")
+            
+            if valid_signal:
+                synthesis['signal_summary'] = {
+                    'type': valid_signal.get('signal_type', 'NONE'),
+                    'pattern': valid_signal.get('pattern', '--'),
+                    'entry': valid_signal.get('entry', 0),
+                    'target': valid_signal.get('target', 0),
+                    'stop': valid_signal.get('stop', 0),
+                    'risk_reward': valid_signal.get('risk_reward', 0),
+                    'confluence': valid_signal.get('confidence', 0)
+                }
+            else:
+                synthesis['signal_summary'] = {
+                    'type': 'NONE',
+                    'pattern': 'No valid signal',
+                    'entry': 0,
+                    'target': 0,
+                    'stop': 0,
+                    'risk_reward': 0,
+                    'confluence': 0
+                }
+            
+        except Exception as e:
+            logger.error(f"Error generating AI synthesis: {e}")
+            import traceback
+            traceback.print_exc()
+        
+        return synthesis
+    
+    def _score_tape_data(self) -> tuple:
+        """Score tape and profile data (0-10 scale)."""
+        score = 5.0
+        drivers = []
+        
+        try:
+            # Cumulative delta trend
+            cum_delta = self.flow_analysis.cumulative_delta()
+            if cum_delta and len(cum_delta) > 1:
+                recent_delta = cum_delta[-1].get('cumulative_delta', 0)
+                prev_delta = cum_delta[-5].get('cumulative_delta', 0) if len(cum_delta) > 5 else 0
+                delta_trend = recent_delta - prev_delta
+                
+                if delta_trend > 0:
+                    score += 1.5
+                    drivers.append("Δ rising")
+                elif delta_trend < 0:
+                    score -= 1.0
+                    drivers.append("Δ falling")
+            
+            # Volume profile position
+            profile = self.flow_analysis.volume_profile()
+            if profile:
+                poc = profile.get('poc_price', 0)
+                current = profile.get('current_price', 0)
+                if current > poc:
+                    score += 1.0
+                    drivers.append("Above POC")
+                elif current < poc:
+                    score -= 0.5
+                    drivers.append("Below POC")
+            
+            # Block trade activity
+            blocks = self.flow_analysis.block_trade_analysis()
+            if blocks and blocks.get('total_blocks', 0) > 2:
+                score += 1.5
+                drivers.append(f"{blocks['total_blocks']} blocks")
+            
+            # RVOL
+            rvol = self.flow_analysis.rvol_analysis()
+            if rvol and rvol.get('rvol', 1) > 2:
+                score += 1.0
+                drivers.append(f"RVOL {rvol['rvol']:.1f}x")
+            
+        except Exception as e:
+            logger.error(f"Error scoring tape data: {e}")
+        
+        return min(10, max(0, score)), ", ".join(drivers[:3]) if drivers else "Standard flow"
+    
+    def _score_alert_data(self) -> tuple:
+        """Score alert data (0-10 scale)."""
+        score = 5.0
+        drivers = []
+        
+        try:
+            alerts = self.flow_analysis.generate_alerts()
+            
+            if not alerts:
+                return 5.0, "No active alerts"
+            
+            # Count by severity
+            high_count = sum(1 for a in alerts if a.get('severity', '') == 'HIGH')
+            med_count = sum(1 for a in alerts if a.get('severity', '') == 'MEDIUM')
+            
+            # More alerts = more action = potentially higher score
+            if high_count > 0:
+                score += min(2, high_count * 0.75)
+                drivers.append(f"{high_count} HIGH")
+            
+            if med_count > 0:
+                score += min(1, med_count * 0.25)
+                drivers.append(f"{med_count} MED")
+            
+            # Check for bullish vs bearish signals
+            bullish = sum(1 for a in alerts if 'bullish' in a.get('signal', '').lower() or 'buy' in a.get('signal', '').lower())
+            bearish = sum(1 for a in alerts if 'bearish' in a.get('signal', '').lower() or 'sell' in a.get('signal', '').lower())
+            
+            if bullish > bearish:
+                score += 1
+                drivers.append("Net bullish")
+            elif bearish > bullish:
+                score += 0.5  # Still actionable
+                drivers.append("Net bearish")
+            
+        except Exception as e:
+            logger.error(f"Error scoring alert data: {e}")
+        
+        return min(10, max(0, score)), ", ".join(drivers[:3]) if drivers else "Normal conditions"
+    
+    def _score_chart_data(self) -> tuple:
+        """Score chart/technical data (0-10 scale)."""
+        score = 5.0
+        drivers = []
+        
+        try:
+            # VWAP analysis
+            vwap = self.flow_analysis.vwap_analysis()
+            if vwap:
+                current = vwap.get('current_price', 0)
+                vwap_val = vwap.get('vwap', 0)
+                upper_1 = vwap.get('upper_band_1', 0)
+                lower_1 = vwap.get('lower_band_1', 0)
+                
+                if current > upper_1:
+                    score += 1.5
+                    drivers.append("Above VWAP+1σ")
+                elif current > vwap_val:
+                    score += 1.0
+                    drivers.append("Above VWAP")
+                elif current < lower_1:
+                    score -= 1.0
+                    drivers.append("Below VWAP-1σ")
+                elif current < vwap_val:
+                    score -= 0.5
+                    drivers.append("Below VWAP")
+            
+            # Delta momentum
+            momentum = self.flow_analysis.delta_momentum()
+            if momentum:
+                recent_mom = momentum[-1].get('momentum', 0) if momentum else 0
+                if recent_mom > 0:
+                    score += 1.0
+                    drivers.append("Δ momentum+")
+                elif recent_mom < 0:
+                    score -= 0.5
+                    drivers.append("Δ momentum-")
+            
+            # RVOL
+            rvol = self.flow_analysis.rvol_analysis()
+            if rvol:
+                rvol_val = rvol.get('rvol', 1)
+                if rvol_val >= 2:
+                    score += 1.5
+                    drivers.append(f"RVOL {rvol_val:.1f}x")
+                elif rvol_val >= 1.5:
+                    score += 0.75
+                    drivers.append(f"RVOL {rvol_val:.1f}x")
+            
+        except Exception as e:
+            logger.error(f"Error scoring chart data: {e}")
+        
+        return min(10, max(0, score)), ", ".join(drivers[:3]) if drivers else "Standard technicals"
+    
+    def _score_session_data(self) -> tuple:
+        """Score session data (0-10 scale)."""
+        score = 5.0
+        drivers = []
+        
+        try:
+            sessions = self.flow_analysis.intraday_session_breakdown()
+            
+            # Total session delta
+            total_delta = sum(s.get('delta', 0) for s in sessions.values())
+            if total_delta > 0:
+                score += 1.5
+                drivers.append(f"Tot Δ+{total_delta:,.0f}")
+            elif total_delta < 0:
+                score -= 0.5
+                drivers.append(f"Tot Δ{total_delta:,.0f}")
+            
+            # Opening range analysis
+            or_data = self.flow_analysis.opening_range_analysis()
+            if or_data:
+                breakout = or_data.get('breakout', 'NO_BREAKOUT')
+                if breakout == 'BULLISH_BREAKOUT':
+                    score += 2.0
+                    drivers.append("OR Breakout↑")
+                elif breakout == 'BEARISH_BREAKDOWN':
+                    score += 1.0  # Still actionable
+                    drivers.append("OR Breakdown↓")
+                else:
+                    drivers.append("Inside OR")
+            
+            # Session trend consistency
+            consistent = True
+            if sessions:
+                deltas = [s.get('delta', 0) for s in sessions.values() if s.get('delta', 0) != 0]
+                if deltas and len(deltas) > 1:
+                    all_positive = all(d > 0 for d in deltas)
+                    all_negative = all(d < 0 for d in deltas)
+                    if all_positive or all_negative:
+                        score += 1.0
+                        drivers.append("Consistent")
+                        consistent = True
+                    else:
+                        drivers.append("Mixed")
+            
+        except Exception as e:
+            logger.error(f"Error scoring session data: {e}")
+        
+        return min(10, max(0, score)), ", ".join(drivers[:3]) if drivers else "Normal session"
+    
+    def _score_signal_data(self) -> tuple:
+        """Score trade signals data (0-10 scale)."""
+        score = 5.0
+        drivers = []
+        
+        try:
+            signals = self.flow_analysis.generate_trade_signals()
+            
+            if not signals:
+                return 4.0, "No active signals"
+            
+            top_signal = signals[0]
+            confidence = top_signal.get('confidence', 0)
+            rr = top_signal.get('risk_reward', 0)
+            signal_type = top_signal.get('signal_type', 'NONE')
+            pattern = top_signal.get('pattern', '')
+            
+            # Confidence score contribution
+            if confidence >= 75:
+                score += 2.5
+                drivers.append(f"Conf {confidence:.0f}%")
+            elif confidence >= 60:
+                score += 1.5
+                drivers.append(f"Conf {confidence:.0f}%")
+            elif confidence >= 45:
+                score += 0.5
+                drivers.append(f"Conf {confidence:.0f}%")
+            
+            # Risk/reward contribution
+            if rr >= 3:
+                score += 1.5
+                drivers.append(f"R:R {rr:.1f}")
+            elif rr >= 2:
+                score += 1.0
+                drivers.append(f"R:R {rr:.1f}")
+            elif rr >= 1.5:
+                score += 0.5
+            
+            # Signal clarity
+            if signal_type in ['BUY', 'SELL']:
+                score += 0.5
+                drivers.append(signal_type)
+            
+            # Pattern bonus
+            if pattern:
+                drivers.append(pattern[:15])
+            
+        except Exception as e:
+            logger.error(f"Error scoring signal data: {e}")
+        
+        return min(10, max(0, score)), ", ".join(drivers[:3]) if drivers else "Waiting for setup"
+    
+    def _build_narrative(self, synthesis: dict) -> str:
+        """Build AI narrative report text - uses Groq if available, falls back to rule-based."""
+        symbol = self.current_symbol or "N/A"
+        score = synthesis.get('synthesis_score', 0)
+        bias = synthesis.get('bias', 'NEUTRAL')
+        action = synthesis.get('action', 'HOLD')
+        confidence = synthesis.get('confidence', 0)
+        
+        # Try to use Groq AI for narrative
+        if self.insight_engine:
+            logger.info(f"Attempting Groq AI narrative generation for {symbol}")
+            try:
+                # Build comprehensive context for AI
+                context_data = {
+                    'symbol': symbol,
+                    'synthesis_score': score,
+                    'bias': bias,
+                    'action': action,
+                    'confidence': confidence,
+                    'score_drivers': synthesis.get('score_drivers', ''),
+                    'bias_drivers': synthesis.get('bias_drivers', ''),
+                    'action_drivers': synthesis.get('action_drivers', ''),
+                    'component_scores': synthesis.get('component_scores', {}),
+                }
+                
+                # ========== PRICE & VWAP DATA ==========
+                try:
+                    vwap = self.flow_analysis.vwap_analysis()
+                    if vwap:
+                        context_data['current_price'] = vwap.get('current_price', 0)
+                        context_data['vwap'] = vwap.get('vwap', 0)
+                        context_data['upper_band_1'] = vwap.get('upper_band_1', 0)
+                        context_data['lower_band_1'] = vwap.get('lower_band_1', 0)
+                        context_data['upper_band_2'] = vwap.get('upper_band_2', 0)
+                        context_data['lower_band_2'] = vwap.get('lower_band_2', 0)
+                        vwap_diff = ((context_data['current_price'] - context_data['vwap']) / context_data['vwap'] * 100) if context_data['vwap'] else 0
+                        context_data['vwap_diff_pct'] = vwap_diff
+                except:
+                    context_data.update({'current_price': 0, 'vwap': 0, 'vwap_diff_pct': 0})
+                
+                # ========== CUMULATIVE DELTA ==========
+                try:
+                    cum_delta = self.flow_analysis.cumulative_delta()
+                    if cum_delta and len(cum_delta) > 0:
+                        context_data['cumulative_delta'] = cum_delta[-1].get('cumulative_delta', 0)
+                        # Delta trend (last 5 bars)
+                        if len(cum_delta) >= 5:
+                            delta_5_bars_ago = cum_delta[-5].get('cumulative_delta', 0)
+                            context_data['delta_trend_5bar'] = context_data['cumulative_delta'] - delta_5_bars_ago
+                        else:
+                            context_data['delta_trend_5bar'] = 0
+                except:
+                    context_data.update({'cumulative_delta': 0, 'delta_trend_5bar': 0})
+                
+                # ========== DELTA MOMENTUM & ZSCORE ==========
+                try:
+                    momentum = self.flow_analysis.delta_momentum()
+                    if momentum:
+                        context_data['delta_momentum'] = momentum[-1].get('delta_momentum', 0)
+                except:
+                    context_data['delta_momentum'] = 0
+                
+                try:
+                    zscore = self.flow_analysis.delta_zscore()
+                    if zscore:
+                        context_data['delta_zscore'] = zscore[-1].get('zscore', 0)
+                except:
+                    context_data['delta_zscore'] = 0
+                
+                # ========== VOLUME PROFILE (POC, VAH, VAL) ==========
+                try:
+                    profile = self.flow_analysis.volume_profile()
+                    if profile:
+                        context_data['poc_price'] = profile.get('poc_price', 0)
+                        context_data['vah'] = profile.get('vah', 0)
+                        context_data['val'] = profile.get('val', 0)
+                        context_data['poc_volume'] = profile.get('poc_volume', 0)
+                        # Price position relative to value area
+                        price = context_data.get('current_price', 0)
+                        if price > context_data['vah']:
+                            context_data['price_vs_profile'] = "ABOVE VALUE AREA (potential resistance)"
+                        elif price < context_data['val']:
+                            context_data['price_vs_profile'] = "BELOW VALUE AREA (potential support)"
+                        else:
+                            context_data['price_vs_profile'] = "INSIDE VALUE AREA (consolidation)"
+                except:
+                    context_data.update({'poc_price': 0, 'vah': 0, 'val': 0, 'price_vs_profile': 'N/A'})
+                
+                # ========== BLOCK TRADES ==========
+                try:
+                    blocks = self.flow_analysis.block_trade_analysis()
+                    if blocks:
+                        context_data['total_blocks'] = blocks.get('total_blocks', 0)
+                        context_data['buy_blocks'] = blocks.get('buy_blocks', 0)
+                        context_data['sell_blocks'] = blocks.get('sell_blocks', 0)
+                        context_data['block_volume'] = blocks.get('total_block_volume', 0)
+                        context_data['block_imbalance'] = "BUY HEAVY" if blocks.get('buy_blocks', 0) > blocks.get('sell_blocks', 0) else "SELL HEAVY" if blocks.get('sell_blocks', 0) > blocks.get('buy_blocks', 0) else "BALANCED"
+                except:
+                    context_data.update({'total_blocks': 0, 'buy_blocks': 0, 'sell_blocks': 0, 'block_imbalance': 'N/A'})
+                
+                # ========== RVOL (RELATIVE VOLUME) ==========
+                try:
+                    rvol = self.flow_analysis.rvol_analysis()
+                    if rvol:
+                        context_data['rvol'] = rvol.get('rvol', 1)
+                        context_data['current_volume'] = rvol.get('current_volume', 0)
+                        context_data['avg_volume'] = rvol.get('average_volume', 0)
+                        if context_data['rvol'] >= 2:
+                            context_data['rvol_interpretation'] = "UNUSUALLY HIGH (institutional activity likely)"
+                        elif context_data['rvol'] >= 1.5:
+                            context_data['rvol_interpretation'] = "ELEVATED (increased interest)"
+                        elif context_data['rvol'] >= 0.8:
+                            context_data['rvol_interpretation'] = "NORMAL"
+                        else:
+                            context_data['rvol_interpretation'] = "LOW (lack of conviction)"
+                except:
+                    context_data.update({'rvol': 1, 'rvol_interpretation': 'N/A'})
+                
+                # ========== SESSION BREAKDOWN ==========
+                try:
+                    sessions = self.flow_analysis.intraday_session_breakdown()
+                    if sessions:
+                        session_details = []
+                        total_session_delta = 0
+                        for name, data in sessions.items():
+                            delta = data.get('delta', 0)
+                            total_session_delta += delta
+                            session_details.append(f"{name}: Δ{delta:+,.0f}, Vol:{data.get('volume', 0):,.0f}")
+                        context_data['session_breakdown'] = "; ".join(session_details)
+                        context_data['total_session_delta'] = total_session_delta
+                        context_data['session_bias'] = "ACCUMULATION" if total_session_delta > 0 else "DISTRIBUTION" if total_session_delta < 0 else "NEUTRAL"
+                except:
+                    context_data.update({'session_breakdown': 'N/A', 'total_session_delta': 0, 'session_bias': 'N/A'})
+                
+                # ========== DELTA DIVERGENCE ==========
+                try:
+                    divergence = self.flow_analysis.delta_divergence()
+                    if divergence:
+                        latest_div = divergence[-1] if divergence else {}
+                        context_data['divergence_type'] = latest_div.get('type', 'NONE')
+                        context_data['divergence_strength'] = latest_div.get('strength', 0)
+                except:
+                    context_data.update({'divergence_type': 'NONE', 'divergence_strength': 0})
+                
+                # ========== ALERTS ==========
+                try:
+                    alerts = self.flow_analysis.generate_alerts()
+                    if alerts:
+                        high_alerts = [a for a in alerts if a.get('severity') == 'HIGH']
+                        med_alerts = [a for a in alerts if a.get('severity') == 'MEDIUM']
+                        context_data['high_alerts'] = len(high_alerts)
+                        context_data['med_alerts'] = len(med_alerts)
+                        context_data['alert_summary'] = "; ".join([a.get('message', '')[:50] for a in alerts[:3]])
+                except:
+                    context_data.update({'high_alerts': 0, 'med_alerts': 0, 'alert_summary': 'None'})
+                
+                # ========== SIGNAL DETAILS ==========
+                signal = synthesis.get('signal_summary', {})
+                context_data['signal_type'] = signal.get('type', 'NONE')
+                context_data['signal_pattern'] = signal.get('pattern', '--')
+                context_data['entry'] = signal.get('entry', 0)
+                context_data['target'] = signal.get('target', 0)
+                context_data['stop'] = signal.get('stop', 0)
+                context_data['risk_reward'] = signal.get('risk_reward', 0)
+                context_data['signal_confluence'] = signal.get('confluence', 0)
+                
+                # Build comprehensive prompt
+                system_prompt = """You are an elite institutional order flow analyst for the Nigerian Stock Exchange (NGX).
+Provide a detailed, professional trading analysis based on comprehensive order flow data.
+Your analysis should be actionable, specific, and data-driven.
+Use precise price levels and quantified observations.
+Be direct and decisive in your recommendations.
+Target audience: Professional traders and portfolio managers."""
+
+                component_summary = "\n".join([
+                    f"  • {k.upper()}: {v.get('score', 0):.1f}/10 — {v.get('drivers', '-')}"
+                    for k, v in context_data['component_scores'].items()
+                ])
+
+                prompt = f"""Provide a comprehensive order flow analysis for {symbol} on the Nigerian Stock Exchange:
+
+══════════════════════════════════════════════════════════════════
+                    SYNTHESIS DASHBOARD
+══════════════════════════════════════════════════════════════════
+
+▸ OVERALL SCORE: {score:.0f}/100
+▸ MARKET BIAS: {bias}
+▸ CONFIDENCE: {confidence:.0f}%
+▸ ACTION: {action}
+▸ Score Drivers: {context_data.get('score_drivers', 'N/A')}
+▸ Bias Drivers: {context_data.get('bias_drivers', 'N/A')}
+
+──────────────────────────────────────────────────────────────────
+                    COMPONENT BREAKDOWN
+──────────────────────────────────────────────────────────────────
+{component_summary}
+
+──────────────────────────────────────────────────────────────────
+                    PRICE & VWAP ANALYSIS
+──────────────────────────────────────────────────────────────────
+▸ Current Price: ₦{context_data.get('current_price', 0):,.2f}
+▸ VWAP: ₦{context_data.get('vwap', 0):,.2f} ({context_data.get('vwap_diff_pct', 0):+.2f}% from VWAP)
+▸ Upper Band +1σ: ₦{context_data.get('upper_band_1', 0):,.2f}
+▸ Lower Band -1σ: ₦{context_data.get('lower_band_1', 0):,.2f}
+
+──────────────────────────────────────────────────────────────────
+                    VOLUME PROFILE
+──────────────────────────────────────────────────────────────────
+▸ POC (Point of Control): ₦{context_data.get('poc_price', 0):,.2f}
+▸ Value Area High (VAH): ₦{context_data.get('vah', 0):,.2f}
+▸ Value Area Low (VAL): ₦{context_data.get('val', 0):,.2f}
+▸ Price Position: {context_data.get('price_vs_profile', 'N/A')}
+
+──────────────────────────────────────────────────────────────────
+                    DELTA ANALYSIS
+──────────────────────────────────────────────────────────────────
+▸ Cumulative Delta: {context_data.get('cumulative_delta', 0):+,.0f}
+▸ Delta Trend (5 bars): {context_data.get('delta_trend_5bar', 0):+,.0f}
+▸ Delta Momentum: {context_data.get('delta_momentum', 0):+,.0f}
+▸ Delta Z-Score: {context_data.get('delta_zscore', 0):+.2f}σ
+▸ Divergence: {context_data.get('divergence_type', 'NONE')} (Strength: {context_data.get('divergence_strength', 0):.0f}%)
+
+──────────────────────────────────────────────────────────────────
+                    INSTITUTIONAL FLOW
+──────────────────────────────────────────────────────────────────
+▸ Block Trades: {context_data.get('total_blocks', 0)} total ({context_data.get('buy_blocks', 0)} buys, {context_data.get('sell_blocks', 0)} sells)
+▸ Block Imbalance: {context_data.get('block_imbalance', 'N/A')}
+▸ Relative Volume (RVOL): {context_data.get('rvol', 1):.2f}x ({context_data.get('rvol_interpretation', 'N/A')})
+
+──────────────────────────────────────────────────────────────────
+                    SESSION ANALYSIS
+──────────────────────────────────────────────────────────────────
+▸ Session Breakdown: {context_data.get('session_breakdown', 'N/A')}
+▸ Total Session Delta: {context_data.get('total_session_delta', 0):+,.0f}
+▸ Session Bias: {context_data.get('session_bias', 'N/A')}
+
+──────────────────────────────────────────────────────────────────
+                    ALERTS
+──────────────────────────────────────────────────────────────────
+▸ HIGH Priority: {context_data.get('high_alerts', 0)} | MEDIUM Priority: {context_data.get('med_alerts', 0)}
+▸ Summary: {context_data.get('alert_summary', 'None')}
+
+──────────────────────────────────────────────────────────────────
+                    TRADE SIGNAL
+──────────────────────────────────────────────────────────────────
+▸ Signal: {context_data.get('signal_type', 'NONE')} ({context_data.get('signal_pattern', '--')})
+▸ Entry: ₦{context_data.get('entry', 0):,.2f}
+▸ Target: ₦{context_data.get('target', 0):,.2f}
+▸ Stop Loss: ₦{context_data.get('stop', 0):,.2f}
+▸ Risk/Reward: {context_data.get('risk_reward', 0):.2f}
+▸ Signal Confluence: {context_data.get('signal_confluence', 0):.0f}%
+
+══════════════════════════════════════════════════════════════════
+
+Based on all the above data, provide a DETAILED professional analysis including:
+
+1. **MARKET STRUCTURE ASSESSMENT** (3-4 sentences)
+   - Overall market condition and where price sits in the value area
+   - Quality of the current price action
+
+2. **ORDER FLOW INTERPRETATION**
+   - What the delta readings tell us about buyer/seller aggression
+   - Block trade implications for institutional positioning
+   - Session flow patterns and their meaning
+
+3. **KEY LEVELS TO WATCH**
+   - Exact support levels (POC, VAL, VWAP bands)
+   - Exact resistance levels (VAH, upper bands)
+   - Where stop clusters likely reside
+
+4. **TRADE RECOMMENDATION**
+   - If signal present: detailed entry strategy with specific prices
+   - Position sizing suggestion based on risk/reward
+   - Time horizon expectation
+
+5. **RISK FACTORS**
+   - What could invalidate this thesis
+   - Key levels that must hold
+   - Volume/flow conditions to monitor
+
+6. **CONFIDENCE ASSESSMENT**
+   - How aligned are all the flow indicators?
+   - Any conflicting signals?
+   - Probability estimate for the trade"""
+
+                ai_response = self.insight_engine.generate(prompt, system_prompt)
+                logger.info(f"Groq AI response received: {len(ai_response) if ai_response else 0} chars")
+                if ai_response:
+                    logger.info(f"Response preview: {ai_response[:100]}...")
+                if ai_response and "unavailable" not in ai_response.lower():
+                    lines = []
+                    lines.append(f"═══════════════════════════════════════════════════════")
+                    lines.append(f"  🤖 AI SYNTHESIS REPORT: {symbol}")
+                    lines.append(f"═══════════════════════════════════════════════════════")
+                    lines.append(f"  Score: {score:.0f}/100 | Bias: {bias} | Action: {action}")
+                    lines.append(f"═══════════════════════════════════════════════════════")
+                    lines.append("")
+                    lines.append(ai_response)
+                    lines.append("")
+                    lines.append(f"─────────────────────────────────────────────────────────")
+                    lines.append(f"  Generated via Groq AI: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+                    lines.append(f"─────────────────────────────────────────────────────────")
+                    return "\n".join(lines)
+                    
+            except Exception as e:
+                logger.error(f"Groq AI generation failed, falling back to rule-based: {e}")
+                import traceback
+                traceback.print_exc()
+        else:
+            logger.info("No insight_engine available, using rule-based narrative")
+        
+        # Fallback to rule-based narrative
+        lines = []
+        
+        lines.append(f"═══════════════════════════════════════════════════════")
+        lines.append(f"  AI SYNTHESIS REPORT: {symbol}")
+        lines.append(f"═══════════════════════════════════════════════════════")
+        lines.append("")
+        
+        # Summary
+        lines.append(f"▶ OVERALL ASSESSMENT: {action}")
+        lines.append(f"  Synthesis Score: {score:.0f}/100 | Bias: {bias} | Confidence: {confidence:.0f}%")
+        lines.append("")
+        
+        # Component breakdown
+        lines.append("▶ COMPONENT ANALYSIS:")
+        for key, data in synthesis.get('component_scores', {}).items():
+            score_val = data.get('score', 0)
+            drivers = data.get('drivers', '--')
+            bar = "█" * int(score_val) + "░" * (10 - int(score_val))
+            lines.append(f"  {key.title():12} [{bar}] {score_val:.1f}/10 - {drivers}")
+        lines.append("")
+        
+        # Market context
+        lines.append("▶ MARKET CONTEXT:")
+        
+        # Delta analysis
+        try:
+            cum_delta = self.flow_analysis.cumulative_delta()
+            if cum_delta:
+                latest_delta = cum_delta[-1].get('cumulative_delta', 0)
+                lines.append(f"  • Cumulative Delta: {latest_delta:+,.0f} ({'Accumulation' if latest_delta > 0 else 'Distribution'})")
+        except:
+            pass
+        
+        # VWAP position
+        try:
+            vwap = self.flow_analysis.vwap_analysis()
+            if vwap:
+                current = vwap.get('current_price', 0)
+                vwap_val = vwap.get('vwap', 0)
+                diff_pct = ((current - vwap_val) / vwap_val * 100) if vwap_val else 0
+                lines.append(f"  • VWAP Position: ₦{current:,.2f} vs ₦{vwap_val:,.2f} ({diff_pct:+.2f}%)")
+        except:
+            pass
+        
+        # Session summary
+        try:
+            sessions = self.flow_analysis.intraday_session_breakdown()
+            total_delta = sum(s.get('delta', 0) for s in sessions.values())
+            lines.append(f"  • Session Delta: {total_delta:+,.0f}")
+        except:
+            pass
+        
+        lines.append("")
+        
+        # Recommendation
+        lines.append("▶ RECOMMENDATION:")
+        if action == 'BUY':
+            lines.append("  ✅ BULLISH OPPORTUNITY - Consider accumulating on dips")
+            lines.append(f"     Drivers: {synthesis.get('action_drivers', '-')}")
+        elif action == 'SELL':
+            lines.append("  ⚠️ BEARISH SETUP - Consider reducing exposure")
+            lines.append(f"     Drivers: {synthesis.get('action_drivers', '-')}")
+        else:
+            lines.append("  ⏸️ HOLD/WAIT - No clear edge currently")
+            lines.append(f"     Reason: {synthesis.get('action_drivers', '-')}")
+        
+        lines.append("")
+        lines.append(f"─────────────────────────────────────────────────────────")
+        lines.append(f"  Generated (Rule-based): {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        lines.append(f"  💡 Set GROQ_API_KEY for AI-powered insights")
+        lines.append(f"─────────────────────────────────────────────────────────")
+        
+        return "\n".join(lines)
+    
+    def _generate_key_insights(self, synthesis: dict) -> list:
+        """Generate key insight cards from synthesis data."""
+        insights = []
+        
+        try:
+            # Check delta divergence
+            divergences = self.flow_analysis.delta_divergence()
+            if divergences:
+                latest = divergences[-1] if divergences else {}
+                div_type = latest.get('divergence_type', '')
+                if 'ACCUM' in div_type:
+                    insights.append({
+                        'icon': '🟢',
+                        'title': 'ACCUMULATION',
+                        'detail': 'Bullish delta divergence',
+                        'color': COLORS['gain']
+                    })
+                elif 'DIST' in div_type:
+                    insights.append({
+                        'icon': '🔴',
+                        'title': 'DISTRIBUTION',
+                        'detail': 'Bearish delta divergence',
+                        'color': COLORS['loss']
+                    })
+            
+            # Check opening range
+            or_data = self.flow_analysis.opening_range_analysis()
+            if or_data:
+                breakout = or_data.get('breakout', 'NO_BREAKOUT')
+                if breakout == 'BULLISH_BREAKOUT':
+                    insights.append({
+                        'icon': '📈',
+                        'title': 'OR BREAKOUT',
+                        'detail': f"Above ₦{or_data.get('or_high', 0):,.2f}",
+                        'color': COLORS['gain']
+                    })
+                elif breakout == 'BEARISH_BREAKDOWN':
+                    insights.append({
+                        'icon': '📉',
+                        'title': 'OR BREAKDOWN',
+                        'detail': f"Below ₦{or_data.get('or_low', 0):,.2f}",
+                        'color': COLORS['loss']
+                    })
+            
+            # Check RVOL spikes
+            rvol = self.flow_analysis.rvol_analysis()
+            if rvol and rvol.get('rvol', 1) >= 2:
+                insights.append({
+                    'icon': '📊',
+                    'title': 'HIGH VOLUME',
+                    'detail': f"RVOL {rvol['rvol']:.1f}x average",
+                    'color': COLORS['warning']
+                })
+            
+            # Check blocks
+            blocks = self.flow_analysis.block_trade_analysis()
+            if blocks and blocks.get('total_blocks', 0) >= 3:
+                insights.append({
+                    'icon': '🏛️',
+                    'title': 'INSTITUTIONAL',
+                    'detail': f"{blocks['total_blocks']} block trades",
+                    'color': COLORS['primary']
+                })
+            
+            # Add synthesis-based insight
+            if synthesis.get('synthesis_score', 0) >= 75:
+                insights.append({
+                    'icon': '⭐',
+                    'title': 'STRONG SETUP',
+                    'detail': f"Score {synthesis['synthesis_score']:.0f}/100",
+                    'color': COLORS['gain']
+                })
+            elif synthesis.get('synthesis_score', 0) <= 30:
+                insights.append({
+                    'icon': '⚠️',
+                    'title': 'WEAK SETUP',
+                    'detail': f"Score {synthesis['synthesis_score']:.0f}/100",
+                    'color': COLORS['loss']
+                })
+            
+        except Exception as e:
+            logger.error(f"Error generating insights: {e}")
+        
+        return insights[:4]  # Max 4 insights
     
     def _update_fundamentals_tab(self):
         """Update the Fundamentals tab with data from TradingView screener."""

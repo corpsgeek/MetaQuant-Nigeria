@@ -58,10 +58,14 @@ class InsightEngine:
         self.groq_model = groq_model or self.GROQ_MODEL
         self.groq_client = None
         
+        logger.info(f"InsightEngine init: GROQ_AVAILABLE={GROQ_AVAILABLE}, api_key_present={bool(groq_api_key)}")
+        if groq_api_key and groq_api_key.strip():
+            logger.info(f"Groq API key length: {len(groq_api_key)}")
+        
         if groq_api_key and GROQ_AVAILABLE:
             try:
                 self.groq_client = Groq(api_key=groq_api_key)
-                logger.info("Groq client initialized")
+                logger.info("Groq client initialized successfully")
             except Exception as e:
                 logger.warning(f"Failed to initialize Groq client: {e}")
         
@@ -104,9 +108,11 @@ class InsightEngine:
     def _generate_groq(self, prompt: str, system_prompt: str = "") -> Optional[str]:
         """Generate response using Groq."""
         if not self.groq_client:
+            logger.warning("Groq client is None - API key may not be set correctly")
             return None
         
         try:
+            logger.info(f"Calling Groq API with model: {self.groq_model}")
             messages = []
             if system_prompt:
                 messages.append({"role": "system", "content": system_prompt})
@@ -116,11 +122,14 @@ class InsightEngine:
                 model=self.groq_model,
                 messages=messages,
                 temperature=0.7,
-                max_tokens=1024
+                max_tokens=2048
             )
+            logger.info("Groq API call successful")
             return response.choices[0].message.content
         except Exception as e:
             logger.error(f"Groq generation failed: {e}")
+            import traceback
+            traceback.print_exc()
             return None
     
     def generate(self, prompt: str, system_prompt: str = "") -> str:
