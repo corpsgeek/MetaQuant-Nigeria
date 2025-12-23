@@ -1,20 +1,17 @@
 """GUI tabs for MetaQuant Nigeria."""
 
 from .screener_tab import ScreenerTab
-from .portfolio_tab import PortfolioTab
-from .watchlist_tab import WatchlistTab
-from .insights_tab import InsightsTab
 from .universe_tab import UniverseTab
-from .flow_tab import FlowTab
 from .history_tab import HistoryTab
+from .flow_tape_tab import FlowTapeTab
+from .fundamentals_tab import FundamentalsTab
+from .market_intelligence_tab import MarketIntelligenceTab
 
 __all__ = [
     'ScreenerTab',
-    'PortfolioTab',
-    'WatchlistTab',
-    'InsightsTab',
     'UniverseTab',
-    'FlowTab',
-    'HistoryTab'
+    'HistoryTab',
+    'FlowTapeTab',
+    'FundamentalsTab',
+    'MarketIntelligenceTab'
 ]
-
