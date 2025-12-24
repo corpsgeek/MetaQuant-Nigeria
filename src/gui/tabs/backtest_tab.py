@@ -241,12 +241,13 @@ class BacktestTab:
         log_frame = ttk.LabelFrame(results_frame, text="📋 Trade Log")
         log_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
         
-        columns = ('Symbol', 'Entry', 'Exit', 'P&L', 'Return', 'Days', 'Signal')
+        columns = ('Symbol', 'Size (₦)', '% Port', 'Entry', 'Exit', 'P&L', 'Return', 'Days')
         self.trade_tree = ttk.Treeview(log_frame, columns=columns, show='headings', height=10)
         
+        col_widths = {'Symbol': 70, 'Size (₦)': 90, '% Port': 50, 'Entry': 80, 'Exit': 80, 'P&L': 80, 'Return': 60, 'Days': 40}
         for col in columns:
             self.trade_tree.heading(col, text=col)
-            self.trade_tree.column(col, width=80)
+            self.trade_tree.column(col, width=col_widths.get(col, 70))
         
         scrollbar = ttk.Scrollbar(log_frame, orient=tk.VERTICAL, command=self.trade_tree.yview)
         self.trade_tree.configure(yscrollcommand=scrollbar.set)
@@ -471,14 +472,21 @@ class BacktestTab:
             ret_pct = t.get('return_pct', 0)
             tag = 'profit' if pnl > 0 else 'loss'
             
+            # Calculate position size
+            qty = t.get('quantity', 0)
+            entry_price = t.get('entry_price', 0)
+            position_value = qty * entry_price
+            pct_port = (position_value / self.backtest_results.get('settings', {}).get('initial_capital', 1)) * 100
+            
             self.trade_tree.insert('', 'end', values=(
                 t.get('symbol', ''),
+                f"₦{position_value:,.0f}",
+                f"{pct_port:.1f}%",
                 t.get('entry_date', '')[:10],
                 t.get('exit_date', '')[:10],
                 f"₦{pnl:,.0f}",
                 f"{ret_pct:+.1f}%",
-                t.get('holding_days', 0),
-                t.get('entry_signal', '')
+                t.get('holding_days', 0)
             ), tags=(tag,))
         
         self.bt_status.config(text=f"✅ Complete: {m.get('total_trades', 0)} trades", 
