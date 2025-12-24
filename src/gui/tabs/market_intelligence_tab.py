@@ -2675,6 +2675,24 @@ class MarketIntelligenceTab:
                 sorted_by_vol = sorted(stocks, key=lambda x: x.get('volume', 0) or 0, reverse=True)
                 synthesis['most_active'] = sorted_by_vol[:5]
                 
+                # Total volume
+                total_vol = sum(s.get('volume', 0) or 0 for s in stocks)
+                synthesis['total_volume'] = total_vol
+                
+                # Average volume (estimate from current data)
+                avg_vol = total_vol / len(stocks) if stocks else 0
+                synthesis['avg_volume'] = avg_vol
+                
+                # Volatility estimate (based on change variance)
+                changes = [abs(s.get('change', 0) or 0) for s in stocks]
+                avg_change = sum(changes) / len(changes) if changes else 0
+                if avg_change > 5:
+                    synthesis['volatility'] = 'HIGH'
+                elif avg_change > 2:
+                    synthesis['volatility'] = 'MODERATE'
+                else:
+                    synthesis['volatility'] = 'LOW'
+                
                 # Calculate health from breadth
                 if synthesis['total_stocks'] > 0:
                     breadth_pct = synthesis['advancers'] / synthesis['total_stocks'] * 100
