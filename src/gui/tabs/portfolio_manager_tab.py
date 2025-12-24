@@ -170,11 +170,12 @@ class PortfolioManagerTab:
         holdings_frame = ttk.LabelFrame(right_frame, text="📋 Current Holdings")
         holdings_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
-        columns = ('Symbol', 'Shares', 'Value', 'P&L', 'Return %')
+        columns = ('Symbol', 'Shares', 'Entry ₦', 'Current ₦', 'Value', 'P&L', 'Return %')
         self.holdings_tree = ttk.Treeview(holdings_frame, columns=columns, show='headings', height=10)
+        col_widths = {'Symbol': 60, 'Shares': 50, 'Entry ₦': 70, 'Current ₦': 70, 'Value': 80, 'P&L': 75, 'Return %': 60}
         for col in columns:
             self.holdings_tree.heading(col, text=col)
-            self.holdings_tree.column(col, width=80)
+            self.holdings_tree.column(col, width=col_widths.get(col, 65))
         
         holdings_scroll = ttk.Scrollbar(holdings_frame, orient=tk.VERTICAL, command=self.holdings_tree.yview)
         self.holdings_tree.configure(yscrollcommand=holdings_scroll.set)
@@ -189,11 +190,12 @@ class PortfolioManagerTab:
         trades_frame = ttk.LabelFrame(right_frame, text="📜 Recent Trades")
         trades_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
-        columns = ('Date', 'Action', 'Symbol', 'Shares', 'Price', 'P&L')
+        columns = ('Date', 'Action', 'Symbol', 'Shares', 'Entry ₦', 'Exit ₦', 'P&L')
         self.trades_tree = ttk.Treeview(trades_frame, columns=columns, show='headings', height=8)
+        col_widths = {'Date': 75, 'Action': 45, 'Symbol': 60, 'Shares': 50, 'Entry ₦': 70, 'Exit ₦': 70, 'P&L': 75}
         for col in columns:
             self.trades_tree.heading(col, text=col)
-            self.trades_tree.column(col, width=70)
+            self.trades_tree.column(col, width=col_widths.get(col, 65))
         
         trades_scroll = ttk.Scrollbar(trades_frame, orient=tk.VERTICAL, command=self.trades_tree.yview)
         self.trades_tree.configure(yscrollcommand=trades_scroll.set)
@@ -334,6 +336,8 @@ class PortfolioManagerTab:
             self.holdings_tree.insert('', 'end', values=(
                 h['symbol'],
                 h['shares'],
+                f"₦{h['entry_price']:,.2f}",
+                f"₦{h['current_price']:,.2f}",
                 f"₦{h['value']:,.0f}",
                 f"₦{h['pnl']:,.0f}",
                 f"{h['return_pct']:+.1f}%"
@@ -345,12 +349,15 @@ class PortfolioManagerTab:
         
         for t in self.manager.trades[-20:]:
             tag = t['action']
+            entry_p = t.get('entry_price', t.get('price', 0))
+            exit_p = t.get('exit_price', t.get('price', 0))
             self.trades_tree.insert('', 0, values=(
                 t['date'].strftime('%Y-%m-%d'),
                 t['action'],
                 t['symbol'],
                 t.get('shares', 0),
-                f"₦{t.get('price', 0):,.0f}",
+                f"₦{entry_p:,.2f}",
+                f"₦{exit_p:,.2f}",
                 f"₦{t.get('pnl', 0):,.0f}" if 'pnl' in t else '-'
             ), tags=(tag,))
     
