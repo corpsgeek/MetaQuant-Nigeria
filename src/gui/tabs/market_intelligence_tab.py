@@ -2877,6 +2877,11 @@ class MarketIntelligenceTab:
         try:
             synthesis = self._generate_market_synthesis()
             
+            # ========== UPDATE HEADER ==========
+            if hasattr(self, 'synth_market_label'):
+                total_stocks = synthesis.get('total_stocks', 0)
+                self.synth_market_label.config(text=f"NGX | {total_stocks} Stocks")
+            
             # ========== UPDATE OVERVIEW CARDS ==========
             # Health
             health = synthesis.get('market_health', 50)
@@ -2899,13 +2904,10 @@ class MarketIntelligenceTab:
             regime = synthesis.get('market_regime', 'NEUTRAL')
             self.synthesis_overview['regime_value'].config(text=regime)
             if 'RISK-ON' in regime or 'BULL' in regime:
-                self.synthesis_overview['regime_icon'].config(text="🟢")
                 self.synthesis_overview['regime_value'].config(foreground=COLORS['gain'])
             elif 'RISK-OFF' in regime or 'BEAR' in regime:
-                self.synthesis_overview['regime_icon'].config(text="🔴")
                 self.synthesis_overview['regime_value'].config(foreground=COLORS['loss'])
             else:
-                self.synthesis_overview['regime_icon'].config(text="🟡")
                 self.synthesis_overview['regime_value'].config(foreground=COLORS['warning'])
             
             self.synthesis_overview['regime_driver'].config(
@@ -2917,31 +2919,82 @@ class MarketIntelligenceTab:
             dec = synthesis.get('decliners', 0)
             ratio = synthesis.get('adv_dec_ratio', 1)
             self.synthesis_overview['breadth_value'].config(text=f"{ratio:.2f}")
-            self.synthesis_overview['breadth_detail'].config(text=f"↑{adv} ↓{dec}")
             
             breadth_color = COLORS['gain'] if ratio > 1 else COLORS['loss'] if ratio < 1 else COLORS['text_primary']
             self.synthesis_overview['breadth_value'].config(foreground=breadth_color)
             
             self.synthesis_overview['breadth_driver'].config(
-                text=f"Total: {synthesis.get('total_stocks', 0)}"
+                text=f"↑{adv} ↓{dec}"
             )
             
             # Trend
             trend = synthesis.get('trend', 'SIDEWAYS')
             self.synthesis_overview['trend_value'].config(text=trend)
             if 'UP' in trend:
-                self.synthesis_overview['trend_icon'].config(text="📈")
                 self.synthesis_overview['trend_value'].config(foreground=COLORS['gain'])
             elif 'DOWN' in trend:
-                self.synthesis_overview['trend_icon'].config(text="📉")
                 self.synthesis_overview['trend_value'].config(foreground=COLORS['loss'])
             else:
-                self.synthesis_overview['trend_icon'].config(text="➡️")
                 self.synthesis_overview['trend_value'].config(foreground=COLORS['warning'])
             
             self.synthesis_overview['trend_driver'].config(
                 text=f"Conf: {synthesis.get('confidence', 50):.0f}%"
             )
+            
+            # Volatility (new)
+            if 'volatility_value' in self.synthesis_overview:
+                vol = synthesis.get('volatility', 'MODERATE')
+                self.synthesis_overview['volatility_value'].config(text=vol)
+                if 'HIGH' in vol:
+                    self.synthesis_overview['volatility_value'].config(foreground=COLORS['loss'])
+                elif 'LOW' in vol:
+                    self.synthesis_overview['volatility_value'].config(foreground=COLORS['gain'])
+                else:
+                    self.synthesis_overview['volatility_value'].config(foreground=COLORS['warning'])
+                self.synthesis_overview['volatility_driver'].config(text="--")
+            
+            # ========== UPDATE BREADTH ANALYTICS ==========
+            if hasattr(self, 'synth_breadth'):
+                adv = synthesis.get('advancers', 0)
+                dec = synthesis.get('decliners', 0)
+                unch = synthesis.get('unchanged', 0)
+                ratio = synthesis.get('adv_dec_ratio', 1)
+                
+                self.synth_breadth['gainers'].config(text=str(adv), foreground=COLORS['gain'])
+                self.synth_breadth['losers'].config(text=str(dec), foreground=COLORS['loss'])
+                self.synth_breadth['unchanged'].config(text=str(unch))
+                
+                ad_color = COLORS['gain'] if ratio > 1 else COLORS['loss'] if ratio < 1 else COLORS['warning']
+                self.synth_breadth['adv_dec'].config(text=f"{ratio:.2f}", foreground=ad_color)
+                
+                # New highs/lows (estimate from top performers)
+                self.synth_breadth['new_highs'].config(text="--")
+                self.synth_breadth['new_lows'].config(text="--")
+            
+            # ========== UPDATE VOLUME ANALYSIS ==========
+            if hasattr(self, 'synth_volume'):
+                total_vol = synthesis.get('total_volume', 0)
+                inflows = synthesis.get('inflow_count', 0)
+                outflows = synthesis.get('outflow_count', 0)
+                
+                # Format volume
+                if total_vol >= 1_000_000_000:
+                    vol_text = f"{total_vol / 1_000_000_000:.2f}B"
+                elif total_vol >= 1_000_000:
+                    vol_text = f"{total_vol / 1_000_000:.1f}M"
+                elif total_vol >= 1000:
+                    vol_text = f"{total_vol / 1000:.0f}K"
+                else:
+                    vol_text = str(int(total_vol))
+                
+                self.synth_volume['total'].config(text=vol_text)
+                self.synth_volume['avg'].config(text="--")  # Would need history
+                self.synth_volume['buy_vol'].config(text=str(inflows), foreground=COLORS['gain'])
+                self.synth_volume['sell_vol'].config(text=str(outflows), foreground=COLORS['loss'])
+                
+                ratio = inflows / max(outflows, 1)
+                ratio_color = COLORS['gain'] if ratio > 1 else COLORS['loss'] if ratio < 1 else COLORS['warning']
+                self.synth_volume['ratio'].config(text=f"{ratio:.2f}", foreground=ratio_color)
             
             # ========== UPDATE SECTOR INTELLIGENCE ==========
             leading = synthesis.get('leading_sectors', [])
