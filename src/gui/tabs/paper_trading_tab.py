@@ -164,8 +164,9 @@ class PaperTradingTab:
         ttk.Button(btn_frame, text="▶️ Execute Trades",
                   command=self._execute_trades).pack(side=tk.LEFT, padx=2)
         
-        ttk.Button(btn_frame, text="🔧 Optimize Strategies",
-                  command=self._optimize_strategies).pack(side=tk.LEFT, padx=2)
+        # Load Data button - loads price data for signal generation
+        ttk.Button(btn_frame, text="📥 Load Data",
+                  command=self._load_price_data_and_update).pack(side=tk.LEFT, padx=2)
         
         ttk.Button(btn_frame, text="➕ New Book",
                   command=self._create_new_book).pack(side=tk.LEFT, padx=2)
@@ -450,18 +451,30 @@ class PaperTradingTab:
             messagebox.showerror("Error", "Signal generator not initialized")
             return
         
-        self.status_label.config(text="Generating signals...", foreground=COLORS['warning'])
-        self.parent.update()
+        self.status_label.config(text="Loading price data...", foreground=COLORS['warning'])
+        self.frame.update()
         
         try:
-            # Get price data
-            if self.price_provider:
-                self._price_data = self.price_provider() or {}
+            # Load price data from database if not already loaded
+            if not self._price_data:
+                self._load_price_data()
+            
+            if not self._price_data:
+                messagebox.showwarning("Warning", "No price data available in database")
+                return
+            
+            self.status_label.config(text=f"Generating signals for {len(self._price_data)} stocks...")
+            self.frame.update()
             
             # Generate signals
+            current_prices = {}
+            for s, df in self._price_data.items():
+                if not df.empty:
+                    current_prices[s] = float(df['close'].iloc[-1])
+            
             signals = self._signal_generator.generate_signals(
                 self._price_data,
-                current_prices={s: df['close'].iloc[-1] for s, df in self._price_data.items() if not df.empty}
+                current_prices=current_prices
             )
             
             self._current_signals = signals
@@ -478,6 +491,58 @@ class PaperTradingTab:
         except Exception as e:
             logger.error(f"Signal generation failed: {e}")
             self.status_label.config(text=f"Error: {e}", foreground=COLORS['loss'])
+    
+    def _load_price_data(self):
+        """Load price data from database."""
+        import pandas as pd
+        
+        try:
+            # Get all stocks with price data
+            stocks = self.db.conn.execute("""
+                SELECT DISTINCT s.symbol, s.id 
+                FROM stocks s 
+                JOIN daily_prices dp ON s.id = dp.stock_id
+            """).fetchall()
+            
+            self._price_data = {}
+            
+            for symbol, stock_id in stocks:
+                # Get daily prices
+                prices = self.db.conn.execute("""
+                    SELECT date, open, high, low, close, volume
+                    FROM daily_prices
+                    WHERE stock_id = ?
+                    ORDER BY date
+                """, [stock_id]).fetchall()
+                
+                if prices:
+                    df = pd.DataFrame(prices, columns=['date', 'open', 'high', 'low', 'close', 'volume'])
+                    df['date'] = pd.to_datetime(df['date'])
+                    df.set_index('date', inplace=True)
+                    self._price_data[symbol] = df
+            
+            logger.info(f"Loaded price data for {len(self._price_data)} stocks")
+            
+        except Exception as e:
+            logger.error(f"Failed to load price data: {e}")
+    
+    def _load_price_data_and_update(self):
+        """Load price data button handler."""
+        self.status_label.config(text="Loading price data from database...", foreground=COLORS['warning'])
+        self.frame.update()
+        
+        self._load_price_data()
+        
+        if self._price_data:
+            self.status_label.config(
+                text=f"Loaded data for {len(self._price_data)} stocks. Ready to generate signals.",
+                foreground=COLORS['gain']
+            )
+        else:
+            self.status_label.config(
+                text="No price data found. Run backtest first to populate data.",
+                foreground=COLORS['loss']
+            )
     
     def _execute_trades(self):
         """Execute trades based on current signals."""
