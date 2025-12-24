@@ -15,13 +15,8 @@ import logging
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 
-# Try imports
-try:
-    from ..theme import COLORS, apply_theme
-except:
-    COLORS = {'bg': '#1a1a2e', 'fg': '#e0e0e0', 'gain': '#00d26a', 'loss': '#ff5252',
-              'warning': '#ffc107', 'card_bg': '#252540', 'accent': '#00adb5'}
-    apply_theme = lambda x: x
+# Import theme
+from ..theme import COLORS
 
 logger = logging.getLogger(__name__)
 
