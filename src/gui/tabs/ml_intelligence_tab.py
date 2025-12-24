@@ -1291,7 +1291,7 @@ class MLIntelligenceTab:
         if not self.ml_engine:
             return
         
-        self.anomaly_status.config(text="Scanning for anomalies...")
+        self.anomaly_status.config(text="🔄 Starting anomaly scan...")
         
         def scan():
             try:
@@ -1302,10 +1302,17 @@ class MLIntelligenceTab:
                 counts = {'volume_spike': 0, 'price_jump': 0, 'accumulation': 0, 'distribution': 0}
                 
                 # Scan top 30 stocks
-                for stock in self.all_stocks_data[:30]:
+                stocks_to_scan = self.all_stocks_data[:30]
+                total = len(stocks_to_scan)
+                
+                for i, stock in enumerate(stocks_to_scan):
                     symbol = stock.get('symbol', '')
                     if not symbol:
                         continue
+                    
+                    # Update progress in GUI
+                    self.frame.after(0, lambda s=symbol, i=i, t=total: self.anomaly_status.config(
+                        text=f"🔍 Scanning {s} ({i+1}/{t})..."))
                     
                     try:
                         records = collector.fetch_history(symbol, interval='1d', n_bars=50)
@@ -1329,7 +1336,7 @@ class MLIntelligenceTab:
             except Exception as ex:
                 error_msg = str(ex)
                 logger.error(f"Anomaly scan error: {error_msg}")
-                self.frame.after(0, lambda msg=error_msg: self.anomaly_status.config(text=f"Error: {msg}"))
+                self.frame.after(0, lambda msg=error_msg: self.anomaly_status.config(text=f"❌ Error: {msg}"))
         
         threading.Thread(target=scan, daemon=True).start()
     
@@ -1416,14 +1423,16 @@ class MLIntelligenceTab:
         if not self.ml_engine or not self.all_stocks_data:
             return
         
-        self.cluster_status.config(text="Clustering stocks...")
+        self.cluster_status.config(text="🔄 Clustering stocks... please wait")
         
         def cluster():
+            self.frame.after(0, lambda: self.cluster_status.config(
+                text=f"🔄 Clustering {len(self.all_stocks_data)} stocks..."))
             result = self.ml_engine.cluster_stocks(self.all_stocks_data)
             if result.get('success'):
                 self.frame.after(0, self._update_cluster_display)
             else:
-                self.frame.after(0, lambda: self.cluster_status.config(text=f"Error: {result.get('error')}"))
+                self.frame.after(0, lambda: self.cluster_status.config(text=f"❌ Error: {result.get('error')}"))
         
         threading.Thread(target=cluster, daemon=True).start()
     
