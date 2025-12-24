@@ -290,6 +290,16 @@ class BacktestEngine:
             self.initial_capital
         )
         
+        # OVERRIDE metrics with correct return calculated from actual capital
+        # After closing all positions, self.capital = final cash value
+        final_equity = self.capital  # All positions closed, this is the correct final value
+        actual_return = final_equity - self.initial_capital
+        actual_return_pct = (actual_return / self.initial_capital) * 100
+        
+        metrics['total_return'] = round(actual_return, 2)
+        metrics['total_return_pct'] = round(actual_return_pct, 2)
+        metrics['final_equity'] = round(final_equity, 2)
+        
         self.results = {
             'success': True,
             'symbols': symbols,
