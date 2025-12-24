@@ -23,6 +23,15 @@ from src.collectors.tradingview_collector import TradingViewCollector
 from src.analysis.sector_analysis import SectorAnalysis
 from src.gui.theme import COLORS, get_font
 
+import os
+
+# Try to import AI Insight Engine
+try:
+    from src.ai.insight_engine import InsightEngine
+    INSIGHT_ENGINE_AVAILABLE = True
+except ImportError:
+    INSIGHT_ENGINE_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
 
 
@@ -41,6 +50,19 @@ class MarketIntelligenceTab:
         self.sector_analysis = SectorAnalysis(db)
         self.all_stocks_data = []
         self._update_queue = queue.Queue()  # Thread-safe queue for UI updates
+        self.insight_engine = None  # AI Insight Engine for Groq
+        
+        # Initialize AI Insight Engine if available
+        if INSIGHT_ENGINE_AVAILABLE:
+            try:
+                groq_api_key = os.environ.get('GROQ_API_KEY')
+                if groq_api_key:
+                    self.insight_engine = InsightEngine(groq_api_key=groq_api_key)
+                    logger.info("Market Intel: AI Insight Engine initialized with Groq")
+                else:
+                    logger.warning("Market Intel: GROQ_API_KEY not found")
+            except Exception as e:
+                logger.warning(f"Market Intel: Failed to initialize AI Insight Engine: {e}")
         
         # Create main frame
         self.frame = ttk.Frame(parent)
@@ -69,17 +91,20 @@ class MarketIntelligenceTab:
         self.sector_frame = ttk.Frame(self.sub_notebook)
         self.flow_frame = ttk.Frame(self.sub_notebook)
         self.smart_money_frame = ttk.Frame(self.sub_notebook)
+        self.synthesis_frame = ttk.Frame(self.sub_notebook)
         
         # Add tabs - use LiveMarketTab's frame directly
         self.sub_notebook.add(self.live_market_tab.frame, text="📈 Live Market")
         self.sub_notebook.add(self.sector_frame, text="🔄 Sector Rotation")
         self.sub_notebook.add(self.flow_frame, text="💧 Flow Monitor")
         self.sub_notebook.add(self.smart_money_frame, text="🕵️ Smart Money")
+        self.sub_notebook.add(self.synthesis_frame, text="🤖 AI Synthesis")
         
         # Build other sub-tab UIs
         self._build_sector_rotation_ui()
         self._build_flow_monitor_ui()
         self._build_smart_money_ui()
+        self._build_ai_synthesis_ui()
     
     # ==================== SECTOR ROTATION ====================
     
@@ -2029,6 +2054,363 @@ class MarketIntelligenceTab:
         
         self.block_tree.pack(fill=tk.BOTH, expand=True)
     
+    # ==================== AI SYNTHESIS ====================
+    
+    def _build_ai_synthesis_ui(self):
+        """Build the AI Synthesis sub-tab with comprehensive market intelligence."""
+        # Main scrollable frame
+        canvas = tk.Canvas(self.synthesis_frame, bg=COLORS['bg_dark'], highlightthickness=0)
+        scrollbar = ttk.Scrollbar(self.synthesis_frame, orient="vertical", command=canvas.yview)
+        self.synthesis_scrollable = ttk.Frame(canvas)
+        
+        self.synthesis_scrollable.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=self.synthesis_scrollable, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # Enable mouse wheel scrolling
+        def _on_mousewheel(event):
+            canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        canvas.bind_all("<MouseWheel>", _on_mousewheel)
+        
+        main = self.synthesis_scrollable
+        
+        # Header
+        header = ttk.Frame(main)
+        header.pack(fill=tk.X, padx=10, pady=10)
+        
+        ttk.Label(
+            header,
+            text="🤖 AI Market Intelligence Synthesis",
+            font=get_font('subheading'),
+            foreground=COLORS['primary']
+        ).pack(side=tk.LEFT)
+        
+        ttk.Label(
+            header,
+            text="Comprehensive AI-powered market analysis",
+            font=get_font('small'),
+            foreground=COLORS['text_secondary']
+        ).pack(side=tk.LEFT, padx=20)
+        
+        if TTKBOOTSTRAP_AVAILABLE:
+            refresh_btn = ttk_bs.Button(
+                header,
+                text="↻ Refresh Analysis",
+                bootstyle="primary-outline",
+                command=self._update_ai_synthesis
+            )
+        else:
+            refresh_btn = ttk.Button(header, text="↻ Refresh Analysis", command=self._update_ai_synthesis)
+        refresh_btn.pack(side=tk.RIGHT)
+        
+        # ========== ROW 1: MARKET OVERVIEW CARDS ==========
+        overview_frame = ttk.LabelFrame(main, text="📊 Market Overview")
+        overview_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        overview_cards = ttk.Frame(overview_frame)
+        overview_cards.pack(fill=tk.X, padx=5, pady=5)
+        
+        self.synthesis_overview = {}
+        
+        # Card 1: Market Health
+        card1 = ttk.LabelFrame(overview_cards, text="🏥 Health", padding=8)
+        card1.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=3)
+        self.synthesis_overview['health_value'] = ttk.Label(card1, text="--", font=get_font('subheading'),
+                                                             foreground=COLORS['primary'])
+        self.synthesis_overview['health_value'].pack()
+        self.synthesis_overview['health_bar'] = tk.Canvas(card1, width=100, height=8, 
+                                                           bg=COLORS['bg_medium'], highlightthickness=0)
+        self.synthesis_overview['health_bar'].pack(pady=2)
+        self.synthesis_overview['health_driver'] = ttk.Label(card1, text="--", font=get_font('small'),
+                                                              foreground=COLORS['text_muted'])
+        self.synthesis_overview['health_driver'].pack()
+        
+        # Card 2: Market Regime
+        card2 = ttk.LabelFrame(overview_cards, text="📈 Regime", padding=8)
+        card2.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=3)
+        self.synthesis_overview['regime_value'] = ttk.Label(card2, text="--", font=get_font('subheading'),
+                                                             foreground=COLORS['primary'])
+        self.synthesis_overview['regime_value'].pack()
+        self.synthesis_overview['regime_icon'] = ttk.Label(card2, text="⚪", font=('', 16))
+        self.synthesis_overview['regime_icon'].pack()
+        self.synthesis_overview['regime_driver'] = ttk.Label(card2, text="--", font=get_font('small'),
+                                                              foreground=COLORS['text_muted'])
+        self.synthesis_overview['regime_driver'].pack()
+        
+        # Card 3: Breadth
+        card3 = ttk.LabelFrame(overview_cards, text="📊 Breadth", padding=8)
+        card3.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=3)
+        self.synthesis_overview['breadth_value'] = ttk.Label(card3, text="--", font=get_font('subheading'),
+                                                              foreground=COLORS['primary'])
+        self.synthesis_overview['breadth_value'].pack()
+        self.synthesis_overview['breadth_detail'] = ttk.Label(card3, text="↑-- ↓--", font=get_font('body'))
+        self.synthesis_overview['breadth_detail'].pack()
+        self.synthesis_overview['breadth_driver'] = ttk.Label(card3, text="--", font=get_font('small'),
+                                                               foreground=COLORS['text_muted'])
+        self.synthesis_overview['breadth_driver'].pack()
+        
+        # Card 4: Trend
+        card4 = ttk.LabelFrame(overview_cards, text="🧭 Trend", padding=8)
+        card4.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=3)
+        self.synthesis_overview['trend_value'] = ttk.Label(card4, text="--", font=get_font('subheading'),
+                                                            foreground=COLORS['primary'])
+        self.synthesis_overview['trend_value'].pack()
+        self.synthesis_overview['trend_icon'] = ttk.Label(card4, text="➡️", font=('', 16))
+        self.synthesis_overview['trend_icon'].pack()
+        self.synthesis_overview['trend_driver'] = ttk.Label(card4, text="--", font=get_font('small'),
+                                                             foreground=COLORS['text_muted'])
+        self.synthesis_overview['trend_driver'].pack()
+        
+        # ========== ROW 2: SECTOR + STOCK INTELLIGENCE ==========
+        intel_frame = ttk.Frame(main)
+        intel_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        # LEFT: Sector Intelligence
+        sector_intel = ttk.LabelFrame(intel_frame, text="🔄 Sector Intelligence", padding=5)
+        sector_intel.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 5))
+        
+        self.synthesis_sector = {}
+        
+        # Leading Sectors
+        lead_row = ttk.Frame(sector_intel)
+        lead_row.pack(fill=tk.X, pady=2)
+        ttk.Label(lead_row, text="📈 Leading:", font=get_font('small'),
+                 foreground=COLORS['text_muted']).pack(side=tk.LEFT)
+        self.synthesis_sector['leading'] = ttk.Label(lead_row, text="--", font=get_font('small'),
+                                                      foreground=COLORS['gain'])
+        self.synthesis_sector['leading'].pack(side=tk.LEFT, padx=5)
+        
+        # Lagging Sectors
+        lag_row = ttk.Frame(sector_intel)
+        lag_row.pack(fill=tk.X, pady=2)
+        ttk.Label(lag_row, text="📉 Lagging:", font=get_font('small'),
+                 foreground=COLORS['text_muted']).pack(side=tk.LEFT)
+        self.synthesis_sector['lagging'] = ttk.Label(lag_row, text="--", font=get_font('small'),
+                                                      foreground=COLORS['loss'])
+        self.synthesis_sector['lagging'].pack(side=tk.LEFT, padx=5)
+        
+        # Rotation Phase
+        phase_row = ttk.Frame(sector_intel)
+        phase_row.pack(fill=tk.X, pady=2)
+        ttk.Label(phase_row, text="🔄 Phase:", font=get_font('small'),
+                 foreground=COLORS['text_muted']).pack(side=tk.LEFT)
+        self.synthesis_sector['phase'] = ttk.Label(phase_row, text="--", font=get_font('small'),
+                                                    foreground=COLORS['primary'])
+        self.synthesis_sector['phase'].pack(side=tk.LEFT, padx=5)
+        
+        # Sector Flow Pressure
+        sflow_row = ttk.Frame(sector_intel)
+        sflow_row.pack(fill=tk.X, pady=2)
+        ttk.Label(sflow_row, text="💧 Flow:", font=get_font('small'),
+                 foreground=COLORS['text_muted']).pack(side=tk.LEFT)
+        self.synthesis_sector['flow'] = ttk.Label(sflow_row, text="--", font=get_font('small'))
+        self.synthesis_sector['flow'].pack(side=tk.LEFT, padx=5)
+        
+        # RIGHT: Stock Intelligence
+        stock_intel = ttk.LabelFrame(intel_frame, text="📊 Stock Intelligence", padding=5)
+        stock_intel.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=(5, 0))
+        
+        self.synthesis_stock = {}
+        
+        # Top Gainer
+        gain_row = ttk.Frame(stock_intel)
+        gain_row.pack(fill=tk.X, pady=2)
+        ttk.Label(gain_row, text="🏆 Top Gainer:", font=get_font('small'),
+                 foreground=COLORS['text_muted']).pack(side=tk.LEFT)
+        self.synthesis_stock['top_gainer'] = ttk.Label(gain_row, text="--", font=get_font('small'),
+                                                        foreground=COLORS['gain'])
+        self.synthesis_stock['top_gainer'].pack(side=tk.LEFT, padx=5)
+        
+        # Top Loser
+        loss_row = ttk.Frame(stock_intel)
+        loss_row.pack(fill=tk.X, pady=2)
+        ttk.Label(loss_row, text="📉 Top Loser:", font=get_font('small'),
+                 foreground=COLORS['text_muted']).pack(side=tk.LEFT)
+        self.synthesis_stock['top_loser'] = ttk.Label(loss_row, text="--", font=get_font('small'),
+                                                       foreground=COLORS['loss'])
+        self.synthesis_stock['top_loser'].pack(side=tk.LEFT, padx=5)
+        
+        # Most Active
+        active_row = ttk.Frame(stock_intel)
+        active_row.pack(fill=tk.X, pady=2)
+        ttk.Label(active_row, text="🔥 Most Active:", font=get_font('small'),
+                 foreground=COLORS['text_muted']).pack(side=tk.LEFT)
+        self.synthesis_stock['most_active'] = ttk.Label(active_row, text="--", font=get_font('small'),
+                                                         foreground=COLORS['warning'])
+        self.synthesis_stock['most_active'].pack(side=tk.LEFT, padx=5)
+        
+        # Stock Flow
+        stflow_row = ttk.Frame(stock_intel)
+        stflow_row.pack(fill=tk.X, pady=2)
+        ttk.Label(stflow_row, text="💹 Flow Leaders:", font=get_font('small'),
+                 foreground=COLORS['text_muted']).pack(side=tk.LEFT)
+        self.synthesis_stock['flow_leaders'] = ttk.Label(stflow_row, text="--", font=get_font('small'))
+        self.synthesis_stock['flow_leaders'].pack(side=tk.LEFT, padx=5)
+        
+        # ========== ROW 3: FLOW PRESSURE GAUGES ==========
+        flow_frame = ttk.LabelFrame(main, text="⚡ Money Flow Pressure")
+        flow_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        flow_row = ttk.Frame(flow_frame)
+        flow_row.pack(fill=tk.X, padx=5, pady=5)
+        
+        self.synthesis_flow = {}
+        
+        # Market-wide Flow Gauge
+        market_flow = ttk.Frame(flow_row)
+        market_flow.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        
+        ttk.Label(market_flow, text="📊 Market", font=get_font('small'),
+                 foreground=COLORS['text_muted']).pack()
+        self.synthesis_flow['market_gauge'] = tk.Canvas(market_flow, width=200, height=20,
+                                                         bg=COLORS['bg_medium'], highlightthickness=0)
+        self.synthesis_flow['market_gauge'].pack(pady=2)
+        self.synthesis_flow['market_label'] = ttk.Label(market_flow, text="Buy: --% | Sell: --%",
+                                                         font=get_font('small'))
+        self.synthesis_flow['market_label'].pack()
+        
+        # Sector Flow Gauge
+        sector_flow = ttk.Frame(flow_row)
+        sector_flow.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        
+        ttk.Label(sector_flow, text="🔄 Sector", font=get_font('small'),
+                 foreground=COLORS['text_muted']).pack()
+        self.synthesis_flow['sector_gauge'] = tk.Canvas(sector_flow, width=200, height=20,
+                                                         bg=COLORS['bg_medium'], highlightthickness=0)
+        self.synthesis_flow['sector_gauge'].pack(pady=2)
+        self.synthesis_flow['sector_label'] = ttk.Label(sector_flow, text="In: -- | Out: --",
+                                                         font=get_font('small'))
+        self.synthesis_flow['sector_label'].pack()
+        
+        # Stock Flow Gauge
+        stock_flow = ttk.Frame(flow_row)
+        stock_flow.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        
+        ttk.Label(stock_flow, text="📈 Stock", font=get_font('small'),
+                 foreground=COLORS['text_muted']).pack()
+        self.synthesis_flow['stock_gauge'] = tk.Canvas(stock_flow, width=200, height=20,
+                                                        bg=COLORS['bg_medium'], highlightthickness=0)
+        self.synthesis_flow['stock_gauge'].pack(pady=2)
+        self.synthesis_flow['stock_label'] = ttk.Label(stock_flow, text="Inflow: -- | Outflow: --",
+                                                        font=get_font('small'))
+        self.synthesis_flow['stock_label'].pack()
+        
+        # ========== ROW 4: AI NARRATIVE REPORT ==========
+        narrative_frame = ttk.LabelFrame(main, text="🧠 AI Market Narrative")
+        narrative_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        
+        # Text container with scrollbar
+        text_container = ttk.Frame(narrative_frame)
+        text_container.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        text_scrollbar = ttk.Scrollbar(text_container)
+        text_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        self.synthesis_narrative = tk.Text(
+            text_container,
+            wrap=tk.WORD,
+            font=get_font('body'),
+            bg=COLORS['bg_medium'],
+            fg=COLORS['text_primary'],
+            padx=10,
+            pady=10,
+            height=15,
+            state=tk.DISABLED
+        )
+        self.synthesis_narrative.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.synthesis_narrative.config(yscrollcommand=text_scrollbar.set)
+        text_scrollbar.config(command=self.synthesis_narrative.yview)
+        
+        # ========== ROW 5: KEY INSIGHTS (Market + Stock Level) ==========
+        insights_frame = ttk.LabelFrame(main, text="💡 Key Insights")
+        insights_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        # Market-Level Insights
+        market_insights_row = ttk.Frame(insights_frame)
+        market_insights_row.pack(fill=tk.X, padx=5, pady=3)
+        
+        ttk.Label(market_insights_row, text="📊 Market:", font=get_font('small'),
+                 foreground=COLORS['text_muted']).pack(side=tk.LEFT)
+        
+        self.synthesis_insights_market = []
+        for i in range(4):
+            insight_card = ttk.Frame(market_insights_row, padding=3)
+            insight_card.pack(side=tk.LEFT, padx=5)
+            
+            icon_lbl = ttk.Label(insight_card, text="⚪", font=('', 12))
+            icon_lbl.pack(side=tk.LEFT)
+            
+            text_lbl = ttk.Label(insight_card, text="--", font=get_font('small'))
+            text_lbl.pack(side=tk.LEFT, padx=3)
+            
+            self.synthesis_insights_market.append({'icon': icon_lbl, 'text': text_lbl})
+        
+        # Stock-Level Insights
+        stock_insights_row = ttk.Frame(insights_frame)
+        stock_insights_row.pack(fill=tk.X, padx=5, pady=3)
+        
+        ttk.Label(stock_insights_row, text="📈 Stocks:", font=get_font('small'),
+                 foreground=COLORS['text_muted']).pack(side=tk.LEFT)
+        
+        self.synthesis_insights_stock = []
+        for i in range(4):
+            insight_card = ttk.Frame(stock_insights_row, padding=3)
+            insight_card.pack(side=tk.LEFT, padx=5)
+            
+            icon_lbl = ttk.Label(insight_card, text="⚪", font=('', 12))
+            icon_lbl.pack(side=tk.LEFT)
+            
+            text_lbl = ttk.Label(insight_card, text="--", font=get_font('small'))
+            text_lbl.pack(side=tk.LEFT, padx=3)
+            
+            self.synthesis_insights_stock.append({'icon': icon_lbl, 'text': text_lbl})
+        
+        # ========== ROW 6: ANOMALY ALERTS ==========
+        alerts_frame = ttk.LabelFrame(main, text="🚨 Smart Money Alerts")
+        alerts_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        self.synthesis_alerts_container = ttk.Frame(alerts_frame)
+        self.synthesis_alerts_container.pack(fill=tk.X, padx=5, pady=3)
+        
+        self.synthesis_alerts = []
+        for i in range(3):
+            alert_row = ttk.Frame(self.synthesis_alerts_container)
+            alert_row.pack(fill=tk.X, pady=1)
+            
+            icon_lbl = ttk.Label(alert_row, text="⚠️", font=('', 10))
+            icon_lbl.pack(side=tk.LEFT)
+            
+            text_lbl = ttk.Label(alert_row, text="--", font=get_font('small'),
+                                foreground=COLORS['text_muted'])
+            text_lbl.pack(side=tk.LEFT, padx=5)
+            
+            self.synthesis_alerts.append({'icon': icon_lbl, 'text': text_lbl})
+        
+        # ========== STATUS BAR ==========
+        status_frame = ttk.Frame(main)
+        status_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        self.synthesis_status = {}
+        
+        self.synthesis_status['live'] = ttk.Label(status_frame, text="📡 LIVE",
+                                                   font=get_font('small'), foreground=COLORS['gain'])
+        self.synthesis_status['live'].pack(side=tk.LEFT)
+        
+        self.synthesis_status['update'] = ttk.Label(status_frame, text="Last Update: --",
+                                                     font=get_font('small'), foreground=COLORS['text_muted'])
+        self.synthesis_status['update'].pack(side=tk.LEFT, padx=20)
+        
+        self.synthesis_status['ai'] = ttk.Label(status_frame, text="Powered by Groq AI",
+                                                 font=get_font('small'), foreground=COLORS['text_muted'])
+        self.synthesis_status['ai'].pack(side=tk.RIGHT)
+    
     def _load_smart_money_data(self):
         """Load smart money analysis data."""
         def fetch():
@@ -2220,9 +2602,715 @@ class MarketIntelligenceTab:
                                        text=f"{health:.0f}%", fill="white",
                                        font=('Arial', 12, 'bold'))
     
+    # ==================== AI SYNTHESIS DATA & UPDATE ====================
+    
+    def _generate_market_synthesis(self) -> Dict:
+        """Generate comprehensive market synthesis data from all sub-tabs."""
+        synthesis = {
+            # Overview
+            'market_health': 50,
+            'market_regime': 'NEUTRAL',
+            'overall_bias': 'NEUTRAL',
+            'trend': 'SIDEWAYS',
+            'confidence': 50,
+            
+            # Breadth
+            'total_stocks': 0,
+            'advancers': 0,
+            'decliners': 0,
+            'unchanged': 0,
+            'adv_dec_ratio': 1.0,
+            
+            # Sector
+            'leading_sectors': [],
+            'lagging_sectors': [],
+            'rotation_phase': 'Unknown',
+            'sector_rankings': [],
+            'sector_inflows': 0,
+            'sector_outflows': 0,
+            
+            # Stock Intelligence
+            'top_gainers': [],
+            'top_losers': [],
+            'most_active': [],
+            'flow_leaders': [],
+            'flow_laggards': [],
+            
+            # Flow
+            'buying_pressure': 50,
+            'selling_pressure': 50,
+            'net_flow': 0,
+            'inflow_count': 0,
+            'outflow_count': 0,
+            
+            # Smart Money
+            'anomaly_count': 0,
+            'anomalies': [],
+            
+            # Insights
+            'market_insights': [],
+            'stock_insights': [],
+        }
+        
+        try:
+            # ========== AGGREGATE FROM LIVE MARKET TAB ==========
+            stocks = []
+            
+            # Try to get from live_market_tab
+            if hasattr(self, 'live_market_tab') and hasattr(self.live_market_tab, 'all_stocks_data'):
+                stocks = self.live_market_tab.all_stocks_data or []
+                logger.info(f"AI Synthesis: Got {len(stocks)} stocks from live_market_tab.all_stocks_data")
+            
+            # Fallback: try to fetch directly from collector
+            if not stocks and hasattr(self, 'collector'):
+                try:
+                    all_stocks = self.collector.get_all_stocks()
+                    stocks = all_stocks.to_dict('records') if not all_stocks.empty else []
+                    logger.info(f"AI Synthesis: Got {len(stocks)} stocks from collector fallback")
+                except Exception as e:
+                    logger.warning(f"AI Synthesis: Collector fallback failed - {e}")
+            
+            if stocks:
+                synthesis['total_stocks'] = len(stocks)
+                
+                advancers = [s for s in stocks if (s.get('change', 0) or 0) > 0]
+                decliners = [s for s in stocks if (s.get('change', 0) or 0) < 0]
+                unchanged = [s for s in stocks if (s.get('change', 0) or 0) == 0]
+                
+                synthesis['advancers'] = len(advancers)
+                synthesis['decliners'] = len(decliners)
+                synthesis['unchanged'] = len(unchanged)
+                
+                if synthesis['decliners'] > 0:
+                    synthesis['adv_dec_ratio'] = synthesis['advancers'] / synthesis['decliners']
+                elif synthesis['advancers'] > 0:
+                    synthesis['adv_dec_ratio'] = synthesis['advancers']  # High ratio
+                
+                # Top gainers/losers
+                sorted_by_change = sorted(stocks, key=lambda x: x.get('change', 0) or 0, reverse=True)
+                synthesis['top_gainers'] = sorted_by_change[:5]
+                synthesis['top_losers'] = sorted_by_change[-5:][::-1]
+                
+                # Most active
+                sorted_by_vol = sorted(stocks, key=lambda x: x.get('volume', 0) or 0, reverse=True)
+                synthesis['most_active'] = sorted_by_vol[:5]
+                
+                # Calculate health from breadth
+                if synthesis['total_stocks'] > 0:
+                    breadth_pct = synthesis['advancers'] / synthesis['total_stocks'] * 100
+                    synthesis['market_health'] = min(100, max(0, breadth_pct * 1.2))
+                
+                # Determine overall bias
+                if synthesis['adv_dec_ratio'] > 1.5:
+                    synthesis['overall_bias'] = 'BULLISH'
+                    synthesis['market_regime'] = 'RISK-ON'
+                    synthesis['trend'] = 'UPTREND'
+                elif synthesis['adv_dec_ratio'] > 1.0:
+                    synthesis['overall_bias'] = 'SLIGHTLY BULLISH'
+                    synthesis['trend'] = 'MILD UPTREND'
+                elif synthesis['adv_dec_ratio'] < 0.67:
+                    synthesis['overall_bias'] = 'BEARISH'
+                    synthesis['market_regime'] = 'RISK-OFF'
+                    synthesis['trend'] = 'DOWNTREND'
+                elif synthesis['adv_dec_ratio'] < 1.0:
+                    synthesis['overall_bias'] = 'SLIGHTLY BEARISH'
+                    synthesis['trend'] = 'MILD DOWNTREND'
+                
+                # Store stocks for other uses
+                self.all_stocks_data = stocks
+            
+            # ========== AGGREGATE FROM SECTOR ROTATION TAB ==========
+            if hasattr(self, 'sector_analysis') and stocks:
+                try:
+                    phase_data = self.sector_analysis.detect_rotation_phase(stocks)
+                    synthesis['rotation_phase'] = phase_data.get('description', 'Unknown')[:40]
+                    synthesis['leading_sectors'] = phase_data.get('leading', [])[:3]
+                    synthesis['lagging_sectors'] = phase_data.get('lagging', [])[:3]
+                except Exception as e:
+                    logger.warning(f"AI Synthesis: Sector rotation analysis failed - {e}")
+            
+            # Fallback: Get sector data from sector_tree if phase data is empty
+            if not synthesis['leading_sectors'] and hasattr(self, 'sector_tree'):
+                try:
+                    children = self.sector_tree.get_children()
+                    if children:
+                        # Get first 2 sectors as leading
+                        leading = []
+                        lagging = []
+                        for i, item in enumerate(children):
+                            values = self.sector_tree.item(item, 'values')
+                            if values:
+                                sector = values[0]
+                                if i < 2:
+                                    leading.append(sector)
+                                elif i >= len(children) - 2:
+                                    lagging.append(sector)
+                        synthesis['leading_sectors'] = leading
+                        synthesis['lagging_sectors'] = lagging
+                except:
+                    pass
+            
+            # ========== AGGREGATE FROM FLOW MONITOR TAB ==========
+            # Calculate flow from stocks data directly (more reliable)
+            if stocks:
+                inflow_stocks = [s for s in stocks if (s.get('Perf.W', 0) or 0) >= 5]  # Strong inflow
+                mod_inflow = [s for s in stocks if 0 < (s.get('Perf.W', 0) or 0) < 5]  # Moderate inflow
+                outflow_stocks = [s for s in stocks if (s.get('Perf.W', 0) or 0) <= -5]  # Strong outflow
+                mod_outflow = [s for s in stocks if -5 < (s.get('Perf.W', 0) or 0) < 0]  # Moderate outflow
+                
+                synthesis['inflow_count'] = len(inflow_stocks) + len(mod_inflow)
+                synthesis['outflow_count'] = len(outflow_stocks) + len(mod_outflow)
+                synthesis['sector_inflows'] = len(inflow_stocks) + len(mod_inflow)
+                synthesis['sector_outflows'] = len(outflow_stocks) + len(mod_outflow)
+                
+                total_flow = synthesis['inflow_count'] + synthesis['outflow_count']
+                if total_flow > 0:
+                    synthesis['buying_pressure'] = synthesis['inflow_count'] / total_flow * 100
+                    synthesis['selling_pressure'] = synthesis['outflow_count'] / total_flow * 100
+                    synthesis['net_flow'] = synthesis['buying_pressure'] - synthesis['selling_pressure']
+                
+                # Flow leaders (top weekly performers)
+                sorted_by_week = sorted(stocks, key=lambda x: x.get('Perf.W', 0) or 0, reverse=True)
+                synthesis['flow_leaders'] = [s.get('symbol', '?') for s in sorted_by_week[:3]]
+                synthesis['flow_laggards'] = [s.get('symbol', '?') for s in sorted_by_week[-3:][::-1]]
+            
+            # ========== AGGREGATE FROM SMART MONEY TAB ==========
+            if hasattr(self, 'regime_labels'):
+                try:
+                    health_text = self.regime_labels.get('health', ttk.Label()).cget('text')
+                    if health_text and health_text != '--':
+                        # Parse health percentage
+                        h = float(health_text.replace('%', '').strip())
+                        synthesis['market_health'] = h
+                    
+                    regime_text = self.regime_labels.get('regime', ttk.Label()).cget('text')
+                    if regime_text and regime_text != '--':
+                        synthesis['market_regime'] = regime_text
+                    
+                    trend_text = self.regime_labels.get('trend', ttk.Label()).cget('text')
+                    if trend_text and trend_text != '--':
+                        synthesis['trend'] = trend_text
+                except:
+                    pass
+            
+            # Get anomaly alerts
+            if hasattr(self, 'alerts_tree'):
+                try:
+                    anomalies = []
+                    for item in self.alerts_tree.get_children()[:5]:
+                        values = self.alerts_tree.item(item, 'values')
+                        if values:
+                            anomalies.append({
+                                'time': values[0] if len(values) > 0 else '',
+                                'type': values[1] if len(values) > 1 else '',
+                                'symbol': values[2] if len(values) > 2 else '',
+                                'message': values[3] if len(values) > 3 else '',
+                            })
+                    synthesis['anomalies'] = anomalies
+                    synthesis['anomaly_count'] = len(anomalies)
+                except:
+                    pass
+            
+            # ========== GENERATE INSIGHTS ==========
+            market_insights = []
+            stock_insights = []
+            
+            # Market-level insights
+            if synthesis['adv_dec_ratio'] > 2.0:
+                market_insights.append(('🟢', 'Strong Breadth'))
+            elif synthesis['adv_dec_ratio'] < 0.5:
+                market_insights.append(('🔴', 'Weak Breadth'))
+            
+            if synthesis['buying_pressure'] > 65:
+                market_insights.append(('💹', 'Heavy Buying'))
+            elif synthesis['selling_pressure'] > 65:
+                market_insights.append(('📉', 'Heavy Selling'))
+            
+            if synthesis['market_health'] >= 70:
+                market_insights.append(('🏥', 'Healthy Market'))
+            elif synthesis['market_health'] < 40:
+                market_insights.append(('⚠️', 'Weak Market'))
+            
+            if synthesis['anomaly_count'] > 3:
+                market_insights.append(('🚨', f'{synthesis["anomaly_count"]} Anomalies'))
+            
+            synthesis['market_insights'] = market_insights[:4]
+            
+            # Stock-level insights
+            if synthesis['top_gainers']:
+                top = synthesis['top_gainers'][0]
+                stock_insights.append(('🏆', f"{top.get('symbol', '?')} +{top.get('change', 0):.1f}%"))
+            
+            if synthesis['top_losers']:
+                bottom = synthesis['top_losers'][0]
+                stock_insights.append(('📉', f"{bottom.get('symbol', '?')} {bottom.get('change', 0):.1f}%"))
+            
+            if synthesis['flow_leaders']:
+                stock_insights.append(('💹', f"Inflow: {', '.join(synthesis['flow_leaders'][:2])}"))
+            
+            if synthesis['most_active']:
+                active = synthesis['most_active'][0]
+                stock_insights.append(('🔥', f"Active: {active.get('symbol', '?')}"))
+            
+            synthesis['stock_insights'] = stock_insights[:4]
+            
+            # Calculate confidence
+            confidence_factors = []
+            if synthesis['adv_dec_ratio'] > 1.2 or synthesis['adv_dec_ratio'] < 0.8:
+                confidence_factors.append(20)  # Strong breadth direction
+            if abs(synthesis['net_flow']) > 20:
+                confidence_factors.append(20)  # Strong flow direction
+            if synthesis['anomaly_count'] > 0:
+                confidence_factors.append(15)  # Smart money signals
+            confidence_factors.append(30)  # Base confidence
+            synthesis['confidence'] = min(100, sum(confidence_factors))
+            
+        except Exception as e:
+            logger.error(f"Error generating market synthesis: {e}")
+            import traceback
+            traceback.print_exc()
+        
+        return synthesis
+    
+    def _draw_flow_gauge(self, canvas: tk.Canvas, buy_pct: float, sell_pct: float):
+        """Draw a flow pressure gauge on a canvas."""
+        canvas.delete("all")
+        w = canvas.winfo_width() or 200
+        h = canvas.winfo_height() or 20
+        
+        # Background
+        canvas.create_rectangle(0, 0, w, h, fill=COLORS['bg_medium'], outline='')
+        
+        # Green (buy) section
+        buy_width = int(w * buy_pct / 100)
+        canvas.create_rectangle(0, 0, buy_width, h, fill=COLORS['gain'], outline='')
+        
+        # Red (sell) section from right
+        sell_width = int(w * sell_pct / 100)
+        canvas.create_rectangle(w - sell_width, 0, w, h, fill=COLORS['loss'], outline='')
+        
+        # Center line
+        canvas.create_line(w // 2, 0, w // 2, h, fill='white', width=2)
+    
+    def _update_ai_synthesis(self):
+        """Update the AI Synthesis tab with aggregated data."""
+        try:
+            synthesis = self._generate_market_synthesis()
+            
+            # ========== UPDATE OVERVIEW CARDS ==========
+            # Health
+            health = synthesis.get('market_health', 50)
+            self.synthesis_overview['health_value'].config(text=f"{health:.0f}%")
+            health_color = COLORS['gain'] if health >= 60 else COLORS['warning'] if health >= 40 else COLORS['loss']
+            self.synthesis_overview['health_value'].config(foreground=health_color)
+            
+            # Health bar
+            hbar = self.synthesis_overview['health_bar']
+            hbar.delete("all")
+            bar_width = int(health / 100 * 100)
+            hbar.create_rectangle(0, 0, 100, 8, fill=COLORS['bg_medium'], outline='')
+            hbar.create_rectangle(0, 0, bar_width, 8, fill=health_color, outline='')
+            
+            self.synthesis_overview['health_driver'].config(
+                text=f"A/D: {synthesis.get('adv_dec_ratio', 1):.2f}"
+            )
+            
+            # Regime
+            regime = synthesis.get('market_regime', 'NEUTRAL')
+            self.synthesis_overview['regime_value'].config(text=regime)
+            if 'RISK-ON' in regime or 'BULL' in regime:
+                self.synthesis_overview['regime_icon'].config(text="🟢")
+                self.synthesis_overview['regime_value'].config(foreground=COLORS['gain'])
+            elif 'RISK-OFF' in regime or 'BEAR' in regime:
+                self.synthesis_overview['regime_icon'].config(text="🔴")
+                self.synthesis_overview['regime_value'].config(foreground=COLORS['loss'])
+            else:
+                self.synthesis_overview['regime_icon'].config(text="🟡")
+                self.synthesis_overview['regime_value'].config(foreground=COLORS['warning'])
+            
+            self.synthesis_overview['regime_driver'].config(
+                text=synthesis.get('overall_bias', 'NEUTRAL')
+            )
+            
+            # Breadth
+            adv = synthesis.get('advancers', 0)
+            dec = synthesis.get('decliners', 0)
+            ratio = synthesis.get('adv_dec_ratio', 1)
+            self.synthesis_overview['breadth_value'].config(text=f"{ratio:.2f}")
+            self.synthesis_overview['breadth_detail'].config(text=f"↑{adv} ↓{dec}")
+            
+            breadth_color = COLORS['gain'] if ratio > 1 else COLORS['loss'] if ratio < 1 else COLORS['text_primary']
+            self.synthesis_overview['breadth_value'].config(foreground=breadth_color)
+            
+            self.synthesis_overview['breadth_driver'].config(
+                text=f"Total: {synthesis.get('total_stocks', 0)}"
+            )
+            
+            # Trend
+            trend = synthesis.get('trend', 'SIDEWAYS')
+            self.synthesis_overview['trend_value'].config(text=trend)
+            if 'UP' in trend:
+                self.synthesis_overview['trend_icon'].config(text="📈")
+                self.synthesis_overview['trend_value'].config(foreground=COLORS['gain'])
+            elif 'DOWN' in trend:
+                self.synthesis_overview['trend_icon'].config(text="📉")
+                self.synthesis_overview['trend_value'].config(foreground=COLORS['loss'])
+            else:
+                self.synthesis_overview['trend_icon'].config(text="➡️")
+                self.synthesis_overview['trend_value'].config(foreground=COLORS['warning'])
+            
+            self.synthesis_overview['trend_driver'].config(
+                text=f"Conf: {synthesis.get('confidence', 50):.0f}%"
+            )
+            
+            # ========== UPDATE SECTOR INTELLIGENCE ==========
+            leading = synthesis.get('leading_sectors', [])
+            lagging = synthesis.get('lagging_sectors', [])
+            
+            self.synthesis_sector['leading'].config(text=', '.join(leading[:2]) if leading else '--')
+            self.synthesis_sector['lagging'].config(text=', '.join(lagging[:2]) if lagging else '--')
+            self.synthesis_sector['phase'].config(text=synthesis.get('rotation_phase', '--')[:25])
+            
+            sector_in = synthesis.get('sector_inflows', 0)
+            sector_out = synthesis.get('sector_outflows', 0)
+            flow_text = f"In: {sector_in} | Out: {sector_out}"
+            self.synthesis_sector['flow'].config(text=flow_text)
+            
+            # ========== UPDATE STOCK INTELLIGENCE ==========
+            top_gainers = synthesis.get('top_gainers', [])
+            top_losers = synthesis.get('top_losers', [])
+            most_active = synthesis.get('most_active', [])
+            flow_leaders = synthesis.get('flow_leaders', [])
+            
+            if top_gainers:
+                g = top_gainers[0]
+                self.synthesis_stock['top_gainer'].config(
+                    text=f"{g.get('symbol', '?')} +{g.get('change', 0):.1f}%"
+                )
+            
+            if top_losers:
+                l = top_losers[0]
+                self.synthesis_stock['top_loser'].config(
+                    text=f"{l.get('symbol', '?')} {l.get('change', 0):.1f}%"
+                )
+            
+            if most_active:
+                a = most_active[0]
+                vol = a.get('volume', 0)
+                vol_str = f"{vol/1e6:.1f}M" if vol >= 1e6 else f"{vol/1e3:.0f}K" if vol >= 1e3 else str(vol)
+                self.synthesis_stock['most_active'].config(
+                    text=f"{a.get('symbol', '?')} ({vol_str})"
+                )
+            
+            if flow_leaders:
+                self.synthesis_stock['flow_leaders'].config(
+                    text=', '.join(flow_leaders[:3])
+                )
+            
+            # ========== UPDATE FLOW GAUGES ==========
+            buy_pct = synthesis.get('buying_pressure', 50)
+            sell_pct = synthesis.get('selling_pressure', 50)
+            
+            self._draw_flow_gauge(self.synthesis_flow['market_gauge'], buy_pct, sell_pct)
+            self.synthesis_flow['market_label'].config(text=f"Buy: {buy_pct:.0f}% | Sell: {sell_pct:.0f}%")
+            
+            in_count = synthesis.get('inflow_count', 0)
+            out_count = synthesis.get('outflow_count', 0)
+            total = in_count + out_count or 1
+            self._draw_flow_gauge(self.synthesis_flow['sector_gauge'], in_count/total*100, out_count/total*100)
+            self.synthesis_flow['sector_label'].config(text=f"In: {in_count} | Out: {out_count}")
+            
+            # Stock flow based on top movers
+            stock_in = len([g for g in top_gainers if g.get('change', 0) > 0])
+            stock_out = len([l for l in top_losers if l.get('change', 0) < 0])
+            stock_total = stock_in + stock_out or 1
+            self._draw_flow_gauge(self.synthesis_flow['stock_gauge'], stock_in/stock_total*100, stock_out/stock_total*100)
+            self.synthesis_flow['stock_label'].config(text=f"Inflow: {stock_in} | Outflow: {stock_out}")
+            
+            # ========== UPDATE AI NARRATIVE ==========
+            narrative = self._build_market_narrative(synthesis)
+            self.synthesis_narrative.config(state=tk.NORMAL)
+            self.synthesis_narrative.delete(1.0, tk.END)
+            self.synthesis_narrative.insert(tk.END, narrative)
+            self.synthesis_narrative.config(state=tk.DISABLED)
+            
+            # ========== UPDATE KEY INSIGHTS ==========
+            market_insights = synthesis.get('market_insights', [])
+            for i, card in enumerate(self.synthesis_insights_market):
+                if i < len(market_insights):
+                    icon, text = market_insights[i]
+                    card['icon'].config(text=icon)
+                    card['text'].config(text=text)
+                else:
+                    card['icon'].config(text="⚪")
+                    card['text'].config(text="--")
+            
+            stock_insights = synthesis.get('stock_insights', [])
+            for i, card in enumerate(self.synthesis_insights_stock):
+                if i < len(stock_insights):
+                    icon, text = stock_insights[i]
+                    card['icon'].config(text=icon)
+                    card['text'].config(text=text)
+                else:
+                    card['icon'].config(text="⚪")
+                    card['text'].config(text="--")
+            
+            # ========== UPDATE ALERTS ==========
+            anomalies = synthesis.get('anomalies', [])
+            for i, alert in enumerate(self.synthesis_alerts):
+                if i < len(anomalies):
+                    a = anomalies[i]
+                    alert_type = a.get('type', '')
+                    if 'ACCUM' in alert_type.upper():
+                        alert['icon'].config(text="🟢")
+                    elif 'DIST' in alert_type.upper():
+                        alert['icon'].config(text="🔴")
+                    else:
+                        alert['icon'].config(text="⚠️")
+                    
+                    alert['text'].config(text=f"{a.get('symbol', '?')}: {a.get('message', '--')[:50]}")
+                    alert['text'].config(foreground=COLORS['warning'])
+                else:
+                    alert['icon'].config(text="⚪")
+                    alert['text'].config(text="No alerts")
+                    alert['text'].config(foreground=COLORS['text_muted'])
+            
+            # ========== UPDATE STATUS ==========
+            self.synthesis_status['update'].config(
+                text=f"Last Update: {datetime.now().strftime('%H:%M:%S')}"
+            )
+            
+            if self.insight_engine:
+                self.synthesis_status['ai'].config(text="✨ Powered by Groq AI")
+            else:
+                self.synthesis_status['ai'].config(text="📊 Rule-based Analysis")
+            
+        except Exception as e:
+            logger.error(f"Error updating AI synthesis: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def _build_market_narrative(self, synthesis: Dict) -> str:
+        """Build comprehensive AI market narrative - uses Groq if available."""
+        
+        # Try to use Groq AI for super detailed narrative
+        if self.insight_engine:
+            try:
+                logger.info("Generating Market Intel AI narrative via Groq...")
+                
+                # Build comprehensive context
+                context = synthesis.copy()
+                
+                # Format stock data for AI
+                top_gainers_str = "\n".join([
+                    f"  • {s.get('symbol', '?')}: +{s.get('change', 0):.2f}%, Vol: {s.get('volume', 0):,.0f}"
+                    for s in synthesis.get('top_gainers', [])[:5]
+                ]) or "  None available"
+                
+                top_losers_str = "\n".join([
+                    f"  • {s.get('symbol', '?')}: {s.get('change', 0):.2f}%, Vol: {s.get('volume', 0):,.0f}"
+                    for s in synthesis.get('top_losers', [])[:5]
+                ]) or "  None available"
+                
+                most_active_str = "\n".join([
+                    f"  • {s.get('symbol', '?')}: {s.get('volume', 0):,.0f} vol, {s.get('change', 0):+.2f}%"
+                    for s in synthesis.get('most_active', [])[:5]
+                ]) or "  None available"
+                
+                anomalies_str = "\n".join([
+                    f"  • [{a.get('type', '?')}] {a.get('symbol', '?')}: {a.get('message', '')[:60]}"
+                    for a in synthesis.get('anomalies', [])[:5]
+                ]) or "  No anomalies detected"
+                
+                system_prompt = """You are an elite institutional equity strategist and market intelligence analyst for the Nigerian Stock Exchange (NGX).
+Your analysis is used by portfolio managers, hedge funds, and institutional investors.
+Provide an extremely detailed, data-driven market intelligence report.
+Your analysis should be comprehensive, actionable, and demonstrate deep market insight.
+Use specific numbers, percentages, and stock symbols throughout.
+Be decisive and provide clear recommendations.
+The audience expects institutional-quality analysis with detailed drill-down."""
+
+                prompt = f"""Generate a COMPREHENSIVE market intelligence synthesis report for the Nigerian Stock Exchange:
+
+═══════════════════════════════════════════════════════════════════════════════
+                        MARKET INTELLIGENCE DASHBOARD
+═══════════════════════════════════════════════════════════════════════════════
+
+▸ MARKET HEALTH: {synthesis.get('market_health', 50):.0f}%
+▸ MARKET REGIME: {synthesis.get('market_regime', 'NEUTRAL')}
+▸ OVERALL BIAS: {synthesis.get('overall_bias', 'NEUTRAL')}
+▸ TREND: {synthesis.get('trend', 'SIDEWAYS')}
+▸ CONFIDENCE: {synthesis.get('confidence', 50):.0f}%
+
+───────────────────────────────────────────────────────────────────────────────
+                        MARKET BREADTH ANALYSIS
+───────────────────────────────────────────────────────────────────────────────
+▸ Total Stocks: {synthesis.get('total_stocks', 0)}
+▸ Advancers: {synthesis.get('advancers', 0)}
+▸ Decliners: {synthesis.get('decliners', 0)}
+▸ Unchanged: {synthesis.get('unchanged', 0)}
+▸ Advance/Decline Ratio: {synthesis.get('adv_dec_ratio', 1):.2f}
+
+───────────────────────────────────────────────────────────────────────────────
+                        SECTOR ROTATION INTELLIGENCE
+───────────────────────────────────────────────────────────────────────────────
+▸ Rotation Phase: {synthesis.get('rotation_phase', 'Unknown')}
+▸ Leading Sectors: {', '.join(synthesis.get('leading_sectors', ['None'])[:3])}
+▸ Lagging Sectors: {', '.join(synthesis.get('lagging_sectors', ['None'])[:3])}
+
+───────────────────────────────────────────────────────────────────────────────
+                        MONEY FLOW ANALYSIS
+───────────────────────────────────────────────────────────────────────────────
+▸ Buying Pressure: {synthesis.get('buying_pressure', 50):.1f}%
+▸ Selling Pressure: {synthesis.get('selling_pressure', 50):.1f}%
+▸ Net Flow: {synthesis.get('net_flow', 0):+.1f}%
+▸ Stocks with Inflows: {synthesis.get('inflow_count', 0)}
+▸ Stocks with Outflows: {synthesis.get('outflow_count', 0)}
+▸ Flow Leaders: {', '.join(synthesis.get('flow_leaders', ['None'])[:5])}
+▸ Flow Laggards: {', '.join(synthesis.get('flow_laggards', ['None'])[:5])}
+
+───────────────────────────────────────────────────────────────────────────────
+                        STOCK-LEVEL INTELLIGENCE
+───────────────────────────────────────────────────────────────────────────────
+
+🏆 TOP GAINERS:
+{top_gainers_str}
+
+📉 TOP LOSERS:
+{top_losers_str}
+
+🔥 MOST ACTIVE (by Volume):
+{most_active_str}
+
+───────────────────────────────────────────────────────────────────────────────
+                        SMART MONEY SIGNALS
+───────────────────────────────────────────────────────────────────────────────
+▸ Anomaly Count: {synthesis.get('anomaly_count', 0)}
+
+🚨 ANOMALY ALERTS:
+{anomalies_str}
+
+═══════════════════════════════════════════════════════════════════════════════
+
+Based on ALL the above data, provide an EXTREMELY DETAILED institutional-quality analysis including:
+
+1. **MARKET STRUCTURE ASSESSMENT** (1 paragraph)
+   - Overall market condition with specific metrics
+   - Breadth quality analysis (A/D ratio interpretation)
+   - Regime characterization
+
+2. **SECTOR ROTATION ANALYSIS**
+   - Current rotation phase interpretation
+   - Which sectors are attracting capital and why
+   - Sector allocation recommendations
+
+3. **MONEY FLOW DEEP DIVE**
+   - Institutional vs retail flow interpretation
+   - Flow momentum and sustainability
+   - Accumulation/distribution patterns
+
+4. **STOCK-LEVEL DRILL DOWN**
+   - Analysis of top gainers (what's driving the moves)
+   - Analysis of top losers (red flags or opportunities)
+   - Volume analysis of most active names
+   - Which specific stocks warrant attention
+
+5. **SMART MONEY INTERPRETATION**
+   - What the anomalies are signaling
+   - Unusual activity interpretation
+   - Hidden accumulation/distribution patterns
+
+6. **ACTIONABLE RECOMMENDATIONS**
+   - Specific sector overweight/underweight calls
+   - 3-5 specific stock ideas with rationale
+   - Risk positioning guidance
+
+7. **KEY RISKS TO MONITOR**
+   - What could invalidate this thesis
+   - Warning signals to watch
+   - Key levels or metrics to track
+
+8. **OUTLOOK & PROBABILITY ASSESSMENT**
+   - Near-term (1-5 days) outlook
+   - Confidence level and key drivers"""
+
+                ai_response = self.insight_engine.generate(prompt, system_prompt)
+                
+                if ai_response and "unavailable" not in ai_response.lower():
+                    logger.info("Groq AI narrative generated successfully")
+                    lines = []
+                    lines.append("═" * 60)
+                    lines.append("  🤖 AI MARKET INTELLIGENCE SYNTHESIS")
+                    lines.append("═" * 60)
+                    lines.append(f"  Health: {synthesis.get('market_health', 50):.0f}% | Regime: {synthesis.get('market_regime', 'NEUTRAL')} | Bias: {synthesis.get('overall_bias', 'NEUTRAL')}")
+                    lines.append("═" * 60)
+                    lines.append("")
+                    lines.append(ai_response)
+                    lines.append("")
+                    lines.append("─" * 60)
+                    lines.append(f"  Generated via Groq AI: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+                    lines.append("─" * 60)
+                    return "\n".join(lines)
+                    
+            except Exception as e:
+                logger.error(f"Groq AI narrative failed: {e}")
+                import traceback
+                traceback.print_exc()
+        
+        # Fallback to rule-based narrative
+        lines = []
+        lines.append("═" * 60)
+        lines.append("  📊 MARKET INTELLIGENCE REPORT")
+        lines.append("═" * 60)
+        lines.append("")
+        
+        # Market Overview
+        lines.append("▶ MARKET OVERVIEW:")
+        lines.append(f"  • Health Score: {synthesis.get('market_health', 50):.0f}%")
+        lines.append(f"  • Market Regime: {synthesis.get('market_regime', 'NEUTRAL')}")
+        lines.append(f"  • Overall Bias: {synthesis.get('overall_bias', 'NEUTRAL')}")
+        lines.append(f"  • Trend Direction: {synthesis.get('trend', 'SIDEWAYS')}")
+        lines.append("")
+        
+        # Breadth
+        lines.append("▶ MARKET BREADTH:")
+        lines.append(f"  • Advance/Decline: {synthesis.get('advancers', 0)} / {synthesis.get('decliners', 0)}")
+        lines.append(f"  • A/D Ratio: {synthesis.get('adv_dec_ratio', 1):.2f}")
+        lines.append(f"  • Total Traded: {synthesis.get('total_stocks', 0)} securities")
+        lines.append("")
+        
+        # Sector
+        lines.append("▶ SECTOR ROTATION:")
+        lines.append(f"  • Phase: {synthesis.get('rotation_phase', 'Unknown')}")
+        lines.append(f"  • Leading: {', '.join(synthesis.get('leading_sectors', ['--'])[:2])}")
+        lines.append(f"  • Lagging: {', '.join(synthesis.get('lagging_sectors', ['--'])[:2])}")
+        lines.append("")
+        
+        # Flow
+        lines.append("▶ MONEY FLOW:")
+        lines.append(f"  • Buying Pressure: {synthesis.get('buying_pressure', 50):.0f}%")
+        lines.append(f"  • Selling Pressure: {synthesis.get('selling_pressure', 50):.0f}%")
+        lines.append(f"  • Net Flow: {synthesis.get('net_flow', 0):+.0f}%")
+        lines.append("")
+        
+        # Top Movers
+        lines.append("▶ TOP MOVERS:")
+        for g in synthesis.get('top_gainers', [])[:3]:
+            lines.append(f"  • {g.get('symbol', '?')}: +{g.get('change', 0):.2f}%")
+        lines.append("")
+        
+        lines.append("─" * 60)
+        lines.append(f"  Generated (Rule-based): {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        lines.append(f"  💡 Set GROQ_API_KEY for AI-powered insights")
+        lines.append("─" * 60)
+        
+        return "\n".join(lines)
+    
     def refresh(self):
         """Refresh all data."""
         self.live_market_tab.refresh()
         self._load_sector_data()
         self._load_flow_data()
         self._load_smart_money_data()
+        # Update AI synthesis after data is refreshed
+        self.frame.after(2000, self._update_ai_synthesis)
