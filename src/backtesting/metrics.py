@@ -98,13 +98,18 @@ def calculate_metrics(trades: List[Dict], initial_capital: float = 1000000) -> D
     else:
         sortino = sharpe
     
-    # Calmar ratio (return / max drawdown)
-    annual_return = (total_pnl / initial_capital) * 100
+    # Calculate CORRECT total return using final equity (not sum of P&Ls)
+    final_equity = equity[-1]
+    actual_return = final_equity - initial_capital
+    actual_return_pct = (actual_return / initial_capital) * 100
+    
+    # Max drawdown
+    annual_return = actual_return_pct  # Use actual return
     calmar = (annual_return / (max_dd * 100)) if max_dd > 0 else 0
     
     return {
-        'total_return': round(total_pnl, 2),
-        'total_return_pct': round((total_pnl / initial_capital) * 100, 2),
+        'total_return': round(actual_return, 2),  # Correct: final - initial
+        'total_return_pct': round(actual_return_pct, 2),  # Correct: (final - initial) / initial
         'total_trades': total_count,
         'winning_trades': win_count,
         'losing_trades': loss_count,
@@ -116,7 +121,7 @@ def calculate_metrics(trades: List[Dict], initial_capital: float = 1000000) -> D
         'sharpe_ratio': round(sharpe, 2),
         'sortino_ratio': round(sortino, 2),
         'calmar_ratio': round(calmar, 2),
-        'final_equity': round(equity[-1], 2),
+        'final_equity': round(final_equity, 2),
         'equity_curve': equity
     }
 
