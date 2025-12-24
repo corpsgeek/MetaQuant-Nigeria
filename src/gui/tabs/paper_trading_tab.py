@@ -114,15 +114,14 @@ class PaperTradingTab:
     
     def _build_ui(self):
         """Build the UI layout."""
-        # Main container
-        main_frame = ttk.Frame(self.parent)
-        main_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        # Main container - this is what gets added to notebook
+        self.frame = ttk.Frame(self.parent)
         
         # Top bar - Portfolio selector and actions
-        self._create_top_bar(main_frame)
+        self._create_top_bar(self.frame)
         
         # Main content - split into left and right panels
-        content_frame = ttk.Frame(main_frame)
+        content_frame = ttk.Frame(self.frame)
         content_frame.pack(fill=tk.BOTH, expand=True, pady=5)
         
         # Left panel - Positions and signals
@@ -140,7 +139,7 @@ class PaperTradingTab:
         self._create_history_panel(right_frame)
         
         # Status bar
-        self.status_label = ttk.Label(main_frame, text="Ready", foreground=COLORS['text_primary'])
+        self.status_label = ttk.Label(self.frame, text="Ready", foreground=COLORS['text_primary'])
         self.status_label.pack(fill=tk.X, pady=5)
     
     def _create_top_bar(self, parent):

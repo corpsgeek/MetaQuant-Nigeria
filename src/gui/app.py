@@ -240,7 +240,7 @@ class MetaQuantApp:
         self.notebook.add(self.fundamentals_tab.frame, text="💰 Fundamentals")
         self.notebook.add(self.ml_intel_tab.frame, text="🤖 ML Intelligence")
         self.notebook.add(self.backtest_tab.frame, text="📈 Backtest")
-        self.notebook.add(self.paper_trading_tab.parent, text="📝 Paper Trading")
+        self.notebook.add(self.paper_trading_tab.frame, text="📝 Paper Trading")
         self.notebook.add(self.portfolio_mgr_tab.frame, text="🤖 AI Manager")
         self.notebook.add(self.history_tab.frame, text="📅 History")
     

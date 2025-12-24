@@ -112,13 +112,20 @@ class TradingTables:
                               description: str = None) -> int:
         """Create a new portfolio book."""
         try:
-            result = self.conn.execute("""
-                INSERT INTO portfolio_books (name, initial_capital, current_capital, description)
-                VALUES (?, ?, ?, ?)
-                RETURNING id
-            """, [name, initial_capital, initial_capital, description]).fetchone()
+            # First, get the next available ID
+            result = self.conn.execute(
+                "SELECT COALESCE(MAX(id), 0) + 1 FROM portfolio_books"
+            ).fetchone()
+            next_id = result[0] if result else 1
+            
+            # Insert with explicit ID
+            self.conn.execute("""
+                INSERT INTO portfolio_books (id, name, initial_capital, current_capital, description)
+                VALUES (?, ?, ?, ?, ?)
+            """, [next_id, name, initial_capital, initial_capital, description])
+            
             logger.info(f"Created portfolio book: {name} with ₦{initial_capital:,.0f}")
-            return result[0]
+            return next_id
         except Exception as e:
             logger.error(f"Failed to create portfolio book: {e}")
             return None
