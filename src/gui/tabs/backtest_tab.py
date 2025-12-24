@@ -28,9 +28,10 @@ except ImportError as e:
 class BacktestTab:
     """Backtesting and Portfolio Optimization Tab."""
     
-    def __init__(self, parent: ttk.Notebook, db: DatabaseManager):
+    def __init__(self, parent: ttk.Notebook, db: DatabaseManager, ml_engine=None):
         self.parent = parent
         self.db = db
+        self.ml_engine = ml_engine  # For full signal computation
         
         # State
         self.all_stocks: List[Dict] = []
@@ -196,6 +197,17 @@ class BacktestTab:
         ttk.Label(row2, text="Take Profit %:").pack(side=tk.LEFT, padx=15)
         self.take_profit_var = tk.StringVar(value="15")
         ttk.Entry(row2, textvariable=self.take_profit_var, width=5).pack(side=tk.LEFT, padx=5)
+        
+        # Row 3: Signal mode
+        row3 = ttk.Frame(controls_inner)
+        row3.pack(fill=tk.X, pady=5)
+        
+        self.full_signals_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(row3, text="Use Full Signals (ML + Fundamentals + Momentum)", 
+                        variable=self.full_signals_var).pack(side=tk.LEFT, padx=5)
+        
+        ttk.Label(row3, text="Weights: Mom 35%, ML 25%, Fund 20%, Trend 10%, Anomaly 10%",
+                  foreground=COLORS['text_muted'], font=get_font('small')).pack(side=tk.LEFT, padx=15)
         
         # Run button
         btn_frame = ttk.Frame(controls_inner)
@@ -402,10 +414,15 @@ class BacktestTab:
                 use_optimized = self.use_optimized_var.get() if hasattr(self, 'use_optimized_var') else False
                 stock_params = self.stock_params if use_optimized and self.stock_params else None
                 
+                # Check if using full signals
+                use_full_signals = self.full_signals_var.get() if hasattr(self, 'full_signals_var') else True
+                
                 if stock_params:
                     logger.info(f"Using optimized params for {len(stock_params)} stocks")
                 
-                # Create engine
+                logger.info(f"Using {'full multi-source' if use_full_signals else 'momentum-only'} signals")
+                
+                # Create engine with all data sources
                 engine = BacktestEngine(
                     initial_capital=capital,
                     max_positions=max_pos,
@@ -413,10 +430,13 @@ class BacktestTab:
                     take_profit_pct=take_profit,
                     buy_threshold=buy_thresh,
                     sell_threshold=sell_thresh,
-                    stock_params=stock_params  # Per-stock SL/TP
+                    stock_params=stock_params,
+                    db=self.db,  # For fundamentals
+                    ml_engine=self.ml_engine,  # For ML predictions
+                    use_full_signals=use_full_signals
                 )
                 
-                # Build signal data (empty for now - signals computed on-the-fly would need historical storage)
+                # Build signal data (empty - signals computed on-the-fly)
                 signal_data = {}
                 
                 # Run

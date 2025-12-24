@@ -214,8 +214,12 @@ class MetaQuantApp:
         self.flow_tape_tab = FlowTapeTab(self.notebook, self.db)
         self.fundamentals_tab = FundamentalsTab(self.notebook, self.db)
         self.ml_intel_tab = MLIntelligenceTab(self.notebook, self.db)
-        self.backtest_tab = BacktestTab(self.notebook, self.db)
-        self.portfolio_mgr_tab = PortfolioManagerTab(self.notebook, self.db)
+        
+        # Get ML engine from ML tab for backtest/portfolio integration
+        ml_engine = getattr(self.ml_intel_tab, 'ml_engine', None)
+        
+        self.backtest_tab = BacktestTab(self.notebook, self.db, ml_engine=ml_engine)
+        self.portfolio_mgr_tab = PortfolioManagerTab(self.notebook, self.db, ml_engine=ml_engine)
         
         # Add tabs to notebook
         self.notebook.add(self.market_intel_tab.frame, text="🧠 Market Intel")

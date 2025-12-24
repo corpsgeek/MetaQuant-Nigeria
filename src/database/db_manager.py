@@ -320,6 +320,26 @@ class DatabaseManager:
             self.conn.execute("ALTER TABLE fundamental_snapshots ADD COLUMN ps_ratio DOUBLE")
         except Exception:
             pass  # Column already exists
+        
+        # Signal history - for backtesting with historical ML/composite signals
+        self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS signal_history (
+                symbol VARCHAR NOT NULL,
+                date DATE NOT NULL,
+                ml_score DOUBLE,
+                anomaly_score DOUBLE,
+                cluster_id INTEGER,
+                flow_score DOUBLE,
+                fundamental_score DOUBLE,
+                intel_score DOUBLE,
+                momentum_score DOUBLE,
+                composite_score DOUBLE,
+                signal VARCHAR,
+                components JSON,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (symbol, date)
+            )
+        """)
     
     def _create_indexes(self):
         """Create indexes for better query performance."""
@@ -901,4 +921,78 @@ class DatabaseManager:
             count += 1
         
         return count
+    
+    # ==================== Signal History ====================
+    
+    def save_signal_history(self, symbol: str, date: str, signals: Dict[str, Any]):
+        """Save signal scores for a stock on a date."""
+        import json
+        self.conn.execute("""
+            INSERT INTO signal_history (
+                symbol, date, ml_score, anomaly_score, cluster_id,
+                flow_score, fundamental_score, intel_score, momentum_score,
+                composite_score, signal, components
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT (symbol, date) DO UPDATE SET
+                ml_score = EXCLUDED.ml_score,
+                anomaly_score = EXCLUDED.anomaly_score,
+                cluster_id = EXCLUDED.cluster_id,
+                flow_score = EXCLUDED.flow_score,
+                fundamental_score = EXCLUDED.fundamental_score,
+                intel_score = EXCLUDED.intel_score,
+                momentum_score = EXCLUDED.momentum_score,
+                composite_score = EXCLUDED.composite_score,
+                signal = EXCLUDED.signal,
+                components = EXCLUDED.components
+        """, [
+            symbol, date,
+            signals.get('ml_score'),
+            signals.get('anomaly_score'),
+            signals.get('cluster_id'),
+            signals.get('flow_score'),
+            signals.get('fundamental_score'),
+            signals.get('intel_score'),
+            signals.get('momentum_score'),
+            signals.get('composite_score'),
+            signals.get('signal'),
+            json.dumps(signals.get('components', {}))
+        ])
+    
+    def get_signal_history(
+        self, 
+        symbol: str, 
+        start_date: str = None, 
+        end_date: str = None
+    ) -> List[Dict]:
+        """Get signal history for a stock."""
+        query = "SELECT * FROM signal_history WHERE symbol = ?"
+        params = [symbol]
+        
+        if start_date:
+            query += " AND date >= ?"
+            params.append(start_date)
+        if end_date:
+            query += " AND date <= ?"
+            params.append(end_date)
+        
+        query += " ORDER BY date"
+        
+        results = self.conn.execute(query, params).fetchall()
+        if not results:
+            return []
+        
+        columns = [desc[0] for desc in self.conn.description]
+        return [dict(zip(columns, row)) for row in results]
+    
+    def get_all_signals_for_date(self, date: str) -> List[Dict]:
+        """Get all signals for a specific date."""
+        results = self.conn.execute("""
+            SELECT * FROM signal_history WHERE date = ? ORDER BY composite_score DESC
+        """, [date]).fetchall()
+        
+        if not results:
+            return []
+        
+        columns = [desc[0] for desc in self.conn.description]
+        return [dict(zip(columns, row)) for row in results]
 

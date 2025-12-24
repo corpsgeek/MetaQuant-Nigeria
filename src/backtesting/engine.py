@@ -75,7 +75,10 @@ class BacktestEngine:
         buy_threshold: float = 0.3,
         sell_threshold: float = -0.3,
         signal_weights: Optional[Dict[str, float]] = None,
-        stock_params: Optional[Dict[str, Dict[str, float]]] = None  # Per-stock SL/TP
+        stock_params: Optional[Dict[str, Dict[str, float]]] = None,  # Per-stock SL/TP
+        db=None,  # Database for fundamentals and signal history
+        ml_engine=None,  # ML engine for predictions
+        use_full_signals: bool = True  # Use all data sources
     ):
         """
         Initialize the backtesting engine.
@@ -90,6 +93,9 @@ class BacktestEngine:
             sell_threshold: Score threshold for selling
             signal_weights: Custom signal weights
             stock_params: Per-stock parameters {symbol: {'stop_loss': 0.05, 'take_profit': 0.15}}
+            db: Database manager for fundamentals
+            ml_engine: ML engine for predictions
+            use_full_signals: Whether to use all data sources
         """
         self.initial_capital = initial_capital
         self.capital = initial_capital
@@ -103,6 +109,11 @@ class BacktestEngine:
         # Per-stock parameters
         self.stock_params = stock_params or {}
         
+        # Data sources
+        self.db = db
+        self.ml_engine = ml_engine
+        self.use_full_signals = use_full_signals
+        
         # Signal scorer
         self.scorer = SignalScorer(weights=signal_weights)
         
@@ -111,6 +122,9 @@ class BacktestEngine:
         self.trades: List[Trade] = []
         self.equity_curve: List[Dict] = []
         self.daily_returns: List[float] = []
+        
+        # Cache for fundamentals
+        self._fundamental_cache: Dict[str, Dict] = {}
         
         # Results
         self.results: Optional[Dict] = None
@@ -200,8 +214,13 @@ class BacktestEngine:
                 if sym not in date_prices:
                     continue
                 
-                # If we have signal data, use the full scorer
-                if signal_data:
+                # Use full multi-source signals if enabled
+                if self.use_full_signals:
+                    score_result = self._compute_full_score(
+                        sym, date, price_data.get(sym), date_prices[sym]
+                    )
+                elif signal_data:
+                    # Use pre-computed historical signals
                     score_result = self.scorer.score_for_backtest(
                         date=date,
                         symbol=sym,
@@ -402,6 +421,158 @@ class BacktestEngine:
         del self.positions[symbol]
         
         logger.debug(f"CLOSE: {symbol} @ {price:.2f}, PnL: {pnl:.2f} ({return_pct:.1f}%)")
+    
+    def _compute_full_score(
+        self, 
+        symbol: str, 
+        date: str, 
+        df: pd.DataFrame, 
+        current_price: float
+    ) -> Dict[str, Any]:
+        """
+        Compute full multi-source score using all available data.
+        
+        Weights:
+        - Momentum: 35%
+        - ML Prediction: 25% 
+        - Fundamentals: 20%
+        - Anomaly: 10%
+        - Trend: 10%
+        """
+        scores = {
+            'momentum': 0.0,
+            'ml': 0.0,
+            'fundamental': 0.0,
+            'anomaly': 0.0,
+            'trend': 0.0
+        }
+        
+        if df is None or df.empty or len(df) < 25:
+            return {'composite_score': 0, 'signal': 'HOLD', 'component_scores': scores}
+        
+        try:
+            # Convert to float
+            close = pd.to_numeric(df['close'], errors='coerce').astype(float)
+            
+            # ===== MOMENTUM (35%) =====
+            if len(close) >= 20:
+                mom_5 = (close.iloc[-1] - close.iloc[-5]) / close.iloc[-5] if close.iloc[-5] > 0 else 0
+                mom_20 = (close.iloc[-1] - close.iloc[-20]) / close.iloc[-20] if close.iloc[-20] > 0 else 0
+                
+                # Normalize to -1 to 1
+                momentum_score = (float(mom_5) + float(mom_20)) / 2
+                momentum_score = max(-1, min(1, momentum_score * 5))  # Scale up
+                scores['momentum'] = momentum_score
+            
+            # ===== TREND (10%) =====
+            if len(close) >= 50:
+                ma_20 = close.tail(20).mean()
+                ma_50 = close.tail(50).mean()
+                scores['trend'] = 1.0 if ma_20 > ma_50 else -1.0
+            
+            # ===== ML PREDICTION (25%) =====
+            if self.ml_engine and hasattr(self.ml_engine, 'predict'):
+                try:
+                    ml_result = self.ml_engine.predict(symbol)
+                    if ml_result and 'direction' in ml_result:
+                        direction = ml_result.get('direction', 'NEUTRAL')
+                        confidence = ml_result.get('confidence', 0.5)
+                        if direction == 'UP':
+                            scores['ml'] = confidence
+                        elif direction == 'DOWN':
+                            scores['ml'] = -confidence
+                except Exception as e:
+                    logger.debug(f"ML prediction error for {symbol}: {e}")
+            
+            # ===== FUNDAMENTALS (20%) =====
+            if self.db:
+                fund_score = self._score_fundamentals(symbol)
+                scores['fundamental'] = fund_score
+            
+            # ===== ANOMALY (10%) =====
+            if self.ml_engine and hasattr(self.ml_engine, 'detect_anomalies'):
+                try:
+                    anomalies = self.ml_engine.detect_anomalies(symbol)
+                    if anomalies:
+                        # Recent unusual activity could indicate opportunity
+                        scores['anomaly'] = 0.5  # Neutral positive
+                except:
+                    pass
+            
+            # ===== COMPOSITE SCORE =====
+            weights = {
+                'momentum': 0.35,
+                'ml': 0.25,
+                'fundamental': 0.20,
+                'anomaly': 0.10,
+                'trend': 0.10
+            }
+            
+            composite = sum(scores[k] * weights[k] for k in scores)
+            composite = max(-1, min(1, composite))
+            
+            # Determine signal
+            if composite > 0.15:
+                signal = 'BUY'
+            elif composite < -0.15:
+                signal = 'SELL'
+            else:
+                signal = 'HOLD'
+            
+            return {
+                'composite_score': composite,
+                'signal': signal,
+                'component_scores': scores
+            }
+            
+        except Exception as e:
+            logger.debug(f"Full score error for {symbol}: {e}")
+            return {'composite_score': 0, 'signal': 'HOLD', 'component_scores': scores}
+    
+    def _score_fundamentals(self, symbol: str) -> float:
+        """Score based on fundamental metrics."""
+        if symbol in self._fundamental_cache:
+            fund = self._fundamental_cache[symbol]
+        else:
+            try:
+                stock = self.db.get_stock(symbol)
+                if stock:
+                    fund = self.db.get_fundamentals(stock['id'])
+                    self._fundamental_cache[symbol] = fund
+                else:
+                    return 0.0
+            except:
+                return 0.0
+        
+        if not fund:
+            return 0.0
+        
+        score = 0.0
+        
+        # P/E ratio (lower is better, but not negative)
+        pe = fund.get('pe_ratio')
+        if pe and 0 < pe < 15:
+            score += 0.3
+        elif pe and 15 <= pe < 25:
+            score += 0.1
+        elif pe and pe >= 25:
+            score -= 0.1
+        
+        # Dividend yield (higher is better)
+        div_yield = fund.get('dividend_yield')
+        if div_yield and div_yield > 5:
+            score += 0.3
+        elif div_yield and div_yield > 2:
+            score += 0.1
+        
+        # ROE (higher is better)
+        roe = fund.get('roe')
+        if roe and roe > 15:
+            score += 0.3
+        elif roe and roe > 10:
+            score += 0.1
+        
+        return max(-1, min(1, score))
     
     def _price_based_score(self, symbol: str, date: str, df: pd.DataFrame, current_price: float) -> Dict[str, Any]:
         """
