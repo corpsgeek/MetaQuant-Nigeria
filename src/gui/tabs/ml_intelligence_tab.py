@@ -386,221 +386,595 @@ class MLIntelligenceTab:
         self.pred_status.pack(side=tk.LEFT)
     
     def _create_anomaly_ui(self):
-        """Create anomaly detection sub-tab UI."""
+        """Create super-enhanced anomaly detection sub-tab UI."""
         main = self.anomaly_tab
         
+        # Create scrollable canvas
+        canvas = tk.Canvas(main, bg=COLORS['bg_dark'], highlightthickness=0)
+        scrollbar = ttk.Scrollbar(main, orient=tk.VERTICAL, command=canvas.yview)
+        self.anomaly_scrollable = ttk.Frame(canvas)
+        
+        self.anomaly_scrollable.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=self.anomaly_scrollable, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        
+        content = self.anomaly_scrollable
+        
         # ========== HEADER ==========
-        header = ttk.Frame(main)
+        header = ttk.Frame(content)
         header.pack(fill=tk.X, padx=10, pady=10)
         
-        ttk.Label(header, text="⚠️ Anomaly Detection", font=get_font('subheading'),
+        ttk.Label(header, text="🚨 Anomaly Detection Engine", font=get_font('heading'),
                   foreground=COLORS['warning']).pack(side=tk.LEFT)
         
-        scan_btn = ttk.Button(header, text="🔍 Scan All Stocks", command=self._scan_anomalies)
-        scan_btn.pack(side=tk.RIGHT)
+        btn_frame = ttk.Frame(header)
+        btn_frame.pack(side=tk.RIGHT)
         
-        # ========== SUMMARY CARDS ==========
-        summary_frame = ttk.LabelFrame(main, text="📊 Summary")
-        summary_frame.pack(fill=tk.X, padx=10, pady=5)
+        scan_btn = ttk.Button(btn_frame, text="🔍 Scan All Stocks", command=self._scan_anomalies)
+        scan_btn.pack(side=tk.LEFT, padx=5)
         
-        summary_row = ttk.Frame(summary_frame)
-        summary_row.pack(fill=tk.X, padx=10, pady=10)
+        # ========== THREAT LEVEL GAUGE ==========
+        threat_frame = ttk.LabelFrame(content, text="🎯 Market Threat Level")
+        threat_frame.pack(fill=tk.X, padx=10, pady=5)
         
+        threat_content = ttk.Frame(threat_frame)
+        threat_content.pack(fill=tk.X, padx=15, pady=15)
+        
+        # Left: Big threat indicator
+        threat_left = ttk.Frame(threat_content)
+        threat_left.pack(side=tk.LEFT, padx=20)
+        
+        ttk.Label(threat_left, text="Anomaly Level", font=get_font('small'), 
+                  foreground=COLORS['text_muted']).pack()
+        self.threat_level = ttk.Label(threat_left, text="LOW", font=('Helvetica', 36, 'bold'),
+                                      foreground=COLORS['gain'])
+        self.threat_level.pack()
+        self.threat_description = ttk.Label(threat_left, text="No significant anomalies detected",
+                                            font=get_font('small'), foreground=COLORS['text_muted'])
+        self.threat_description.pack()
+        
+        # Right: Summary stats
         self.anomaly_summary = {}
         
+        stats_frame = ttk.Frame(threat_content)
+        stats_frame.pack(side=tk.RIGHT, expand=True, fill=tk.X, padx=20)
+        
         summaries = [
-            ('total', '⚠️ Total Anomalies', COLORS['warning']),
-            ('volume', '📊 Volume Spikes', COLORS['primary']),
-            ('price', '💰 Price Jumps', COLORS['gain']),
-            ('accumulation', '📈 Accumulation', COLORS['gain']),
-            ('distribution', '📉 Distribution', COLORS['loss'])
+            ('total', '⚠️ Total', COLORS['warning']),
+            ('volume_spike', '📊 Volume', COLORS['primary']),
+            ('price_jump', '💰 Price', COLORS['gain']),
+            ('smart_money', '🧠 Smart $', COLORS['secondary']),
+            ('volatility', '📈 Volatility', COLORS['loss'])
         ]
         
+        stats_row = ttk.Frame(stats_frame)
+        stats_row.pack(fill=tk.X)
+        
         for key, title, color in summaries:
-            card = ttk.Frame(summary_row, relief='ridge', borderwidth=1, padding=10)
-            card.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=5)
+            card = ttk.Frame(stats_row, relief='ridge', borderwidth=1, padding=12)
+            card.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=3)
             ttk.Label(card, text=title, font=get_font('small'), foreground=COLORS['text_muted']).pack()
-            self.anomaly_summary[key] = ttk.Label(card, text="0", font=get_font('subheading'), foreground=color)
+            self.anomaly_summary[key] = ttk.Label(card, text="0", font=get_font('heading'), foreground=color)
             self.anomaly_summary[key].pack()
         
-        # ========== ANOMALY LIST ==========
-        list_frame = ttk.LabelFrame(main, text="🚨 Recent Anomalies")
-        list_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        # ========== ANOMALY TYPE BREAKDOWN ==========
+        types_frame = ttk.LabelFrame(content, text="📊 Anomaly Types Detected")
+        types_frame.pack(fill=tk.X, padx=10, pady=5)
         
-        cols = ('Time', 'Symbol', 'Type', 'Severity', 'Description')
-        self.anomaly_tree = ttk.Treeview(list_frame, columns=cols, show='headings', height=15)
+        types_content = ttk.Frame(types_frame)
+        types_content.pack(fill=tk.X, padx=10, pady=10)
         
-        widths = {'Time': 100, 'Symbol': 80, 'Type': 120, 'Severity': 80, 'Description': 400}
+        self.anomaly_type_bars = {}
+        
+        anomaly_types = [
+            ('volume_spike', '📊 Volume Spike', 'Unusual trading volume detected'),
+            ('price_jump', '💰 Price Jump', 'Significant price movement'),
+            ('accumulation', '📈 Accumulation', 'Institutional buying pattern'),
+            ('distribution', '📉 Distribution', 'Institutional selling pattern'),
+            ('volatility_spike', '⚡ Volatility Spike', 'Heightened price volatility'),
+            ('smart_money', '🧠 Smart Money', 'Unusual block trades detected')
+        ]
+        
+        for key, title, desc in anomaly_types:
+            row = ttk.Frame(types_content)
+            row.pack(fill=tk.X, pady=4)
+            
+            ttk.Label(row, text=title, font=get_font('body'), width=18, anchor=tk.W).pack(side=tk.LEFT)
+            
+            bar = ttk.Progressbar(row, length=200, mode='determinate')
+            bar.pack(side=tk.LEFT, padx=10, fill=tk.X, expand=True)
+            
+            count_lbl = ttk.Label(row, text="0", font=get_font('body'), foreground=COLORS['warning'], width=5)
+            count_lbl.pack(side=tk.LEFT, padx=5)
+            
+            desc_lbl = ttk.Label(row, text=desc, font=get_font('small'), foreground=COLORS['text_muted'])
+            desc_lbl.pack(side=tk.RIGHT)
+            
+            self.anomaly_type_bars[key] = {'bar': bar, 'count': count_lbl}
+        
+        # ========== REAL-TIME ALERTS ==========
+        alerts_frame = ttk.LabelFrame(content, text="🔔 Active Alerts")
+        alerts_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        self.alerts_container = ttk.Frame(alerts_frame)
+        self.alerts_container.pack(fill=tk.X, padx=10, pady=10)
+        
+        # Pre-create 3 alert slots
+        self.alert_cards = []
+        for i in range(3):
+            card = ttk.Frame(self.alerts_container, relief='ridge', borderwidth=2, padding=10)
+            card.pack(fill=tk.X, pady=3)
+            
+            icon_lbl = ttk.Label(card, text="⚪", font=('Helvetica', 20))
+            icon_lbl.pack(side=tk.LEFT, padx=10)
+            
+            text_frame = ttk.Frame(card)
+            text_frame.pack(side=tk.LEFT, expand=True, fill=tk.X)
+            
+            title_lbl = ttk.Label(text_frame, text="No alert", font=get_font('body'))
+            title_lbl.pack(anchor=tk.W)
+            
+            desc_lbl = ttk.Label(text_frame, text="--", font=get_font('small'), foreground=COLORS['text_muted'])
+            desc_lbl.pack(anchor=tk.W)
+            
+            severity_lbl = ttk.Label(card, text="--", font=get_font('body'), width=10)
+            severity_lbl.pack(side=tk.RIGHT)
+            
+            self.alert_cards.append({
+                'frame': card, 'icon': icon_lbl, 'title': title_lbl, 
+                'desc': desc_lbl, 'severity': severity_lbl
+            })
+        
+        # ========== DETAILED ANOMALY TABLE ==========
+        table_frame = ttk.LabelFrame(content, text="📋 All Detected Anomalies")
+        table_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        
+        cols = ('Severity', 'Symbol', 'Type', 'Time', 'Description', 'Score')
+        self.anomaly_tree = ttk.Treeview(table_frame, columns=cols, show='headings', height=12)
+        
+        widths = {'Severity': 70, 'Symbol': 80, 'Type': 120, 'Time': 100, 'Description': 350, 'Score': 60}
         for col in cols:
             self.anomaly_tree.heading(col, text=col)
             self.anomaly_tree.column(col, width=widths.get(col, 100))
         
-        scrollbar = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=self.anomaly_tree.yview)
-        self.anomaly_tree.configure(yscrollcommand=scrollbar.set)
+        # Tags for severity colors
+        self.anomaly_tree.tag_configure('high', foreground=COLORS['loss'])
+        self.anomaly_tree.tag_configure('medium', foreground=COLORS['warning'])
+        self.anomaly_tree.tag_configure('low', foreground=COLORS['gain'])
+        
+        scrollbar2 = ttk.Scrollbar(table_frame, orient=tk.VERTICAL, command=self.anomaly_tree.yview)
+        self.anomaly_tree.configure(yscrollcommand=scrollbar2.set)
         
         self.anomaly_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        scrollbar2.pack(side=tk.RIGHT, fill=tk.Y)
         
-        # Status
-        self.anomaly_status = ttk.Label(main, text="Click 'Scan All Stocks' to detect anomalies",
-                                        font=get_font('small'), foreground=COLORS['text_muted'])
-        self.anomaly_status.pack(pady=5)
-    
-    def _create_clusters_ui(self):
-        """Create stock clusters sub-tab UI."""
-        main = self.clusters_tab
-        
-        # ========== HEADER ==========
-        header = ttk.Frame(main)
-        header.pack(fill=tk.X, padx=10, pady=10)
-        
-        ttk.Label(header, text="📊 Stock Clusters", font=get_font('subheading'),
-                  foreground=COLORS['primary']).pack(side=tk.LEFT)
-        
-        cluster_btn = ttk.Button(header, text="🔄 Re-cluster Stocks", command=self._recluster_stocks)
-        cluster_btn.pack(side=tk.RIGHT)
-        
-        # ========== CLUSTER OVERVIEW ==========
-        overview_frame = ttk.LabelFrame(main, text="📋 Cluster Overview")
-        overview_frame.pack(fill=tk.X, padx=10, pady=5)
-        
-        self.cluster_cards_frame = ttk.Frame(overview_frame)
-        self.cluster_cards_frame.pack(fill=tk.X, padx=10, pady=10)
-        
-        self.cluster_cards = {}
-        
-        # Create 8 cluster cards
-        for i in range(8):
-            card = ttk.Frame(self.cluster_cards_frame, relief='ridge', borderwidth=1, padding=8)
-            card.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=3)
-            
-            label_lbl = ttk.Label(card, text=f"Cluster {i}", font=get_font('small'), foreground=COLORS['primary'])
-            label_lbl.pack()
-            count_lbl = ttk.Label(card, text="0 stocks", font=get_font('small'), foreground=COLORS['text_muted'])
-            count_lbl.pack()
-            
-            self.cluster_cards[i] = {'label': label_lbl, 'count': count_lbl}
-        
-        # ========== SIMILAR STOCKS FINDER ==========
-        finder_frame = ttk.LabelFrame(main, text="🔍 Find Similar Stocks")
-        finder_frame.pack(fill=tk.X, padx=10, pady=5)
-        
-        finder_row = ttk.Frame(finder_frame)
-        finder_row.pack(fill=tk.X, padx=10, pady=10)
-        
-        ttk.Label(finder_row, text="Symbol:", font=get_font('body')).pack(side=tk.LEFT)
-        
-        self.cluster_symbol_var = tk.StringVar(value="DANGCEM")
-        self.cluster_symbol_entry = ttk.Entry(finder_row, textvariable=self.cluster_symbol_var, width=15)
-        self.cluster_symbol_entry.pack(side=tk.LEFT, padx=10)
-        
-        find_btn = ttk.Button(finder_row, text="🔍 Find Similar", command=self._find_similar)
-        find_btn.pack(side=tk.LEFT)
-        
-        # Results
-        self.similar_results = ttk.Label(finder_row, text="", font=get_font('body'))
-        self.similar_results.pack(side=tk.LEFT, padx=20)
-        
-        # ========== CLUSTER MEMBERS ==========
-        members_frame = ttk.LabelFrame(main, text="👥 Cluster Members")
-        members_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
-        
-        cols = ('Symbol', 'Cluster', 'Label')
-        self.members_tree = ttk.Treeview(members_frame, columns=cols, show='headings', height=12)
-        
-        for col in cols:
-            self.members_tree.heading(col, text=col)
-            self.members_tree.column(col, width=150 if col == 'Label' else 100)
-        
-        scrollbar = ttk.Scrollbar(members_frame, orient=tk.VERTICAL, command=self.members_tree.yview)
-        self.members_tree.configure(yscrollcommand=scrollbar.set)
-        
-        self.members_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        
-        # Status
-        self.cluster_status = ttk.Label(main, text="Loading clusters...",
-                                        font=get_font('small'), foreground=COLORS['text_muted'])
-        self.cluster_status.pack(pady=5)
-    
-    def _create_rotation_ui(self):
-        """Create sector rotation sub-tab UI."""
-        main = self.rotation_tab
-        
-        # ========== HEADER ==========
-        header = ttk.Frame(main)
-        header.pack(fill=tk.X, padx=10, pady=10)
-        
-        ttk.Label(header, text="🔄 Sector Rotation Analysis", font=get_font('subheading'),
-                  foreground=COLORS['primary']).pack(side=tk.LEFT)
-        
-        refresh_btn = ttk.Button(header, text="↻ Refresh", command=self._update_rotation)
-        refresh_btn.pack(side=tk.RIGHT)
-        
-        # ========== ROTATION STATUS ==========
-        status_frame = ttk.LabelFrame(main, text="📊 Rotation Status")
+        # ========== STATUS ==========
+        status_frame = ttk.Frame(content)
         status_frame.pack(fill=tk.X, padx=10, pady=5)
         
-        status_row = ttk.Frame(status_frame)
-        status_row.pack(fill=tk.X, padx=10, pady=10)
+        self.anomaly_status = ttk.Label(status_frame, text="🔍 Click 'Scan All Stocks' to detect anomalies",
+                                        font=get_font('small'), foreground=COLORS['text_muted'])
+        self.anomaly_status.pack(side=tk.LEFT)
+    
+    def _create_clusters_ui(self):
+        """Create super-enhanced stock clusters sub-tab UI."""
+        main = self.clusters_tab
         
+        # Create scrollable canvas
+        canvas = tk.Canvas(main, bg=COLORS['bg_dark'], highlightthickness=0)
+        scrollbar = ttk.Scrollbar(main, orient=tk.VERTICAL, command=canvas.yview)
+        self.cluster_scrollable = ttk.Frame(canvas)
+        
+        self.cluster_scrollable.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=self.cluster_scrollable, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        
+        content = self.cluster_scrollable
+        
+        # ========== HEADER ==========
+        header = ttk.Frame(content)
+        header.pack(fill=tk.X, padx=10, pady=10)
+        
+        ttk.Label(header, text="📊 K-Means Stock Clustering Engine", font=get_font('heading'),
+                  foreground=COLORS['primary']).pack(side=tk.LEFT)
+        
+        btn_frame = ttk.Frame(header)
+        btn_frame.pack(side=tk.RIGHT)
+        
+        cluster_btn = ttk.Button(btn_frame, text="🔄 Re-cluster Stocks", command=self._recluster_stocks)
+        cluster_btn.pack(side=tk.LEFT, padx=5)
+        
+        # ========== CLUSTER OVERVIEW GRID ==========
+        overview_frame = ttk.LabelFrame(content, text="📋 Cluster Overview (8 K-Means Clusters)")
+        overview_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        # Two rows of 4 cards each
+        self.cluster_cards = {}
+        
+        cluster_labels = [
+            ('High Growth', COLORS['gain']),
+            ('Value Defensive', COLORS['primary']),
+            ('Momentum Leaders', COLORS['secondary']),
+            ('Dividend Champions', COLORS['gain']),
+            ('Turnaround Plays', COLORS['warning']),
+            ('Blue Chips', COLORS['primary']),
+            ('Small Caps', COLORS['text_secondary']),
+            ('Speculative', COLORS['loss'])
+        ]
+        
+        for row_idx in range(2):
+            row_frame = ttk.Frame(overview_frame)
+            row_frame.pack(fill=tk.X, padx=10, pady=5)
+            
+            for col_idx in range(4):
+                i = row_idx * 4 + col_idx
+                default_label, default_color = cluster_labels[i]
+                
+                card = ttk.Frame(row_frame, relief='ridge', borderwidth=2, padding=12)
+                card.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=5, pady=3)
+                
+                # Cluster number
+                num_lbl = ttk.Label(card, text=f"#{i}", font=('Helvetica', 14, 'bold'), foreground=default_color)
+                num_lbl.pack()
+                
+                # Label
+                label_lbl = ttk.Label(card, text=default_label, font=get_font('body'), foreground=default_color)
+                label_lbl.pack()
+                
+                # Count
+                count_lbl = ttk.Label(card, text="0 stocks", font=get_font('small'), foreground=COLORS['text_muted'])
+                count_lbl.pack()
+                
+                # Progress bar for relative size
+                bar = ttk.Progressbar(card, length=80, mode='determinate')
+                bar.pack(pady=3)
+                
+                self.cluster_cards[i] = {'num': num_lbl, 'label': label_lbl, 'count': count_lbl, 'bar': bar, 'color': default_color}
+        
+        # ========== CLUSTER CHARACTERISTICS ==========
+        chars_frame = ttk.LabelFrame(content, text="📈 Cluster Characteristics")
+        chars_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        chars_content = ttk.Frame(chars_frame)
+        chars_content.pack(fill=tk.X, padx=10, pady=10)
+        
+        self.cluster_stats = {}
+        
+        stats_items = [
+            ('total_stocks', '📊 Total Stocks', '0'),
+            ('clusters_active', '🎯 Active Clusters', '8'),
+            ('largest_cluster', '📈 Largest Cluster', '--'),
+            ('smallest_cluster', '📉 Smallest Cluster', '--'),
+            ('inertia', '🔬 Model Inertia', '--')
+        ]
+        
+        for key, label, default in stats_items:
+            card = ttk.Frame(chars_content, relief='ridge', borderwidth=1, padding=10)
+            card.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=5)
+            ttk.Label(card, text=label, font=get_font('small'), foreground=COLORS['text_muted']).pack()
+            self.cluster_stats[key] = ttk.Label(card, text=default, font=get_font('body'))
+            self.cluster_stats[key].pack()
+        
+        # ========== SIMILAR STOCKS FINDER ==========
+        finder_frame = ttk.LabelFrame(content, text="🔍 Find Similar Stocks")
+        finder_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        finder_content = ttk.Frame(finder_frame)
+        finder_content.pack(fill=tk.X, padx=15, pady=15)
+        
+        # Input row
+        input_row = ttk.Frame(finder_content)
+        input_row.pack(fill=tk.X)
+        
+        ttk.Label(input_row, text="Enter Symbol:", font=get_font('body')).pack(side=tk.LEFT)
+        
+        self.cluster_symbol_var = tk.StringVar(value="DANGCEM")
+        self.cluster_symbol_entry = ttk.Entry(input_row, textvariable=self.cluster_symbol_var, width=15, font=get_font('body'))
+        self.cluster_symbol_entry.pack(side=tk.LEFT, padx=10)
+        self.cluster_symbol_entry.bind('<Return>', lambda e: self._find_similar())
+        
+        find_btn = ttk.Button(input_row, text="🔍 Find Similar", command=self._find_similar)
+        find_btn.pack(side=tk.LEFT)
+        
+        # Results area
+        results_frame = ttk.Frame(finder_content)
+        results_frame.pack(fill=tk.X, pady=(15, 0))
+        
+        # Stock's cluster info
+        self.similar_cluster_label = ttk.Label(results_frame, text="", font=get_font('subheading'))
+        self.similar_cluster_label.pack(anchor=tk.W)
+        
+        # Similar stocks list
+        self.similar_stocks_label = ttk.Label(results_frame, text="Enter a symbol and click Find Similar",
+                                              font=get_font('body'), foreground=COLORS['text_muted'])
+        self.similar_stocks_label.pack(anchor=tk.W, pady=(5, 0))
+        
+        # Similar stocks as buttons
+        self.similar_stocks_frame = ttk.Frame(results_frame)
+        self.similar_stocks_frame.pack(fill=tk.X, pady=(10, 0))
+        
+        # ========== CLUSTER MEMBERS TABLE ==========
+        members_frame = ttk.LabelFrame(content, text="👥 All Cluster Members")
+        members_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        
+        # Filter row
+        filter_row = ttk.Frame(members_frame)
+        filter_row.pack(fill=tk.X, padx=10, pady=5)
+        
+        ttk.Label(filter_row, text="Filter by Cluster:", font=get_font('small')).pack(side=tk.LEFT)
+        
+        self.cluster_filter_var = tk.StringVar(value="All")
+        cluster_filter = ttk.Combobox(filter_row, textvariable=self.cluster_filter_var, width=20,
+                                      values=["All"] + [f"Cluster {i}" for i in range(8)])
+        cluster_filter.pack(side=tk.LEFT, padx=10)
+        cluster_filter.bind("<<ComboboxSelected>>", lambda e: self._filter_cluster_members())
+        
+        # Table
+        cols = ('Symbol', 'Cluster #', 'Cluster Label', 'Sector', 'Market Cap')
+        self.members_tree = ttk.Treeview(members_frame, columns=cols, show='headings', height=10)
+        
+        widths = {'Symbol': 100, 'Cluster #': 80, 'Cluster Label': 150, 'Sector': 120, 'Market Cap': 100}
+        for col in cols:
+            self.members_tree.heading(col, text=col)
+            self.members_tree.column(col, width=widths.get(col, 100))
+        
+        # Color tags for clusters
+        for i in range(8):
+            self.members_tree.tag_configure(f'cluster_{i}', foreground=cluster_labels[i][1])
+        
+        scrollbar2 = ttk.Scrollbar(members_frame, orient=tk.VERTICAL, command=self.members_tree.yview)
+        self.members_tree.configure(yscrollcommand=scrollbar2.set)
+        
+        self.members_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
+        scrollbar2.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # ========== STATUS ==========
+        status_frame = ttk.Frame(content)
+        status_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        self.cluster_status = ttk.Label(status_frame, text="📊 Loading clusters...",
+                                        font=get_font('small'), foreground=COLORS['text_muted'])
+        self.cluster_status.pack(side=tk.LEFT)
+    
+    def _create_rotation_ui(self):
+        """Create super-enhanced sector rotation sub-tab UI."""
+        main = self.rotation_tab
+        
+        # Create scrollable canvas
+        canvas = tk.Canvas(main, bg=COLORS['bg_dark'], highlightthickness=0)
+        scrollbar = ttk.Scrollbar(main, orient=tk.VERTICAL, command=canvas.yview)
+        self.rotation_scrollable = ttk.Frame(canvas)
+        
+        self.rotation_scrollable.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=self.rotation_scrollable, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        
+        content = self.rotation_scrollable
+        
+        # ========== HEADER ==========
+        header = ttk.Frame(content)
+        header.pack(fill=tk.X, padx=10, pady=10)
+        
+        ttk.Label(header, text="🔄 Sector Rotation Analysis Engine", font=get_font('heading'),
+                  foreground=COLORS['primary']).pack(side=tk.LEFT)
+        
+        btn_frame = ttk.Frame(header)
+        btn_frame.pack(side=tk.RIGHT)
+        
+        refresh_btn = ttk.Button(btn_frame, text="↻ Refresh Analysis", command=self._update_rotation)
+        refresh_btn.pack(side=tk.LEFT, padx=5)
+        
+        # ========== ROTATION CYCLE INDICATOR ==========
+        cycle_frame = ttk.LabelFrame(content, text="📊 Economic Cycle Position")
+        cycle_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        cycle_content = ttk.Frame(cycle_frame)
+        cycle_content.pack(fill=tk.X, padx=15, pady=15)
+        
+        # Left: Big cycle indicator
+        cycle_left = ttk.Frame(cycle_content)
+        cycle_left.pack(side=tk.LEFT, padx=20)
+        
+        ttk.Label(cycle_left, text="Current Cycle", font=get_font('small'), 
+                  foreground=COLORS['text_muted']).pack()
+        self.cycle_indicator = ttk.Label(cycle_left, text="EXPANSION", font=('Helvetica', 32, 'bold'),
+                                         foreground=COLORS['gain'])
+        self.cycle_indicator.pack()
+        self.cycle_description = ttk.Label(cycle_left, text="Risk-on assets favored",
+                                           font=get_font('body'), foreground=COLORS['text_muted'])
+        self.cycle_description.pack()
+        
+        # Center: Rotation status cards
         self.rotation_status = {}
         
-        # Prediction card
-        card1 = ttk.Frame(status_row, relief='ridge', borderwidth=1, padding=15)
-        card1.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=5)
-        ttk.Label(card1, text="🎯 Prediction", font=get_font('small'), foreground=COLORS['text_muted']).pack()
-        self.rotation_status['prediction'] = ttk.Label(card1, text="--", font=get_font('subheading'))
-        self.rotation_status['prediction'].pack()
+        status_frame = ttk.Frame(cycle_content)
+        status_frame.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=20)
         
-        # Rotating To card
-        card2 = ttk.Frame(status_row, relief='ridge', borderwidth=1, padding=15)
-        card2.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=5)
-        ttk.Label(card2, text="🔄 Rotating To", font=get_font('small'), foreground=COLORS['text_muted']).pack()
-        self.rotation_status['rotating_to'] = ttk.Label(card2, text="--", font=get_font('subheading'), foreground=COLORS['gain'])
-        self.rotation_status['rotating_to'].pack()
+        status_items = [
+            ('prediction', '🎯 Rotation Signal', '--'),
+            ('rotating_to', '📈 Rotating To', '--'),
+            ('rotating_from', '📉 Rotating From', '--'),
+            ('confidence', '💪 Confidence', '--')
+        ]
         
-        # ========== SECTOR LEADERS/LAGGARDS ==========
-        ll_frame = ttk.Frame(main)
+        status_row = ttk.Frame(status_frame)
+        status_row.pack(fill=tk.X)
+        
+        for key, label, default in status_items:
+            card = ttk.Frame(status_row, relief='ridge', borderwidth=1, padding=12)
+            card.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=3)
+            ttk.Label(card, text=label, font=get_font('small'), foreground=COLORS['text_muted']).pack()
+            self.rotation_status[key] = ttk.Label(card, text=default, font=get_font('body'))
+            self.rotation_status[key].pack()
+        
+        # ========== SECTOR ALLOCATION RECOMMENDATION ==========
+        alloc_frame = ttk.LabelFrame(content, text="📈 Sector Allocation Recommendation")
+        alloc_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        alloc_content = ttk.Frame(alloc_frame)
+        alloc_content.pack(fill=tk.X, padx=10, pady=10)
+        
+        self.sector_allocation_label = ttk.Label(
+            alloc_content, text="Click 'Refresh Analysis' to get sector rotation recommendations",
+            font=get_font('subheading'), foreground=COLORS['text_secondary']
+        )
+        self.sector_allocation_label.pack(anchor=tk.W)
+        
+        self.sector_allocation_details = ttk.Label(
+            alloc_content, text="",
+            font=get_font('body'), foreground=COLORS['text_muted'], wraplength=800
+        )
+        self.sector_allocation_details.pack(anchor=tk.W, pady=(5, 0))
+        
+        # ========== SECTOR MOMENTUM BARS ==========
+        momentum_bars_frame = ttk.LabelFrame(content, text="📊 Sector Momentum Overview")
+        momentum_bars_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        self.sector_momentum_bars = {}
+        
+        sectors = [
+            'Financial Services', 'Oil & Gas', 'Consumer Goods', 'Industrial Goods',
+            'Insurance', 'Conglomerates', 'Healthcare', 'Agriculture', 
+            'ICT', 'Utilities', 'Real Estate', 'Construction'
+        ]
+        
+        # Two columns of sector bars
+        bars_container = ttk.Frame(momentum_bars_frame)
+        bars_container.pack(fill=tk.X, padx=10, pady=10)
+        
+        left_col = ttk.Frame(bars_container)
+        left_col.pack(side=tk.LEFT, expand=True, fill=tk.BOTH)
+        
+        right_col = ttk.Frame(bars_container)
+        right_col.pack(side=tk.RIGHT, expand=True, fill=tk.BOTH)
+        
+        for idx, sector in enumerate(sectors):
+            parent = left_col if idx < 6 else right_col
+            
+            row = ttk.Frame(parent)
+            row.pack(fill=tk.X, pady=3, padx=5)
+            
+            name_lbl = ttk.Label(row, text=sector, font=get_font('small'), width=18, anchor=tk.W)
+            name_lbl.pack(side=tk.LEFT)
+            
+            bar = ttk.Progressbar(row, length=120, mode='determinate')
+            bar.pack(side=tk.LEFT, padx=5)
+            
+            value_lbl = ttk.Label(row, text="0.0%", font=get_font('small'), width=8)
+            value_lbl.pack(side=tk.LEFT)
+            
+            status_lbl = ttk.Label(row, text="--", font=get_font('small'), width=10)
+            status_lbl.pack(side=tk.RIGHT)
+            
+            self.sector_momentum_bars[sector] = {'bar': bar, 'value': value_lbl, 'status': status_lbl}
+        
+        # ========== LEADERS AND LAGGARDS ==========
+        ll_frame = ttk.Frame(content)
         ll_frame.pack(fill=tk.X, padx=10, pady=5)
         
         # Leaders
-        leaders_frame = ttk.LabelFrame(ll_frame, text="🏆 Leading Sectors")
+        leaders_frame = ttk.LabelFrame(ll_frame, text="🏆 Leading Sectors (Overweight)")
         leaders_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 5))
         
-        self.leaders_list = tk.Listbox(leaders_frame, height=6, font=get_font('body'),
-                                       bg=COLORS['bg_medium'], fg=COLORS['gain'])
-        self.leaders_list.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        leaders_content = ttk.Frame(leaders_frame)
+        leaders_content.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        self.leader_cards = []
+        for i in range(3):
+            card = ttk.Frame(leaders_content, relief='ridge', borderwidth=2, padding=10)
+            card.pack(fill=tk.X, pady=3)
+            
+            rank_lbl = ttk.Label(card, text=f"#{i+1}", font=('Helvetica', 16, 'bold'), foreground=COLORS['gain'])
+            rank_lbl.pack(side=tk.LEFT, padx=10)
+            
+            info_frame = ttk.Frame(card)
+            info_frame.pack(side=tk.LEFT, expand=True, fill=tk.X)
+            
+            sector_lbl = ttk.Label(info_frame, text="--", font=get_font('body'))
+            sector_lbl.pack(anchor=tk.W)
+            
+            change_lbl = ttk.Label(info_frame, text="--", font=get_font('small'), foreground=COLORS['gain'])
+            change_lbl.pack(anchor=tk.W)
+            
+            self.leader_cards.append({'sector': sector_lbl, 'change': change_lbl})
         
         # Laggards
-        laggards_frame = ttk.LabelFrame(ll_frame, text="📉 Lagging Sectors")
+        laggards_frame = ttk.LabelFrame(ll_frame, text="📉 Lagging Sectors (Underweight)")
         laggards_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=(5, 0))
         
-        self.laggards_list = tk.Listbox(laggards_frame, height=6, font=get_font('body'),
-                                        bg=COLORS['bg_medium'], fg=COLORS['loss'])
-        self.laggards_list.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        laggards_content = ttk.Frame(laggards_frame)
+        laggards_content.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
-        # ========== SECTOR MOMENTUM ==========
-        momentum_frame = ttk.LabelFrame(main, text="📊 Sector Momentum")
+        self.laggard_cards = []
+        for i in range(3):
+            card = ttk.Frame(laggards_content, relief='ridge', borderwidth=2, padding=10)
+            card.pack(fill=tk.X, pady=3)
+            
+            rank_lbl = ttk.Label(card, text=f"#{i+1}", font=('Helvetica', 16, 'bold'), foreground=COLORS['loss'])
+            rank_lbl.pack(side=tk.LEFT, padx=10)
+            
+            info_frame = ttk.Frame(card)
+            info_frame.pack(side=tk.LEFT, expand=True, fill=tk.X)
+            
+            sector_lbl = ttk.Label(info_frame, text="--", font=get_font('body'))
+            sector_lbl.pack(anchor=tk.W)
+            
+            change_lbl = ttk.Label(info_frame, text="--", font=get_font('small'), foreground=COLORS['loss'])
+            change_lbl.pack(anchor=tk.W)
+            
+            self.laggard_cards.append({'sector': sector_lbl, 'change': change_lbl})
+        
+        # ========== SECTOR MOMENTUM TABLE ==========
+        momentum_frame = ttk.LabelFrame(content, text="📋 Detailed Sector Momentum")
         momentum_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
         
-        cols = ('Sector', 'Momentum', 'Status')
+        cols = ('Rank', 'Sector', 'Momentum', '1W Change', '1M Change', 'Status', 'Recommendation')
         self.momentum_tree = ttk.Treeview(momentum_frame, columns=cols, show='headings', height=10)
         
+        widths = {'Rank': 50, 'Sector': 150, 'Momentum': 80, '1W Change': 80, '1M Change': 80, 'Status': 80, 'Recommendation': 100}
         for col in cols:
             self.momentum_tree.heading(col, text=col)
-            self.momentum_tree.column(col, width=150)
+            self.momentum_tree.column(col, width=widths.get(col, 80))
         
-        scrollbar = ttk.Scrollbar(momentum_frame, orient=tk.VERTICAL, command=self.momentum_tree.yview)
-        self.momentum_tree.configure(yscrollcommand=scrollbar.set)
+        # Tags for momentum colors
+        self.momentum_tree.tag_configure('bullish', foreground=COLORS['gain'])
+        self.momentum_tree.tag_configure('bearish', foreground=COLORS['loss'])
+        self.momentum_tree.tag_configure('neutral', foreground=COLORS['warning'])
+        
+        scrollbar2 = ttk.Scrollbar(momentum_frame, orient=tk.VERTICAL, command=self.momentum_tree.yview)
+        self.momentum_tree.configure(yscrollcommand=scrollbar2.set)
         
         self.momentum_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        scrollbar2.pack(side=tk.RIGHT, fill=tk.Y)
         
-        # Status
-        self.rotation_label = ttk.Label(main, text="Tracking sector momentum...",
+        # ========== STATUS ==========
+        status_frame = ttk.Frame(content)
+        status_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        self.rotation_label = ttk.Label(status_frame, text="🔄 Tracking sector momentum...",
                                         font=get_font('small'), foreground=COLORS['text_muted'])
-        self.rotation_label.pack(pady=5)
+        self.rotation_label.pack(side=tk.LEFT)
     
     # ========== DATA METHODS ==========
     
@@ -921,32 +1295,82 @@ class MLIntelligenceTab:
         threading.Thread(target=scan, daemon=True).start()
     
     def _display_anomalies(self, anomalies: List[Dict], counts: Dict):
-        """Display detected anomalies."""
-        # Update summary
-        self.anomaly_summary['total'].config(text=str(len(anomalies)))
-        self.anomaly_summary['volume'].config(text=str(counts.get('volume_spike', 0)))
-        self.anomaly_summary['price'].config(text=str(counts.get('price_jump', 0)))
-        self.anomaly_summary['accumulation'].config(text=str(counts.get('accumulation', 0)))
-        self.anomaly_summary['distribution'].config(text=str(counts.get('distribution', 0)))
+        """Display detected anomalies in enhanced UI."""
+        total = len(anomalies)
         
-        # Clear tree
+        # Update threat level
+        if total > 20:
+            self.threat_level.config(text="HIGH", foreground=COLORS['loss'])
+            self.threat_description.config(text="Multiple significant anomalies detected across market")
+        elif total > 10:
+            self.threat_level.config(text="MODERATE", foreground=COLORS['warning'])
+            self.threat_description.config(text="Several notable anomalies detected")
+        elif total > 0:
+            self.threat_level.config(text="LOW", foreground=COLORS['gain'])
+            self.threat_description.config(text="Minor anomalies within normal parameters")
+        else:
+            self.threat_level.config(text="NONE", foreground=COLORS['gain'])
+            self.threat_description.config(text="No significant anomalies detected")
+        
+        # Update summary cards
+        if 'total' in self.anomaly_summary:
+            self.anomaly_summary['total'].config(text=str(total))
+        if 'volume_spike' in self.anomaly_summary:
+            self.anomaly_summary['volume_spike'].config(text=str(counts.get('volume_spike', 0)))
+        if 'price_jump' in self.anomaly_summary:
+            self.anomaly_summary['price_jump'].config(text=str(counts.get('price_jump', 0)))
+        if 'smart_money' in self.anomaly_summary:
+            smart = counts.get('accumulation', 0) + counts.get('distribution', 0)
+            self.anomaly_summary['smart_money'].config(text=str(smart))
+        if 'volatility' in self.anomaly_summary:
+            self.anomaly_summary['volatility'].config(text=str(counts.get('volatility_spike', 0)))
+        
+        # Update type bars
+        max_count = max(counts.values()) if counts else 1
+        for key, bar_data in self.anomaly_type_bars.items():
+            count = counts.get(key, 0)
+            bar_data['count'].config(text=str(count))
+            bar_data['bar']['value'] = (count / max_count * 100) if max_count > 0 else 0
+        
+        # Update alert cards (top 3 most severe)
+        sorted_anomalies = sorted(anomalies, key=lambda x: x.get('severity', 0), reverse=True)
+        for i, card in enumerate(self.alert_cards):
+            if i < len(sorted_anomalies):
+                a = sorted_anomalies[i]
+                severity = a.get('severity', 0)
+                sev_color = COLORS['loss'] if severity > 70 else COLORS['warning'] if severity > 40 else COLORS['gain']
+                icon = "🔴" if severity > 70 else "🟡" if severity > 40 else "🟢"
+                
+                card['icon'].config(text=icon)
+                card['title'].config(text=f"{a.get('symbol', '')} - {a.get('type', '').replace('_', ' ').title()}")
+                card['desc'].config(text=a.get('description', '')[:80])
+                card['severity'].config(text=f"{severity:.0f}%", foreground=sev_color)
+            else:
+                card['icon'].config(text="⚪")
+                card['title'].config(text="No alert")
+                card['desc'].config(text="--")
+                card['severity'].config(text="--")
+        
+        # Clear and populate tree
         for item in self.anomaly_tree.get_children():
             self.anomaly_tree.delete(item)
         
-        # Sort by severity
-        sorted_anomalies = sorted(anomalies, key=lambda x: x.get('severity', 0), reverse=True)
-        
         for a in sorted_anomalies[:50]:
-            time_str = a.get('detected_at', '')[:19].replace('T', ' ')
+            severity = a.get('severity', 0)
+            sev_tag = 'high' if severity > 70 else 'medium' if severity > 40 else 'low'
+            sev_label = "🔴 HIGH" if severity > 70 else "🟡 MED" if severity > 40 else "🟢 LOW"
+            time_str = a.get('detected_at', '')[:19].replace('T', ' ') if a.get('detected_at') else '--'
+            
             self.anomaly_tree.insert('', 'end', values=(
-                time_str,
+                sev_label,
                 a.get('symbol', ''),
                 a.get('type', '').replace('_', ' ').title(),
-                f"{a.get('severity', 0):.0f}%",
-                a.get('description', '')
-            ))
+                time_str,
+                a.get('description', '')[:60],
+                f"{severity:.0f}%"
+            ), tags=(sev_tag,))
         
-        self.anomaly_status.config(text=f"Found {len(anomalies)} anomalies at {datetime.now().strftime('%H:%M:%S')}")
+        self.anomaly_status.config(text=f"✅ Found {total} anomalies at {datetime.now().strftime('%H:%M:%S')}")
     
     def _recluster_stocks(self):
         """Re-cluster all stocks."""
@@ -965,31 +1389,84 @@ class MLIntelligenceTab:
         threading.Thread(target=cluster, daemon=True).start()
     
     def _update_cluster_display(self):
-        """Update cluster display."""
+        """Update cluster display for enhanced UI."""
         if not self.ml_engine:
             return
         
         clusters = self.ml_engine.get_all_clusters()
+        total_stocks = sum(info.get('size', 0) for info in clusters.values())
+        max_size = max((info.get('size', 0) for info in clusters.values()), default=1)
         
-        # Update cards
+        # Update cluster cards with bars
         for i, card in self.cluster_cards.items():
             if i in clusters:
                 info = clusters[i]
+                size = info.get('size', 0)
                 card['label'].config(text=info.get('label', f'Cluster {i}'))
-                card['count'].config(text=f"{info.get('size', 0)} stocks")
+                card['count'].config(text=f"{size} stocks")
+                if 'bar' in card:
+                    card['bar']['value'] = (size / max_size * 100) if max_size > 0 else 0
+            else:
+                card['label'].config(text=f"Cluster {i}")
+                card['count'].config(text="0 stocks")
+                if 'bar' in card:
+                    card['bar']['value'] = 0
         
-        # Update tree
+        # Update stats
+        if hasattr(self, 'cluster_stats'):
+            self.cluster_stats['total_stocks'].config(text=str(total_stocks))
+            self.cluster_stats['clusters_active'].config(text=str(len([c for c in clusters.values() if c.get('size', 0) > 0])))
+            
+            if clusters:
+                largest = max(clusters.items(), key=lambda x: x[1].get('size', 0))
+                smallest = min(clusters.items(), key=lambda x: x[1].get('size', 0))
+                self.cluster_stats['largest_cluster'].config(text=f"#{largest[0]} ({largest[1].get('size', 0)})")
+                self.cluster_stats['smallest_cluster'].config(text=f"#{smallest[0]} ({smallest[1].get('size', 0)})")
+        
+        # Update tree with all members
         for item in self.members_tree.get_children():
             self.members_tree.delete(item)
         
         for cluster_id, info in clusters.items():
             for symbol in info.get('stocks', []):
-                self.members_tree.insert('', 'end', values=(symbol, cluster_id, info.get('label', '')))
+                self.members_tree.insert('', 'end', values=(
+                    symbol, 
+                    f"#{cluster_id}", 
+                    info.get('label', ''),
+                    '--',  # Sector placeholder
+                    '--'   # Market cap placeholder
+                ), tags=(f'cluster_{cluster_id}',))
         
-        self.cluster_status.config(text=f"Clustered {len(self.ml_engine.clusterer.stock_clusters)} stocks at {datetime.now().strftime('%H:%M:%S')}")
+        self.cluster_status.config(text=f"✅ Clustered {total_stocks} stocks into {len(clusters)} clusters at {datetime.now().strftime('%H:%M:%S')}")
+    
+    def _filter_cluster_members(self):
+        """Filter cluster members table by selected cluster."""
+        filter_val = self.cluster_filter_var.get()
+        
+        if not self.ml_engine:
+            return
+        
+        clusters = self.ml_engine.get_all_clusters()
+        
+        # Clear tree
+        for item in self.members_tree.get_children():
+            self.members_tree.delete(item)
+        
+        # Filter and populate
+        for cluster_id, info in clusters.items():
+            if filter_val != "All" and f"Cluster {cluster_id}" != filter_val:
+                continue
+            for symbol in info.get('stocks', []):
+                self.members_tree.insert('', 'end', values=(
+                    symbol,
+                    f"#{cluster_id}",
+                    info.get('label', ''),
+                    '--',
+                    '--'
+                ), tags=(f'cluster_{cluster_id}',))
     
     def _find_similar(self):
-        """Find similar stocks."""
+        """Find similar stocks with enhanced display."""
         if not self.ml_engine:
             return
         
@@ -998,17 +1475,30 @@ class MLIntelligenceTab:
         
         similar = cluster_info.get('similar_stocks', [])
         label = cluster_info.get('label', 'Unknown')
+        cluster_id = cluster_info.get('cluster', -1)
         
-        if similar:
-            self.similar_results.config(
-                text=f"Cluster: {label} | Similar: {', '.join(similar[:5])}",
-                foreground=COLORS['gain']
+        # Update cluster label
+        if hasattr(self, 'similar_cluster_label'):
+            self.similar_cluster_label.config(
+                text=f"📊 {symbol} is in Cluster #{cluster_id}: {label}",
+                foreground=COLORS['primary']
             )
-        else:
-            self.similar_results.config(text="No similar stocks found", foreground=COLORS['loss'])
+        
+        # Update similar stocks label
+        if hasattr(self, 'similar_stocks_label'):
+            if similar:
+                self.similar_stocks_label.config(
+                    text=f"✅ Found {len(similar)} similar stocks: {', '.join(similar[:8])}{'...' if len(similar) > 8 else ''}",
+                    foreground=COLORS['gain']
+                )
+            else:
+                self.similar_stocks_label.config(
+                    text="❌ No similar stocks found or symbol not in clusters",
+                    foreground=COLORS['loss']
+                )
     
     def _update_rotation(self):
-        """Update sector rotation analysis."""
+        """Update sector rotation analysis with enhanced UI."""
         if not self.ml_engine or not self.all_stocks_data:
             return
         
@@ -1018,35 +1508,95 @@ class MLIntelligenceTab:
         # Get prediction
         rotation = self.ml_engine.predict_sector_rotation()
         
-        # Update UI
-        self.rotation_status['prediction'].config(text=rotation.get('prediction', 'UNKNOWN'))
+        # Update cycle indicator
+        leading = rotation.get('leading', [])
+        lagging = rotation.get('lagging', [])
+        
+        if hasattr(self, 'cycle_indicator'):
+            if len(leading) > len(lagging):
+                self.cycle_indicator.config(text="EXPANSION", foreground=COLORS['gain'])
+                self.cycle_description.config(text="Risk-on assets favored • Cyclicals outperforming")
+            elif len(lagging) > len(leading):
+                self.cycle_indicator.config(text="CONTRACTION", foreground=COLORS['loss'])
+                self.cycle_description.config(text="Defensive positioning recommended • Rotate to safety")
+            else:
+                self.cycle_indicator.config(text="TRANSITION", foreground=COLORS['warning'])
+                self.cycle_description.config(text="Mixed signals • Watch for rotation confirmation")
+        
+        # Update status cards
+        self.rotation_status['prediction'].config(text=rotation.get('prediction', 'ANALYZING'))
         
         rotating_to = rotation.get('rotating_to')
         if rotating_to:
             self.rotation_status['rotating_to'].config(text=rotating_to, foreground=COLORS['gain'])
         else:
-            self.rotation_status['rotating_to'].config(text="--", foreground=COLORS['text_muted'])
+            self.rotation_status['rotating_to'].config(text="--")
         
-        # Update leaders
-        self.leaders_list.delete(0, tk.END)
-        for sector in rotation.get('leading', []):
-            self.leaders_list.insert(tk.END, f"  ▲ {sector}")
+        if 'rotating_from' in self.rotation_status:
+            rotating_from = lagging[0] if lagging else '--'
+            self.rotation_status['rotating_from'].config(text=rotating_from, foreground=COLORS['loss'])
         
-        # Update laggards
-        self.laggards_list.delete(0, tk.END)
-        for sector in rotation.get('lagging', []):
-            self.laggards_list.insert(tk.END, f"  ▼ {sector}")
+        if 'confidence' in self.rotation_status:
+            conf = rotation.get('confidence', 50)
+            self.rotation_status['confidence'].config(text=f"{conf:.0f}%")
+        
+        # Update allocation recommendation
+        if hasattr(self, 'sector_allocation_label'):
+            if leading:
+                self.sector_allocation_label.config(
+                    text=f"🟢 OVERWEIGHT: {', '.join(leading[:3])}",
+                    foreground=COLORS['gain']
+                )
+                if lagging:
+                    self.sector_allocation_details.config(
+                        text=f"Consider reducing exposure to: {', '.join(lagging[:3])}. Rotation signal suggests moving capital from lagging to leading sectors."
+                    )
+            else:
+                self.sector_allocation_label.config(
+                    text="🟡 NEUTRAL - No clear rotation signal",
+                    foreground=COLORS['warning']
+                )
+        
+        # Update leader cards
+        if hasattr(self, 'leader_cards'):
+            momentum = rotation.get('momentum', {})
+            sorted_sectors = sorted(momentum.items(), key=lambda x: x[1], reverse=True)
+            for i, card in enumerate(self.leader_cards):
+                if i < len(sorted_sectors):
+                    sector, mom = sorted_sectors[i]
+                    card['sector'].config(text=sector)
+                    card['change'].config(text=f"+{mom:.2f}%")
+                else:
+                    card['sector'].config(text="--")
+                    card['change'].config(text="--")
+        
+        # Update laggard cards
+        if hasattr(self, 'laggard_cards'):
+            momentum = rotation.get('momentum', {})
+            sorted_sectors = sorted(momentum.items(), key=lambda x: x[1])
+            for i, card in enumerate(self.laggard_cards):
+                if i < len(sorted_sectors):
+                    sector, mom = sorted_sectors[i]
+                    card['sector'].config(text=sector)
+                    card['change'].config(text=f"{mom:.2f}%")
+                else:
+                    card['sector'].config(text="--")
+                    card['change'].config(text="--")
         
         # Update momentum tree
         for item in self.momentum_tree.get_children():
             self.momentum_tree.delete(item)
         
         momentum = rotation.get('momentum', {})
-        for sector, mom in sorted(momentum.items(), key=lambda x: x[1], reverse=True):
-            status = "Leading" if mom > 1 else "Lagging" if mom < -1 else "Neutral"
-            self.momentum_tree.insert('', 'end', values=(sector, f"{mom:+.2f}%", status))
+        for rank, (sector, mom) in enumerate(sorted(momentum.items(), key=lambda x: x[1], reverse=True), 1):
+            status = "🟢 Leading" if mom > 1 else "🔴 Lagging" if mom < -1 else "🟡 Neutral"
+            tag = 'bullish' if mom > 1 else 'bearish' if mom < -1 else 'neutral'
+            rec = "OVERWEIGHT" if mom > 2 else "UNDERWEIGHT" if mom < -2 else "NEUTRAL"
+            self.momentum_tree.insert('', 'end', values=(
+                f"#{rank}", sector, f"{mom:+.2f}%", "--", "--", status, rec
+            ), tags=(tag,))
         
-        self.rotation_label.config(text=f"Updated at {datetime.now().strftime('%H:%M:%S')}")
+        self.rotation_label.config(text=f"✅ Updated at {datetime.now().strftime('%H:%M:%S')}")
     
     def refresh(self):
         """Refresh all ML data."""
