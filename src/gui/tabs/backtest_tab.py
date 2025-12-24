@@ -519,8 +519,9 @@ class BacktestTab:
                 logger.error(f"Optimization error: {e}")
                 import traceback
                 traceback.print_exc()
-                self.frame.after(0, lambda: self.opt_status.config(
-                    text=f"Error: {e}", foreground=COLORS['loss']))
+                error_msg = str(e)
+                self.frame.after(0, lambda msg=error_msg: self.opt_status.config(
+                    text=f"Error: {msg}", foreground=COLORS['loss']))
             finally:
                 self.frame.after(0, lambda: self.opt_btn.state(['!disabled']))
         

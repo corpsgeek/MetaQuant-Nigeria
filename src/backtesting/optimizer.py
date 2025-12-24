@@ -362,8 +362,12 @@ def calculate_returns(price_data: Dict[str, pd.DataFrame]) -> pd.DataFrame:
         else:
             continue
         
+        # Convert Decimal to float if needed
+        prices = pd.to_numeric(prices, errors='coerce').astype(float)
+        
         # Daily returns
         ret = prices.pct_change().dropna()
-        returns[symbol] = ret
+        if len(ret) > 10:  # Need at least 10 days
+            returns[symbol] = ret
     
     return pd.DataFrame(returns).dropna()

@@ -431,23 +431,23 @@ class BacktestEngine:
             # Trend strength
             trend = 1 if mom_20 > 0 else -1
             
-            # Composite score
-            # Trend following: positive momentum = buy
-            momentum_score = (mom_5 * 2 + mom_20) * 3  # Scale up
+            # Composite score - more conservative
+            # Only strong momentum triggers signals
+            momentum_score = (mom_5 + mom_20) / 2  # Average, not scaled up
             
-            # Mean reversion: if trending up but oversold, stronger buy
-            if trend > 0 and deviation < -0.05:
-                momentum_score += 0.3  # Oversold in uptrend = buy
-            elif trend < 0 and deviation > 0.05:
-                momentum_score -= 0.3  # Overbought in downtrend = sell
+            # Mean reversion bonus
+            if trend > 0 and deviation < -0.10:
+                momentum_score += 0.15  # Oversold in uptrend
+            elif trend < 0 and deviation > 0.10:
+                momentum_score -= 0.15  # Overbought in downtrend
             
-            # Clamp to [-1, 1] and then scale to threshold range
+            # Clamp to [-1, 1]
             score = max(-1, min(1, momentum_score))
             
-            # Determine signal
-            if score > 0.1:
+            # More selective thresholds - only strong signals
+            if score > 0.05 and mom_5 > 0.02 and mom_20 > 0.03:
                 signal = 'BUY'
-            elif score < -0.1:
+            elif score < -0.05 and mom_5 < -0.02:
                 signal = 'SELL'
             else:
                 signal = 'HOLD'
