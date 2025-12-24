@@ -1517,13 +1517,48 @@ class MLIntelligenceTab:
     def _update_rotation(self):
         """Update sector rotation analysis with enhanced UI."""
         if not self.ml_engine or not self.all_stocks_data:
+            self.rotation_label.config(text="❌ No data available for rotation analysis")
             return
         
-        # Track current performance
+        self.rotation_label.config(text="🔄 Analyzing sector rotation...")
+        
+        # Track current performance (adds to history)
         self.ml_engine.track_sector_performance(self.all_stocks_data)
         
         # Get prediction
         rotation = self.ml_engine.predict_sector_rotation()
+        
+        # If insufficient history, compute sector momentum directly from current data
+        if rotation.get('prediction') == 'INSUFFICIENT_DATA':
+            # Compute sector performance directly
+            from collections import defaultdict
+            sector_perf = defaultdict(list)
+            
+            for stock in self.all_stocks_data:
+                sector = stock.get('sector', 'Unknown')
+                if sector and sector != 'Unknown':
+                    change = stock.get('change', 0) or 0
+                    sector_perf[sector].append(change)
+            
+            # Calculate average momentum
+            momentum = {}
+            for sector, changes in sector_perf.items():
+                if changes:
+                    momentum[sector] = sum(changes) / len(changes)
+            
+            # Sort and identify leaders/laggards
+            sorted_sectors = sorted(momentum.items(), key=lambda x: x[1], reverse=True)
+            leading = [s[0] for s in sorted_sectors[:3] if s[1] > 0]
+            lagging = [s[0] for s in sorted_sectors[-3:] if s[1] < 0]
+            
+            rotation = {
+                'prediction': 'ANALYZING',
+                'leading': leading,
+                'lagging': lagging,
+                'rotating_to': leading[0] if leading else None,
+                'momentum': momentum,
+                'confidence': 40  # Lower confidence with less data
+            }
         
         # Update cycle indicator
         leading = rotation.get('leading', [])
@@ -1573,6 +1608,23 @@ class MLIntelligenceTab:
                     text="🟡 NEUTRAL - No clear rotation signal",
                     foreground=COLORS['warning']
                 )
+        
+        # Update sector momentum bars
+        if hasattr(self, 'sector_momentum_bars'):
+            momentum = rotation.get('momentum', {})
+            max_abs = max([abs(m) for m in momentum.values()], default=1) or 1
+            
+            for sector_name, bar_data in self.sector_momentum_bars.items():
+                mom = momentum.get(sector_name, 0)
+                bar_data['bar']['value'] = min(100, (abs(mom) / max_abs * 100))
+                bar_data['value'].config(text=f"{mom:+.2f}%")
+                
+                if mom > 1:
+                    bar_data['status'].config(text="🟢 Leading", foreground=COLORS['gain'])
+                elif mom < -1:
+                    bar_data['status'].config(text="🔴 Lagging", foreground=COLORS['loss'])
+                else:
+                    bar_data['status'].config(text="🟡 Neutral", foreground=COLORS['warning'])
         
         # Update leader cards
         if hasattr(self, 'leader_cards'):
