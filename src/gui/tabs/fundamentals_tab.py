@@ -4176,13 +4176,26 @@ class FundamentalsTab:
                 vs_div = ((div - sector_div) / sector_div * 100)
                 self.synth_metrics['div_vs_sector'].config(text=f"vs sector: {vs_div:+.0f}%")
             
+            # P/B
+            pb = synthesis.get('pb', 0)
+            if 'pb' in self.synth_metrics:
+                self.synth_metrics['pb'].config(text=f"{pb:.1f}" if pb > 0 else "--")
+            if 'pb_vs_sector' in self.synth_metrics:
+                self.synth_metrics['pb_vs_sector'].config(text="--")
+            
+            # EPS
+            eps = synthesis.get('eps', 0)
+            if 'eps' in self.synth_metrics:
+                self.synth_metrics['eps'].config(text=f"₦{eps:.2f}" if eps > 0 else "--")
+            if 'eps_growth' in self.synth_metrics:
+                self.synth_metrics['eps_growth'].config(text="--")
+            
             # ========== UPDATE VALUATION ==========
             self.synth_valuation['pe_val'].config(text=f"{pe:.1f}" if pe > 0 else "--")
             pe_status = "Cheap" if pe > 0 and pe < 10 else "Fair" if pe <= 20 else "Expensive" if pe > 20 else "--"
             pe_color = COLORS['gain'] if pe < 10 else COLORS['loss'] if pe > 20 else COLORS['warning']
             self.synth_valuation['pe_status'].config(text=pe_status, foreground=pe_color)
             
-            pb = synthesis.get('pb', 0)
             self.synth_valuation['pb_val'].config(text=f"{pb:.1f}" if pb > 0 else "--")
             pb_status = "Cheap" if pb > 0 and pb < 1 else "Fair" if pb <= 2 else "Expensive" if pb > 2 else "--"
             pb_color = COLORS['gain'] if pb < 1 else COLORS['loss'] if pb > 2 else COLORS['warning']
@@ -4194,9 +4207,17 @@ class FundamentalsTab:
             ps_color = COLORS['gain'] if ps < 1 else COLORS['loss'] if ps > 3 else COLORS['warning']
             self.synth_valuation['ps_status'].config(text=ps_status, foreground=ps_color)
             
+            # EV/EBITDA
+            if 'ev_ebitda' in self.synth_valuation:
+                self.synth_valuation['ev_ebitda'].config(text="--")
+            if 'ev_status' in self.synth_valuation:
+                self.synth_valuation['ev_status'].config(text="--")
+            
             overall = synthesis.get('valuation_status', 'NEUTRAL')
             overall_color = COLORS['gain'] if 'UNDER' in overall else COLORS['loss'] if 'OVER' in overall else COLORS['warning']
             self.synth_valuation['overall'].config(text=overall, foreground=overall_color)
+            if 'overall_score' in self.synth_valuation:
+                self.synth_valuation['overall_score'].config(text="--")
             
             # ========== UPDATE FAIR VALUE ==========
             self.synth_fv['current'].config(text=f"₦{price:,.2f}")
@@ -4218,6 +4239,71 @@ class FundamentalsTab:
                 sig_color = COLORS['warning']
             self.synth_fv['signal'].config(text=signal, foreground=sig_color)
             
+            # ========== UPDATE PROFITABILITY ==========
+            if hasattr(self, 'synth_profit'):
+                data = self._get_stock_data(self.current_symbol) or {}
+                
+                roe = data.get('return_on_equity', 0) or 0
+                self.synth_profit['roe'].config(text=f"{roe:.1f}%" if roe != 0 else "--")
+                if roe > 15:
+                    self.synth_profit['roe'].config(foreground=COLORS['gain'])
+                elif roe < 5:
+                    self.synth_profit['roe'].config(foreground=COLORS['loss'])
+                else:
+                    self.synth_profit['roe'].config(foreground=COLORS['warning'])
+                
+                roa = data.get('return_on_assets', 0) or 0
+                self.synth_profit['roa'].config(text=f"{roa:.1f}%" if roa != 0 else "--")
+                
+                npm = data.get('net_income_margin', 0) or data.get('profit_margin', 0) or 0
+                self.synth_profit['npm'].config(text=f"{npm:.1f}%" if npm != 0 else "--")
+                
+                opm = data.get('operating_margin', 0) or 0
+                self.synth_profit['opm'].config(text=f"{opm:.1f}%" if opm != 0 else "--")
+                
+                gpm = data.get('gross_margin', 0) or 0
+                self.synth_profit['gpm'].config(text=f"{gpm:.1f}%" if gpm != 0 else "--")
+            
+            # ========== UPDATE GROWTH ==========
+            if hasattr(self, 'synth_growth'):
+                data = self._get_stock_data(self.current_symbol) or {}
+                
+                rev_growth = data.get('revenue_growth_rate_fyy', 0) or data.get('Perf.Y', 0) or 0
+                g_color = COLORS['gain'] if rev_growth > 0 else COLORS['loss'] if rev_growth < 0 else COLORS['text_primary']
+                self.synth_growth['rev_growth'].config(text=f"{rev_growth:+.1f}%" if rev_growth != 0 else "--", foreground=g_color)
+                
+                earn_growth = data.get('earnings_per_share_diluted_growth_ttm', 0) or 0
+                e_color = COLORS['gain'] if earn_growth > 0 else COLORS['loss'] if earn_growth < 0 else COLORS['text_primary']
+                self.synth_growth['earnings_growth'].config(text=f"{earn_growth:+.1f}%" if earn_growth != 0 else "--", foreground=e_color)
+                
+                eps_g = data.get('eps_diluted_growth_ttm', 0) or 0
+                eps_color = COLORS['gain'] if eps_g > 0 else COLORS['loss'] if eps_g < 0 else COLORS['text_primary']
+                self.synth_growth['eps_growth'].config(text=f"{eps_g:+.1f}%" if eps_g != 0 else "--", foreground=eps_color)
+                
+                asset_growth = data.get('total_assets_growth_yoy', 0) or 0
+                a_color = COLORS['gain'] if asset_growth > 0 else COLORS['loss'] if asset_growth < 0 else COLORS['text_primary']
+                self.synth_growth['asset_growth'].config(text=f"{asset_growth:+.1f}%" if asset_growth != 0 else "--", foreground=a_color)
+            
+            # ========== UPDATE FINANCIAL HEALTH ==========
+            if hasattr(self, 'synth_financial'):
+                data = self._get_stock_data(self.current_symbol) or {}
+                
+                de = data.get('total_debt_to_equity', 0) or data.get('debt_to_equity', 0) or 0
+                de_color = COLORS['gain'] if de < 1 else COLORS['loss'] if de > 2 else COLORS['warning']
+                self.synth_financial['debt_equity'].config(text=f"{de:.2f}" if de != 0 else "--", foreground=de_color)
+                
+                cr = data.get('current_ratio', 0) or 0
+                cr_color = COLORS['gain'] if cr > 1.5 else COLORS['loss'] if cr < 1 else COLORS['warning']
+                self.synth_financial['current_ratio'].config(text=f"{cr:.2f}" if cr != 0 else "--", foreground=cr_color)
+                
+                qr = data.get('quick_ratio', 0) or 0
+                qr_color = COLORS['gain'] if qr > 1 else COLORS['loss'] if qr < 0.5 else COLORS['warning']
+                self.synth_financial['quick_ratio'].config(text=f"{qr:.2f}" if qr != 0 else "--", foreground=qr_color)
+                
+                ic = data.get('interest_coverage', 0) or 0
+                ic_color = COLORS['gain'] if ic > 3 else COLORS['loss'] if ic < 1.5 else COLORS['warning']
+                self.synth_financial['interest_cov'].config(text=f"{ic:.1f}x" if ic != 0 else "--", foreground=ic_color)
+            
             # ========== UPDATE SECTOR ==========
             self.synth_sector['name'].config(text=synthesis.get('sector', '--'))
             self.synth_sector['rank'].config(text=f"#{synthesis.get('sector_rank', '--')} of {synthesis.get('sector_count', '--')}")
@@ -4227,6 +4313,31 @@ class FundamentalsTab:
                 vs_text = f"{vs_sector:+.0f}% P/E"
                 vs_color = COLORS['gain'] if vs_sector < 0 else COLORS['loss']
                 self.synth_sector['vs_avg'].config(text=vs_text, foreground=vs_color)
+            
+            if 'perf' in self.synth_sector:
+                perf = synthesis.get('change', 0)
+                p_color = COLORS['gain'] if perf > 0 else COLORS['loss'] if perf < 0 else COLORS['text_primary']
+                self.synth_sector['perf'].config(text=f"{perf:+.1f}%", foreground=p_color)
+            
+            # ========== UPDATE DIVIDEND ==========
+            if hasattr(self, 'synth_dividend'):
+                data = self._get_stock_data(self.current_symbol) or {}
+                
+                self.synth_dividend['yield'].config(text=f"{div:.1f}%" if div > 0 else "--")
+                y_color = COLORS['gain'] if div > 5 else COLORS['warning'] if div > 2 else COLORS['text_muted']
+                self.synth_dividend['yield'].config(foreground=y_color)
+                
+                payout = data.get('dividend_payout_ratio_ttm', 0) or 0
+                self.synth_dividend['payout'].config(text=f"{payout:.0f}%" if payout > 0 else "--")
+                
+                dps = data.get('dps_common_stock_prim_issue_fy', 0) or data.get('dividends_per_share_fq', 0) or 0
+                self.synth_dividend['dps'].config(text=f"₦{dps:.2f}" if dps > 0 else "--")
+                
+                div_growth = data.get('dividend_growth_cagr_5y', 0) or 0
+                dg_color = COLORS['gain'] if div_growth > 0 else COLORS['loss'] if div_growth < 0 else COLORS['text_muted']
+                self.synth_dividend['growth'].config(text=f"{div_growth:+.1f}%" if div_growth != 0 else "--", foreground=dg_color)
+                
+                self.synth_dividend['years'].config(text="--")
             
             # ========== UPDATE PEERS ==========
             peers = synthesis.get('peers', [])
