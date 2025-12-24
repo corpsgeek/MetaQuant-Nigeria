@@ -1294,26 +1294,31 @@ class FlowTapeTab:
     
     def _create_synthesis_tab_content(self):
         """Create SUPER SUPER SUPER enhanced AI Synthesis sub-tab with comprehensive dashboard."""
-        # Main scrollable frame
-        canvas = tk.Canvas(self.synthesis_tab, bg=COLORS['bg_dark'], highlightthickness=0)
-        scrollbar = ttk.Scrollbar(self.synthesis_tab, orient="vertical", command=canvas.yview)
-        self.synthesis_scrollable = ttk.Frame(canvas)
+        # Main scrollable frame - FULL WIDTH
+        self.synth_canvas = tk.Canvas(self.synthesis_tab, bg=COLORS['bg_dark'], highlightthickness=0)
+        scrollbar = ttk.Scrollbar(self.synthesis_tab, orient="vertical", command=self.synth_canvas.yview)
+        self.synthesis_scrollable = ttk.Frame(self.synth_canvas)
         
         self.synthesis_scrollable.bind(
             "<Configure>",
-            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+            lambda e: self.synth_canvas.configure(scrollregion=self.synth_canvas.bbox("all"))
         )
         
-        canvas.create_window((0, 0), window=self.synthesis_scrollable, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
+        # Bind canvas width to update scrollable frame width
+        def _on_canvas_configure(event):
+            self.synth_canvas.itemconfig(self.synth_canvas_window, width=event.width)
+        self.synth_canvas.bind("<Configure>", _on_canvas_configure)
         
-        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.synth_canvas_window = self.synth_canvas.create_window((0, 0), window=self.synthesis_scrollable, anchor="nw")
+        self.synth_canvas.configure(yscrollcommand=scrollbar.set)
+        
+        self.synth_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         
         # Enable mouse wheel scrolling
         def _on_mousewheel(event):
-            canvas.yview_scroll(int(-1*(event.delta/120)), "units")
-        canvas.bind_all("<MouseWheel>", _on_mousewheel)
+            self.synth_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        self.synth_canvas.bind_all("<MouseWheel>", _on_mousewheel)
         
         main = self.synthesis_scrollable
         
