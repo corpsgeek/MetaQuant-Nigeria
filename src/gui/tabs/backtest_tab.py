@@ -359,29 +359,36 @@ class BacktestTab:
         self.weight_bars = {}
     
     def _load_data(self):
-        """Load stock data for backtesting."""
+        """Load stock data for backtesting - all stocks with price history."""
         try:
-            # Load stocks
+            # Load all active stocks
             self.all_stocks = self.db.get_all_stocks()
             
-            # Load historical prices
-            for stock in self.all_stocks[:50]:  # Top 50 for performance
+            # Load historical prices for all stocks with data
+            # The backtest engine will rank and select based on signals
+            loaded = 0
+            for stock in self.all_stocks:
                 symbol = stock.get('symbol')
                 stock_id = stock.get('id')
                 
                 if not stock_id:
                     continue
                 
-                history = self.db.get_price_history(stock_id, days=500)
+                history = self.db.get_price_history(stock_id, days=730)  # 2 years
                 
-                if history:
+                if history and len(history) >= 20:  # Need at least 20 days for signals
                     df = pd.DataFrame(history)
                     if 'date' in df.columns:
                         df['date'] = pd.to_datetime(df['date'])
                         df = df.sort_values('date')
                     self.price_data[symbol] = df
+                    loaded += 1
+                    
+                    # Limit to 100 stocks for performance
+                    if loaded >= 100:
+                        break
             
-            self.bt_status.config(text=f"Loaded {len(self.price_data)} stocks")
+            self.bt_status.config(text=f"Loaded {len(self.price_data)} stocks with history")
             self.opt_status.config(text=f"Loaded {len(self.price_data)} stocks")
             
         except Exception as e:

@@ -452,11 +452,11 @@ class DatabaseManager:
         return None
     
     def get_all_stocks(self, active_only: bool = True) -> List[Dict[str, Any]]:
-        """Get all stocks sorted by volume (most liquid first)."""
+        """Get all stocks."""
         query = "SELECT * FROM stocks"
         if active_only:
             query += " WHERE is_active = TRUE"
-        query += " ORDER BY COALESCE(volume, 0) DESC, symbol"  # Sort by volume, then symbol
+        query += " ORDER BY symbol"  # Alphabetical - backtest ranks by signal
         
         results = self.conn.execute(query).fetchall()
         columns = [desc[0] for desc in self.conn.description]
