@@ -490,24 +490,30 @@ class MLIntelligenceTab:
         
         def predict():
             try:
-                # Get historical data
-                from src.collectors.tradingview_collector import TradingViewCollector
-                collector = TradingViewCollector()
-                df = collector.fetch_bars(symbol, interval='1D', n_bars=200)
+                # Get historical data using IntradayCollector
+                from src.collectors.intraday_collector import IntradayCollector
+                collector = IntradayCollector(self.db)
+                records = collector.fetch_history(symbol, interval='1d', n_bars=200)
                 
-                if df is None or df.empty:
+                if not records:
                     self.frame.after(0, lambda: self.pred_status.config(text="No data available"))
                     return
+                
+                # Convert to DataFrame
+                df = pd.DataFrame(records)
+                df['datetime'] = pd.to_datetime(df['datetime'])
+                df = df.set_index('datetime').sort_index()
                 
                 # Make prediction
                 result = self.ml_engine.predict_price(df, symbol)
                 
                 # Update UI
-                self.frame.after(0, lambda: self._display_prediction(result))
+                self.frame.after(0, lambda r=result: self._display_prediction(r))
                 
-            except Exception as e:
-                logger.error(f"Prediction error: {e}")
-                self.frame.after(0, lambda: self.pred_status.config(text=f"Error: {e}"))
+            except Exception as ex:
+                error_msg = str(ex)
+                logger.error(f"Prediction error: {error_msg}")
+                self.frame.after(0, lambda msg=error_msg: self.pred_status.config(text=f"Error: {msg}"))
         
         threading.Thread(target=predict, daemon=True).start()
     
@@ -570,22 +576,28 @@ class MLIntelligenceTab:
         
         def train():
             try:
-                from src.collectors.tradingview_collector import TradingViewCollector
-                collector = TradingViewCollector()
-                df = collector.fetch_bars(symbol, interval='1D', n_bars=500)
+                from src.collectors.intraday_collector import IntradayCollector
+                collector = IntradayCollector(self.db)
+                records = collector.fetch_history(symbol, interval='1d', n_bars=500)
                 
-                if df is None or df.empty:
+                if not records:
                     self.frame.after(0, lambda: self.pred_status.config(text="No data for training"))
                     return
+                
+                # Convert to DataFrame
+                df = pd.DataFrame(records)
+                df['datetime'] = pd.to_datetime(df['datetime'])
+                df = df.set_index('datetime').sort_index()
                 
                 result = self.ml_engine.train_predictor(df, symbol)
                 
                 msg = f"Training complete! Accuracy: {result.get('direction_accuracy', 0)*100:.1f}%" if result.get('success') else f"Training failed: {result.get('error')}"
-                self.frame.after(0, lambda: self.pred_status.config(text=msg))
+                self.frame.after(0, lambda m=msg: self.pred_status.config(text=m))
                 
-            except Exception as e:
-                logger.error(f"Training error: {e}")
-                self.frame.after(0, lambda: self.pred_status.config(text=f"Error: {e}"))
+            except Exception as ex:
+                error_msg = str(ex)
+                logger.error(f"Training error: {error_msg}")
+                self.frame.after(0, lambda msg=error_msg: self.pred_status.config(text=f"Error: {msg}"))
         
         threading.Thread(target=train, daemon=True).start()
     
@@ -598,8 +610,8 @@ class MLIntelligenceTab:
         
         def scan():
             try:
-                from src.collectors.tradingview_collector import TradingViewCollector
-                collector = TradingViewCollector()
+                from src.collectors.intraday_collector import IntradayCollector
+                collector = IntradayCollector(self.db)
                 
                 all_anomalies = []
                 counts = {'volume_spike': 0, 'price_jump': 0, 'accumulation': 0, 'distribution': 0}
@@ -611,8 +623,12 @@ class MLIntelligenceTab:
                         continue
                     
                     try:
-                        df = collector.fetch_bars(symbol, interval='1D', n_bars=50)
-                        if df is not None and not df.empty:
+                        records = collector.fetch_history(symbol, interval='1d', n_bars=50)
+                        if records:
+                            df = pd.DataFrame(records)
+                            df['datetime'] = pd.to_datetime(df['datetime'])
+                            df = df.set_index('datetime').sort_index()
+                            
                             anomalies = self.ml_engine.detect_anomalies(df, symbol)
                             
                             for a in anomalies:
@@ -623,11 +639,12 @@ class MLIntelligenceTab:
                     except:
                         continue
                 
-                self.frame.after(0, lambda: self._display_anomalies(all_anomalies, counts))
+                self.frame.after(0, lambda a=all_anomalies, c=counts: self._display_anomalies(a, c))
                 
-            except Exception as e:
-                logger.error(f"Anomaly scan error: {e}")
-                self.frame.after(0, lambda: self.anomaly_status.config(text=f"Error: {e}"))
+            except Exception as ex:
+                error_msg = str(ex)
+                logger.error(f"Anomaly scan error: {error_msg}")
+                self.frame.after(0, lambda msg=error_msg: self.anomaly_status.config(text=f"Error: {msg}"))
         
         threading.Thread(target=scan, daemon=True).start()
     
