@@ -102,8 +102,111 @@ class AIPortfolioManager:
         self.total_return = 0.0
         self.annualized_return = 0.0
         
+        # Load persisted state if available
+        self._load_state()
+        
         logger.info(f"AI Portfolio Manager initialized: ₦{config.capital:,.0f}, "
                     f"Target: {config.target_return_pct:.0%}")
+    
+    def _save_state(self):
+        """Save portfolio state to database."""
+        if not self.db:
+            return
+        
+        try:
+            # Save positions
+            self.db.conn.execute("DELETE FROM ai_portfolio_positions")
+            for symbol, pos in self.positions.items():
+                self.db.conn.execute("""
+                    INSERT INTO ai_portfolio_positions (symbol, shares, entry_price, entry_date, stop_loss, take_profit, sector)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, [symbol, pos['shares'], pos['entry_price'], pos['entry_date'], 
+                      pos.get('stop_loss'), pos.get('take_profit'), pos.get('sector', 'Unknown')])
+            
+            # Save state
+            import json
+            self.db.conn.execute("DELETE FROM ai_portfolio_state")
+            self.db.conn.execute("""
+                INSERT INTO ai_portfolio_state (id, cash, equity, config, start_date)
+                VALUES (1, ?, ?, ?, ?)
+            """, [self.cash, self.equity, json.dumps({
+                'capital': self.config.capital,
+                'target_return_pct': self.config.target_return_pct
+            }), self.start_date])
+            
+        except Exception as e:
+            logger.error(f"Error saving state: {e}")
+    
+    def _load_state(self):
+        """Load portfolio state from database."""
+        if not self.db:
+            return
+        
+        try:
+            # Load positions
+            positions = self.db.conn.execute("SELECT * FROM ai_portfolio_positions").fetchall()
+            if positions:
+                cols = [desc[0] for desc in self.db.conn.description]
+                for row in positions:
+                    pos = dict(zip(cols, row))
+                    self.positions[pos['symbol']] = {
+                        'shares': pos['shares'],
+                        'entry_price': pos['entry_price'],
+                        'entry_date': pos['entry_date'] if isinstance(pos['entry_date'], datetime) else datetime.now(),
+                        'stop_loss': pos['stop_loss'],
+                        'take_profit': pos['take_profit'],
+                        'sector': pos.get('sector', 'Unknown')
+                    }
+            
+            # Load state
+            state = self.db.conn.execute("SELECT * FROM ai_portfolio_state WHERE id = 1").fetchone()
+            if state:
+                cols = [desc[0] for desc in self.db.conn.description]
+                s = dict(zip(cols, state))
+                self.cash = s['cash']
+                self.equity = s['equity']
+                if s.get('start_date'):
+                    self.start_date = s['start_date'] if isinstance(s['start_date'], datetime) else datetime.now()
+            
+            # Load trades
+            trades = self.db.conn.execute("SELECT * FROM ai_portfolio_trades ORDER BY trade_date DESC LIMIT 100").fetchall()
+            if trades:
+                cols = [desc[0] for desc in self.db.conn.description]
+                for row in trades:
+                    t = dict(zip(cols, row))
+                    self.trades.append({
+                        'date': t['trade_date'] if isinstance(t['trade_date'], datetime) else datetime.now(),
+                        'symbol': t['symbol'],
+                        'action': t['action'],
+                        'shares': t['shares'],
+                        'price': t['price'],
+                        'entry_price': t.get('entry_price', t['price']),
+                        'exit_price': t['price'],
+                        'value': t['value'],
+                        'pnl': t.get('pnl', 0),
+                        'reasoning': t.get('reasoning', '')
+                    })
+                self.trades = list(reversed(self.trades))  # Chronological
+            
+            if self.positions:
+                logger.info(f"Loaded {len(self.positions)} positions, {len(self.trades)} trades from database")
+            
+        except Exception as e:
+            logger.debug(f"No previous state to load: {e}")
+    
+    def _save_trade(self, trade: Dict):
+        """Save a single trade to database."""
+        if not self.db:
+            return
+        try:
+            self.db.conn.execute("""
+                INSERT INTO ai_portfolio_trades (trade_date, symbol, action, shares, price, entry_price, value, pnl, reasoning)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, [trade['date'], trade['symbol'], trade['action'], trade['shares'], 
+                  trade['price'], trade.get('entry_price', trade['price']), 
+                  trade['value'], trade.get('pnl', 0), trade.get('reasoning', '')])
+        except Exception as e:
+            logger.error(f"Error saving trade: {e}")
     
     def analyze_opportunities(
         self,
@@ -294,15 +397,19 @@ class AIPortfolioManager:
             
             self.risk_manager.add_position(rec.symbol, 'Unknown', cost)
             
-            self.trades.append({
+            trade = {
                 'date': datetime.now(),
                 'symbol': rec.symbol,
                 'action': 'BUY',
                 'shares': rec.shares,
                 'price': rec.price,
+                'entry_price': rec.price,
                 'value': cost,
                 'reasoning': rec.reasoning
-            })
+            }
+            self.trades.append(trade)
+            self._save_trade(trade)
+            self._save_state()
             
             logger.info(f"BOUGHT {rec.shares} {rec.symbol} @ ₦{rec.price:,.2f}")
             return True
@@ -319,16 +426,21 @@ class AIPortfolioManager:
             self.risk_manager.remove_position(rec.symbol)
             del self.positions[rec.symbol]
             
-            self.trades.append({
+            trade = {
                 'date': datetime.now(),
                 'symbol': rec.symbol,
                 'action': 'SELL',
                 'shares': pos['shares'],
                 'price': rec.price,
+                'entry_price': pos['entry_price'],
+                'exit_price': rec.price,
                 'value': proceeds,
                 'pnl': pnl,
                 'reasoning': rec.reasoning
-            })
+            }
+            self.trades.append(trade)
+            self._save_trade(trade)
+            self._save_state()
             
             logger.info(f"SOLD {pos['shares']} {rec.symbol} @ ₦{rec.price:,.2f}, PnL: ₦{pnl:,.0f}")
             return True

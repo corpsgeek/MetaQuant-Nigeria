@@ -340,6 +340,51 @@ class DatabaseManager:
                 PRIMARY KEY (symbol, date)
             )
         """)
+        
+        # AI Portfolio Manager - Positions
+        self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS ai_portfolio_positions (
+                id INTEGER PRIMARY KEY,
+                symbol VARCHAR NOT NULL,
+                shares INTEGER NOT NULL,
+                entry_price DOUBLE NOT NULL,
+                entry_date TIMESTAMP NOT NULL,
+                stop_loss DOUBLE,
+                take_profit DOUBLE,
+                sector VARCHAR,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(symbol)
+            )
+        """)
+        
+        # AI Portfolio Manager - Trades
+        self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS ai_portfolio_trades (
+                id INTEGER PRIMARY KEY,
+                trade_date TIMESTAMP NOT NULL,
+                symbol VARCHAR NOT NULL,
+                action VARCHAR NOT NULL,
+                shares INTEGER NOT NULL,
+                price DOUBLE NOT NULL,
+                entry_price DOUBLE,
+                value DOUBLE,
+                pnl DOUBLE,
+                reasoning TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        # AI Portfolio Manager - State
+        self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS ai_portfolio_state (
+                id INTEGER PRIMARY KEY DEFAULT 1,
+                cash DOUBLE NOT NULL,
+                equity DOUBLE NOT NULL,
+                config JSON,
+                start_date TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
     
     def _create_indexes(self):
         """Create indexes for better query performance."""
