@@ -85,9 +85,12 @@ class SignalGenerator:
         # Refresh strategies cache
         self._refresh_strategies()
         
-        # Determine symbols to process
+        # Determine symbols to process - use price_data keys if no strategy cache
         if symbols is None:
-            symbols = list(self._strategy_cache.keys())
+            if self._strategy_cache:
+                symbols = list(self._strategy_cache.keys())
+            else:
+                symbols = list(price_data.keys())
         
         signals = []
         
@@ -106,8 +109,16 @@ class SignalGenerator:
             except Exception as e:
                 logger.debug(f"Signal generation failed for {symbol}: {e}")
         
-        # Sort by absolute score (strongest signals first)
-        signals.sort(key=lambda s: abs(s.score), reverse=True)
+        # Sort: BUYs by highest score first, then SELLs by lowest score, then HOLDs
+        def signal_sort_key(s):
+            if s.signal == 'BUY':
+                return (0, -s.score)  # BUYs first, highest score first
+            elif s.signal == 'SELL':
+                return (1, s.score)   # SELLs second, lowest score first
+            else:
+                return (2, abs(s.score))  # HOLDs last
+        
+        signals.sort(key=signal_sort_key)
         
         # Assign ranks
         for i, signal in enumerate(signals):
