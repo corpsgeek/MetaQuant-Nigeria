@@ -1293,7 +1293,7 @@ class FlowTapeTab:
     # =========================================================================
     
     def _create_synthesis_tab_content(self):
-        """Create super enhanced AI Synthesis sub-tab with comprehensive dashboard."""
+        """Create SUPER SUPER SUPER enhanced AI Synthesis sub-tab with comprehensive dashboard."""
         # Main scrollable frame
         canvas = tk.Canvas(self.synthesis_tab, bg=COLORS['bg_dark'], highlightthickness=0)
         scrollbar = ttk.Scrollbar(self.synthesis_tab, orient="vertical", command=canvas.yview)
@@ -1317,6 +1317,20 @@ class FlowTapeTab:
         
         main = self.synthesis_scrollable
         
+        # ========== HEADER WITH SYMBOL & REFRESH ==========
+        header = ttk.Frame(main)
+        header.pack(fill=tk.X, padx=10, pady=10)
+        
+        ttk.Label(header, text="🤖 AI Flow Synthesis", font=get_font('subheading'),
+                  foreground=COLORS['primary']).pack(side=tk.LEFT)
+        
+        self.synth_symbol_label = ttk.Label(header, text="-- | --", font=get_font('body'),
+                                            foreground=COLORS['text_secondary'])
+        self.synth_symbol_label.pack(side=tk.LEFT, padx=20)
+        
+        refresh_btn = ttk.Button(header, text="↻ Refresh", command=self._refresh_synthesis)
+        refresh_btn.pack(side=tk.RIGHT)
+        
         # ========== ROW 1: SYNTHESIS OVERVIEW ==========
         overview_frame = ttk.LabelFrame(main, text="🧠 Synthesis Overview")
         overview_frame.pack(fill=tk.X, padx=10, pady=5)
@@ -1324,105 +1338,240 @@ class FlowTapeTab:
         overview_cards = ttk.Frame(overview_frame)
         overview_cards.pack(fill=tk.X, padx=10, pady=10)
         
-        # Store synthesis overview card references
         self.synthesis_overview = {}
         
         overview_items = [
-            ('score', '🎯 Synthesis Score', 'Overall market score'),
-            ('bias', '📊 Market Bias', 'Directional tendency'),
-            ('confidence', '💪 Confidence', 'Signal reliability'),
-            ('action', '⚡ Recommended Action', 'Trading suggestion')
+            ('score', '🎯 Score', '/100'),
+            ('bias', '📊 Bias', ''),
+            ('confidence', '💪 Conf', '%'),
+            ('action', '⚡ Action', '')
         ]
         
-        for i, (key, title, desc) in enumerate(overview_items):
+        for key, title, suffix in overview_items:
             card = ttk.Frame(overview_cards, relief='ridge', borderwidth=1)
             card.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=5, pady=5)
             
-            # Title
             ttk.Label(card, text=title, font=get_font('small'),
                      foreground=COLORS['text_muted']).pack(anchor='w', padx=10, pady=(5, 0))
             
-            # Main value
-            value_label = ttk.Label(card, text="--", font=get_font('heading'),
+            value_frame = ttk.Frame(card)
+            value_frame.pack(anchor='w', padx=10)
+            
+            value_label = ttk.Label(value_frame, text="--", font=get_font('heading'),
                                    foreground=COLORS['primary'])
-            value_label.pack(anchor='w', padx=10)
+            value_label.pack(side=tk.LEFT)
             
-            # Drivers sub-layer
-            drivers_frame = ttk.Frame(card)
-            drivers_frame.pack(fill=tk.X, padx=10, pady=(0, 5))
+            if suffix:
+                ttk.Label(value_frame, text=suffix, font=get_font('body'),
+                         foreground=COLORS['text_muted']).pack(side=tk.LEFT)
             
-            driver_label = ttk.Label(drivers_frame, text="Drivers: --",
-                                    font=get_font('small'), foreground=COLORS['text_secondary'],
-                                    wraplength=180, justify='left')
-            driver_label.pack(anchor='w')
+            driver_label = ttk.Label(card, text="--", font=get_font('small'),
+                                    foreground=COLORS['text_secondary'], wraplength=150)
+            driver_label.pack(anchor='w', padx=10, pady=(0, 5))
             
-            self.synthesis_overview[key] = {
-                'value': value_label,
-                'drivers': driver_label
-            }
+            self.synthesis_overview[key] = {'value': value_label, 'drivers': driver_label}
         
-        # ========== ROW 2: COMPONENT SCORES ==========
+        # ========== ROW 2: PRICE & VWAP DASHBOARD ==========
+        vwap_frame = ttk.LabelFrame(main, text="💰 Price & VWAP Dashboard")
+        vwap_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        vwap_row = ttk.Frame(vwap_frame)
+        vwap_row.pack(fill=tk.X, padx=10, pady=5)
+        
+        self.synth_vwap = {}
+        
+        # Price Card
+        p_card = ttk.Frame(vwap_row, relief='ridge', borderwidth=1, padding=5)
+        p_card.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=2)
+        ttk.Label(p_card, text="📈 Current", font=get_font('small'), foreground=COLORS['text_muted']).pack()
+        self.synth_vwap['price'] = ttk.Label(p_card, text="₦--", font=get_font('subheading'))
+        self.synth_vwap['price'].pack()
+        self.synth_vwap['change'] = ttk.Label(p_card, text="--", font=get_font('small'))
+        self.synth_vwap['change'].pack()
+        
+        # VWAP Card
+        v_card = ttk.Frame(vwap_row, relief='ridge', borderwidth=1, padding=5)
+        v_card.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=2)
+        ttk.Label(v_card, text="📊 VWAP", font=get_font('small'), foreground=COLORS['text_muted']).pack()
+        self.synth_vwap['vwap'] = ttk.Label(v_card, text="₦--", font=get_font('subheading'))
+        self.synth_vwap['vwap'].pack()
+        self.synth_vwap['vwap_diff'] = ttk.Label(v_card, text="--", font=get_font('small'))
+        self.synth_vwap['vwap_diff'].pack()
+        
+        # Upper Band Card
+        ub_card = ttk.Frame(vwap_row, relief='ridge', borderwidth=1, padding=5)
+        ub_card.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=2)
+        ttk.Label(ub_card, text="⬆️ +1σ Band", font=get_font('small'), foreground=COLORS['text_muted']).pack()
+        self.synth_vwap['upper1'] = ttk.Label(ub_card, text="₦--", font=get_font('body'))
+        self.synth_vwap['upper1'].pack()
+        self.synth_vwap['upper2'] = ttk.Label(ub_card, text="+2σ: ₦--", font=get_font('small'), foreground=COLORS['text_muted'])
+        self.synth_vwap['upper2'].pack()
+        
+        # Lower Band Card
+        lb_card = ttk.Frame(vwap_row, relief='ridge', borderwidth=1, padding=5)
+        lb_card.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=2)
+        ttk.Label(lb_card, text="⬇️ -1σ Band", font=get_font('small'), foreground=COLORS['text_muted']).pack()
+        self.synth_vwap['lower1'] = ttk.Label(lb_card, text="₦--", font=get_font('body'))
+        self.synth_vwap['lower1'].pack()
+        self.synth_vwap['lower2'] = ttk.Label(lb_card, text="-2σ: ₦--", font=get_font('small'), foreground=COLORS['text_muted'])
+        self.synth_vwap['lower2'].pack()
+        
+        # VWAP Position Indicator
+        vwap_pos_frame = ttk.Frame(vwap_frame)
+        vwap_pos_frame.pack(fill=tk.X, padx=10, pady=5)
+        self.synth_vwap['position_bar'] = tk.Canvas(vwap_pos_frame, height=20, bg=COLORS['bg_medium'], highlightthickness=0)
+        self.synth_vwap['position_bar'].pack(fill=tk.X)
+        
+        # ========== ROW 3: DELTA ANALYSIS ==========
+        delta_frame = ttk.LabelFrame(main, text="📉 Delta Analysis")
+        delta_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        delta_row = ttk.Frame(delta_frame)
+        delta_row.pack(fill=tk.X, padx=10, pady=5)
+        
+        self.synth_delta = {}
+        
+        delta_items = [
+            ('cum_delta', '∑ Cumulative', 'Total Delta'),
+            ('trend', '📈 5-Bar Trend', 'Direction'),
+            ('momentum', '⚡ Momentum', 'Speed'),
+            ('zscore', '📊 Z-Score', 'Standard Dev'),
+            ('divergence', '🔀 Divergence', 'Price vs Delta')
+        ]
+        
+        for key, title, subtitle in delta_items:
+            card = ttk.Frame(delta_row, relief='ridge', borderwidth=1, padding=5)
+            card.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=2)
+            ttk.Label(card, text=title, font=get_font('small'), foreground=COLORS['text_muted']).pack()
+            self.synth_delta[key] = ttk.Label(card, text="--", font=get_font('subheading'))
+            self.synth_delta[key].pack()
+            ttk.Label(card, text=subtitle, font=get_font('small'), foreground=COLORS['text_muted']).pack()
+        
+        # ========== ROW 4: VOLUME PROFILE ==========
+        profile_frame = ttk.LabelFrame(main, text="📊 Volume Profile")
+        profile_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        profile_row = ttk.Frame(profile_frame)
+        profile_row.pack(fill=tk.X, padx=10, pady=5)
+        
+        self.synth_profile = {}
+        
+        # POC Card
+        poc_card = ttk.Frame(profile_row, relief='ridge', borderwidth=1, padding=5)
+        poc_card.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=2)
+        ttk.Label(poc_card, text="🎯 POC", font=get_font('small'), foreground=COLORS['warning']).pack()
+        self.synth_profile['poc'] = ttk.Label(poc_card, text="₦--", font=get_font('subheading'))
+        self.synth_profile['poc'].pack()
+        self.synth_profile['poc_vol'] = ttk.Label(poc_card, text="Vol: --", font=get_font('small'), foreground=COLORS['text_muted'])
+        self.synth_profile['poc_vol'].pack()
+        
+        # VAH Card
+        vah_card = ttk.Frame(profile_row, relief='ridge', borderwidth=1, padding=5)
+        vah_card.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=2)
+        ttk.Label(vah_card, text="⬆️ VAH", font=get_font('small'), foreground=COLORS['loss']).pack()
+        self.synth_profile['vah'] = ttk.Label(vah_card, text="₦--", font=get_font('subheading'))
+        self.synth_profile['vah'].pack()
+        
+        # VAL Card
+        val_card = ttk.Frame(profile_row, relief='ridge', borderwidth=1, padding=5)
+        val_card.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=2)
+        ttk.Label(val_card, text="⬇️ VAL", font=get_font('small'), foreground=COLORS['gain']).pack()
+        self.synth_profile['val'] = ttk.Label(val_card, text="₦--", font=get_font('subheading'))
+        self.synth_profile['val'].pack()
+        
+        # Price Position
+        pos_card = ttk.Frame(profile_row, relief='ridge', borderwidth=1, padding=5)
+        pos_card.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=2)
+        ttk.Label(pos_card, text="📍 Position", font=get_font('small'), foreground=COLORS['text_muted']).pack()
+        self.synth_profile['position'] = ttk.Label(pos_card, text="--", font=get_font('body'))
+        self.synth_profile['position'].pack()
+        
+        # ========== ROW 5: FLOW PRESSURE GAUGES ==========
+        flow_frame = ttk.LabelFrame(main, text="💹 Flow Pressure")
+        flow_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        flow_row = ttk.Frame(flow_frame)
+        flow_row.pack(fill=tk.X, padx=10, pady=5)
+        
+        self.synth_flow = {}
+        
+        # Block Trades
+        block_card = ttk.Frame(flow_row, relief='ridge', borderwidth=1, padding=5)
+        block_card.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=2)
+        ttk.Label(block_card, text="🏛 Block Trades", font=get_font('small'), foreground=COLORS['text_muted']).pack()
+        self.synth_flow['blocks'] = ttk.Label(block_card, text="--", font=get_font('subheading'))
+        self.synth_flow['blocks'].pack()
+        self.synth_flow['block_bias'] = ttk.Label(block_card, text="--", font=get_font('small'))
+        self.synth_flow['block_bias'].pack()
+        
+        # RVOL
+        rvol_card = ttk.Frame(flow_row, relief='ridge', borderwidth=1, padding=5)
+        rvol_card.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=2)
+        ttk.Label(rvol_card, text="📊 RVOL", font=get_font('small'), foreground=COLORS['text_muted']).pack()
+        self.synth_flow['rvol'] = ttk.Label(rvol_card, text="--x", font=get_font('subheading'))
+        self.synth_flow['rvol'].pack()
+        self.synth_flow['rvol_status'] = ttk.Label(rvol_card, text="--", font=get_font('small'))
+        self.synth_flow['rvol_status'].pack()
+        
+        # Session Bias
+        session_card = ttk.Frame(flow_row, relief='ridge', borderwidth=1, padding=5)
+        session_card.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=2)
+        ttk.Label(session_card, text="📅 Session", font=get_font('small'), foreground=COLORS['text_muted']).pack()
+        self.synth_flow['session_delta'] = ttk.Label(session_card, text="--", font=get_font('subheading'))
+        self.synth_flow['session_delta'].pack()
+        self.synth_flow['session_bias'] = ttk.Label(session_card, text="--", font=get_font('small'))
+        self.synth_flow['session_bias'].pack()
+        
+        # Flow Gauge
+        gauge_card = ttk.Frame(flow_row, relief='ridge', borderwidth=1, padding=5)
+        gauge_card.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=2)
+        ttk.Label(gauge_card, text="⚖️ Flow Balance", font=get_font('small'), foreground=COLORS['text_muted']).pack()
+        self.synth_flow['gauge'] = tk.Canvas(gauge_card, width=120, height=25, bg=COLORS['bg_medium'], highlightthickness=0)
+        self.synth_flow['gauge'].pack(pady=3)
+        self.synth_flow['gauge_label'] = ttk.Label(gauge_card, text="--", font=get_font('small'))
+        self.synth_flow['gauge_label'].pack()
+        
+        # ========== ROW 6: COMPONENT SCORES ==========
         components_frame = ttk.LabelFrame(main, text="📈 Component Scores")
         components_frame.pack(fill=tk.X, padx=10, pady=5)
         
         components_cards = ttk.Frame(components_frame)
         components_cards.pack(fill=tk.X, padx=10, pady=10)
         
-        # Store component score references
         self.synthesis_components = {}
         
         component_items = [
-            ('tape', '📋 Tape & Profile', 'Order flow analysis'),
-            ('alerts', '⚠️ Alerts', 'Market alerts'),
-            ('charts', '📈 Charts', 'Technical indicators'),
-            ('sessions', '📅 Sessions', 'Session analytics'),
-            ('signals', '🎯 Signals', 'Trade signals')
+            ('tape', '📋 Tape'),
+            ('alerts', '⚠️ Alerts'),
+            ('charts', '📈 Charts'),
+            ('sessions', '📅 Sessions'),
+            ('signals', '🎯 Signals')
         ]
         
-        for i, (key, title, desc) in enumerate(component_items):
-            card = ttk.Frame(components_cards, relief='ridge', borderwidth=1)
-            card.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=5, pady=5)
+        for key, title in component_items:
+            card = ttk.Frame(components_cards, relief='ridge', borderwidth=1, padding=5)
+            card.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=3)
             
-            # Title
-            ttk.Label(card, text=title, font=get_font('small'),
-                     foreground=COLORS['text_muted']).pack(anchor='w', padx=10, pady=(5, 0))
+            ttk.Label(card, text=title, font=get_font('small'), foreground=COLORS['text_muted']).pack()
             
-            # Score value (out of 10)
             score_frame = ttk.Frame(card)
-            score_frame.pack(anchor='w', padx=10)
-            
-            score_label = ttk.Label(score_frame, text="--", font=get_font('heading'),
-                                   foreground=COLORS['primary'])
+            score_frame.pack()
+            score_label = ttk.Label(score_frame, text="--", font=get_font('heading'), foreground=COLORS['primary'])
             score_label.pack(side=tk.LEFT)
+            ttk.Label(score_frame, text="/10", font=get_font('small'), foreground=COLORS['text_muted']).pack(side=tk.LEFT)
             
-            ttk.Label(score_frame, text="/10", font=get_font('body'),
-                     foreground=COLORS['text_muted']).pack(side=tk.LEFT)
+            bar_canvas = tk.Canvas(card, width=100, height=8, bg=COLORS['bg_medium'], highlightthickness=0)
+            bar_canvas.pack(pady=3)
             
-            # Score bar
-            bar_canvas = tk.Canvas(card, width=120, height=8, bg=COLORS['bg_medium'],
-                                  highlightthickness=0)
-            bar_canvas.pack(anchor='w', padx=10, pady=2)
+            driver_label = ttk.Label(card, text="--", font=get_font('small'), foreground=COLORS['text_secondary'], wraplength=100)
+            driver_label.pack()
             
-            # Drivers sub-layer
-            drivers_frame = ttk.Frame(card)
-            drivers_frame.pack(fill=tk.X, padx=10, pady=(0, 5))
-            
-            driver_label = ttk.Label(drivers_frame, text="• --",
-                                    font=get_font('small'), foreground=COLORS['text_secondary'],
-                                    wraplength=140, justify='left')
-            driver_label.pack(anchor='w')
-            
-            self.synthesis_components[key] = {
-                'score': score_label,
-                'bar': bar_canvas,
-                'drivers': driver_label
-            }
+            self.synthesis_components[key] = {'score': score_label, 'bar': bar_canvas, 'drivers': driver_label}
         
-        # ========== ROW 3: AI NARRATIVE REPORT ==========
+        # ========== ROW 7: AI NARRATIVE REPORT ==========
         narrative_frame = ttk.LabelFrame(main, text="📝 AI Narrative Report")
         narrative_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
         
-        # Report text area
         text_container = ttk.Frame(narrative_frame)
         text_container.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
@@ -1434,7 +1583,7 @@ class FlowTapeTab:
             fg=COLORS['text_primary'],
             padx=10,
             pady=10,
-            height=10,
+            height=12,
             state='disabled'
         )
         self.narrative_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
@@ -1443,49 +1592,51 @@ class FlowTapeTab:
         narrative_scroll.pack(side=tk.RIGHT, fill=tk.Y)
         self.narrative_text.config(yscrollcommand=narrative_scroll.set)
         
-        # ========== ROW 4: KEY INSIGHTS ==========
+        # ========== ROW 8: KEY INSIGHTS ==========
         insights_frame = ttk.LabelFrame(main, text="💡 Key Insights")
         insights_frame.pack(fill=tk.X, padx=10, pady=5)
         
-        self.insights_container = ttk.Frame(insights_frame)
-        self.insights_container.pack(fill=tk.X, padx=10, pady=10)
+        insights_row = ttk.Frame(insights_frame)
+        insights_row.pack(fill=tk.X, padx=10, pady=5)
         
-        # Placeholder for insights
-        ttk.Label(self.insights_container, text="⏳ Loading insights...",
-                 font=get_font('body'), foreground=COLORS['text_muted']).pack(anchor='w')
+        self.synth_insights = []
+        for i in range(6):
+            card = ttk.Frame(insights_row, padding=3)
+            card.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            
+            icon_lbl = ttk.Label(card, text="⚪", font=('', 12))
+            icon_lbl.pack()
+            text_lbl = ttk.Label(card, text="--", font=get_font('small'), foreground=COLORS['text_primary'])
+            text_lbl.pack()
+            
+            self.synth_insights.append({'icon': icon_lbl, 'text': text_lbl})
         
-        # ========== ROW 5: SIGNAL SUMMARY ==========
+        self.insights_container = insights_row  # Keep for backward compatibility
+        
+        # ========== ROW 9: SIGNAL SUMMARY ==========
         signal_summary_frame = ttk.LabelFrame(main, text="🎯 Signal Summary")
         signal_summary_frame.pack(fill=tk.X, padx=10, pady=5)
         
         signal_content = ttk.Frame(signal_summary_frame)
         signal_content.pack(fill=tk.X, padx=10, pady=10)
         
-        # Left side: Signal info
         signal_left = ttk.Frame(signal_content)
         signal_left.pack(side=tk.LEFT, fill=tk.X, expand=True)
         
         self.synthesis_signal = {}
         
-        # Signal type row
         signal_row = ttk.Frame(signal_left)
         signal_row.pack(fill=tk.X)
         
-        self.synthesis_signal['icon'] = ttk.Label(signal_row, text="⚪",
-                                                  font=get_font('heading'))
+        self.synthesis_signal['icon'] = ttk.Label(signal_row, text="⚪", font=get_font('heading'))
         self.synthesis_signal['icon'].pack(side=tk.LEFT)
         
-        self.synthesis_signal['type'] = ttk.Label(signal_row, text="NO SIGNAL",
-                                                  font=get_font('heading'),
-                                                  foreground=COLORS['text_muted'])
+        self.synthesis_signal['type'] = ttk.Label(signal_row, text="NO SIGNAL", font=get_font('heading'), foreground=COLORS['text_muted'])
         self.synthesis_signal['type'].pack(side=tk.LEFT, padx=(5, 15))
         
-        self.synthesis_signal['pattern'] = ttk.Label(signal_row, text="--",
-                                                     font=get_font('body'),
-                                                     foreground=COLORS['text_secondary'])
+        self.synthesis_signal['pattern'] = ttk.Label(signal_row, text="--", font=get_font('body'), foreground=COLORS['text_secondary'])
         self.synthesis_signal['pattern'].pack(side=tk.LEFT)
         
-        # Price levels row
         levels_row = ttk.Frame(signal_left)
         levels_row.pack(fill=tk.X, pady=(5, 0))
         
@@ -1494,48 +1645,52 @@ class FlowTapeTab:
             font=get_font('body'), foreground=COLORS['text_secondary'])
         self.synthesis_signal['levels'].pack(side=tk.LEFT)
         
-        # Right side: Confluence meter
         signal_right = ttk.Frame(signal_content)
         signal_right.pack(side=tk.RIGHT)
         
-        ttk.Label(signal_right, text="Confluence",
-                 font=get_font('small'), foreground=COLORS['text_muted']).pack(anchor='e')
+        ttk.Label(signal_right, text="Confluence", font=get_font('small'), foreground=COLORS['text_muted']).pack(anchor='e')
         
         confluence_row = ttk.Frame(signal_right)
         confluence_row.pack(anchor='e')
         
-        self.synthesis_signal['confluence_bar'] = tk.Canvas(
-            confluence_row, width=150, height=15, bg=COLORS['bg_medium'], highlightthickness=0
-        )
+        self.synthesis_signal['confluence_bar'] = tk.Canvas(confluence_row, width=150, height=15, bg=COLORS['bg_medium'], highlightthickness=0)
         self.synthesis_signal['confluence_bar'].pack(side=tk.LEFT, padx=(0, 5))
         
-        self.synthesis_signal['confluence_pct'] = ttk.Label(confluence_row, text="0%",
-                                                            font=get_font('body'),
-                                                            foreground=COLORS['text_muted'])
+        self.synthesis_signal['confluence_pct'] = ttk.Label(confluence_row, text="0%", font=get_font('body'), foreground=COLORS['text_muted'])
         self.synthesis_signal['confluence_pct'].pack(side=tk.LEFT)
         
-        # ========== ROW 6: LIVE STATUS BAR ==========
+        # ========== ROW 10: ALERTS SUMMARY ==========
+        alerts_frame = ttk.LabelFrame(main, text="🚨 Active Alerts")
+        alerts_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        alerts_row = ttk.Frame(alerts_frame)
+        alerts_row.pack(fill=tk.X, padx=10, pady=5)
+        
+        self.synth_alerts = []
+        for i in range(4):
+            alert_card = ttk.Frame(alerts_row, padding=3)
+            alert_card.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            
+            icon_lbl = ttk.Label(alert_card, text="⚪", font=('', 12))
+            icon_lbl.pack(side=tk.LEFT)
+            text_lbl = ttk.Label(alert_card, text="--", font=get_font('small'), foreground=COLORS['text_muted'])
+            text_lbl.pack(side=tk.LEFT, padx=5)
+            
+            self.synth_alerts.append({'icon': icon_lbl, 'text': text_lbl})
+        
+        # ========== ROW 11: LIVE STATUS BAR ==========
         status_frame = ttk.Frame(main)
         status_frame.pack(fill=tk.X, padx=10, pady=10)
         
-        # Left: Live indicator
-        status_left = ttk.Frame(status_frame)
-        status_left.pack(side=tk.LEFT)
-        
         self.synthesis_status = {}
         
-        self.synthesis_status['live'] = ttk.Label(status_left, text="📡 Waiting...",
-                                                  font=get_font('small'),
-                                                  foreground=COLORS['text_muted'])
+        self.synthesis_status['live'] = ttk.Label(status_frame, text="📡 Waiting...", font=get_font('small'), foreground=COLORS['text_muted'])
         self.synthesis_status['live'].pack(side=tk.LEFT)
         
-        # Right: Last update
-        status_right = ttk.Frame(status_frame)
-        status_right.pack(side=tk.RIGHT)
+        self.synthesis_status['ai'] = ttk.Label(status_frame, text="Powered by Groq AI", font=get_font('small'), foreground=COLORS['text_muted'])
+        self.synthesis_status['ai'].pack(side=tk.LEFT, padx=20)
         
-        self.synthesis_status['update'] = ttk.Label(status_right, text="Last Update: --",
-                                                    font=get_font('small'),
-                                                    foreground=COLORS['text_muted'])
+        self.synthesis_status['update'] = ttk.Label(status_frame, text="Last Update: --", font=get_font('small'), foreground=COLORS['text_muted'])
         self.synthesis_status['update'].pack(side=tk.RIGHT)
     
     # =========================================================================
@@ -3082,6 +3237,226 @@ class FlowTapeTab:
                 text=f"Drivers: {synthesis.get('action_drivers', '--')}"
             )
             
+            # ========== UPDATE SYMBOL HEADER ==========
+            if hasattr(self, 'synth_symbol_label'):
+                self.synth_symbol_label.config(text=f"{self.current_symbol or '--'} | {synthesis.get('bias', '--')}")
+            
+            # ========== UPDATE PRICE & VWAP DASHBOARD ==========
+            if hasattr(self, 'synth_vwap'):
+                try:
+                    vwap_data = self.flow_analysis.vwap_analysis()
+                    if vwap_data:
+                        price = vwap_data.get('current_price', 0)
+                        vwap = vwap_data.get('vwap', 0)
+                        
+                        self.synth_vwap['price'].config(text=f"₦{price:,.2f}")
+                        change = ((price - vwap) / vwap * 100) if vwap > 0 else 0
+                        chg_color = COLORS['gain'] if change >= 0 else COLORS['loss']
+                        self.synth_vwap['change'].config(text=f"{change:+.2f}% vs VWAP", foreground=chg_color)
+                        
+                        self.synth_vwap['vwap'].config(text=f"₦{vwap:,.2f}")
+                        self.synth_vwap['vwap_diff'].config(text=f"{change:+.2f}%", foreground=chg_color)
+                        
+                        self.synth_vwap['upper1'].config(text=f"₦{vwap_data.get('upper_band_1', 0):,.2f}")
+                        self.synth_vwap['upper2'].config(text=f"+2σ: ₦{vwap_data.get('upper_band_2', 0):,.2f}")
+                        
+                        self.synth_vwap['lower1'].config(text=f"₦{vwap_data.get('lower_band_1', 0):,.2f}")
+                        self.synth_vwap['lower2'].config(text=f"-2σ: ₦{vwap_data.get('lower_band_2', 0):,.2f}")
+                        
+                        # Draw VWAP position bar
+                        bar = self.synth_vwap['position_bar']
+                        bar.delete('all')
+                        w = bar.winfo_width() or 400
+                        bar.create_rectangle(0, 0, w, 20, fill=COLORS['bg_medium'], outline='')
+                        
+                        upper2 = vwap_data.get('upper_band_2', vwap * 1.04)
+                        lower2 = vwap_data.get('lower_band_2', vwap * 0.96)
+                        spread = upper2 - lower2 if upper2 != lower2 else 1
+                        price_pos = (price - lower2) / spread
+                        price_x = max(10, min(w - 10, int(price_pos * w)))
+                        
+                        bar.create_text(w/2, 10, text=f"VWAP: ₦{vwap:,.2f}", fill=COLORS['text_muted'], font=('', 8))
+                        bar.create_oval(price_x - 5, 5, price_x + 5, 15, fill=COLORS['primary'], outline='')
+                except Exception as e:
+                    logger.debug(f"VWAP update failed: {e}")
+            
+            # ========== UPDATE DELTA ANALYSIS ==========
+            if hasattr(self, 'synth_delta'):
+                try:
+                    cum_delta = self.flow_analysis.cumulative_delta()
+                    if cum_delta and len(cum_delta) > 0:
+                        last_delta = cum_delta[-1].get('cumulative_delta', 0)
+                        delta_color = COLORS['gain'] if last_delta >= 0 else COLORS['loss']
+                        self.synth_delta['cum_delta'].config(text=f"{last_delta:+,.0f}", foreground=delta_color)
+                        
+                        if len(cum_delta) >= 5:
+                            delta_5 = last_delta - cum_delta[-5].get('cumulative_delta', 0)
+                            trend_color = COLORS['gain'] if delta_5 >= 0 else COLORS['loss']
+                            self.synth_delta['trend'].config(text=f"{delta_5:+,.0f}", foreground=trend_color)
+                except:
+                    pass
+                
+                try:
+                    momentum = self.flow_analysis.delta_momentum()
+                    if momentum and len(momentum) > 0:
+                        mom = momentum[-1].get('delta_momentum', 0)
+                        mom_color = COLORS['gain'] if mom >= 0 else COLORS['loss']
+                        self.synth_delta['momentum'].config(text=f"{mom:+,.0f}", foreground=mom_color)
+                except:
+                    pass
+                
+                try:
+                    zscore = self.flow_analysis.delta_zscore()
+                    if zscore and len(zscore) > 0:
+                        z = zscore[-1].get('zscore', 0)
+                        z_color = COLORS['gain'] if z >= 0 else COLORS['loss']
+                        self.synth_delta['zscore'].config(text=f"{z:+.2f}σ", foreground=z_color)
+                except:
+                    pass
+                
+                try:
+                    divergence = self.flow_analysis.delta_divergence()
+                    if divergence and len(divergence) > 0:
+                        div_type = divergence[-1].get('type', 'NONE')
+                        div_color = COLORS['warning'] if div_type != 'NONE' else COLORS['text_muted']
+                        self.synth_delta['divergence'].config(text=div_type, foreground=div_color)
+                except:
+                    pass
+            
+            # ========== UPDATE VOLUME PROFILE ==========
+            if hasattr(self, 'synth_profile'):
+                try:
+                    profile = self.flow_analysis.volume_profile()
+                    if profile:
+                        self.synth_profile['poc'].config(text=f"₦{profile.get('poc_price', 0):,.2f}")
+                        self.synth_profile['poc_vol'].config(text=f"Vol: {profile.get('poc_volume', 0):,.0f}")
+                        self.synth_profile['vah'].config(text=f"₦{profile.get('vah', 0):,.2f}")
+                        self.synth_profile['val'].config(text=f"₦{profile.get('val', 0):,.2f}")
+                        
+                        vwap_data = self.flow_analysis.vwap_analysis()
+                        price = vwap_data.get('current_price', 0) if vwap_data else 0
+                        if price > profile.get('vah', 0):
+                            pos_text = "ABOVE VALUE"
+                            pos_color = COLORS['loss']
+                        elif price < profile.get('val', 0):
+                            pos_text = "BELOW VALUE"
+                            pos_color = COLORS['gain']
+                        else:
+                            pos_text = "IN VALUE AREA"
+                            pos_color = COLORS['warning']
+                        self.synth_profile['position'].config(text=pos_text, foreground=pos_color)
+                except:
+                    pass
+            
+            # ========== UPDATE FLOW PRESSURE ==========
+            if hasattr(self, 'synth_flow'):
+                try:
+                    blocks = self.flow_analysis.block_trade_analysis()
+                    if blocks:
+                        total = blocks.get('total_blocks', 0)
+                        buy = blocks.get('buy_blocks', 0)
+                        sell = blocks.get('sell_blocks', 0)
+                        self.synth_flow['blocks'].config(text=f"{total}")
+                        if buy > sell:
+                            bias_text = f"BUY {buy}:{sell}"
+                            bias_color = COLORS['gain']
+                        elif sell > buy:
+                            bias_text = f"SELL {sell}:{buy}"
+                            bias_color = COLORS['loss']
+                        else:
+                            bias_text = "BALANCED"
+                            bias_color = COLORS['warning']
+                        self.synth_flow['block_bias'].config(text=bias_text, foreground=bias_color)
+                except:
+                    pass
+                
+                try:
+                    rvol = self.flow_analysis.rvol_analysis()
+                    if rvol:
+                        r = rvol.get('rvol', 1)
+                        self.synth_flow['rvol'].config(text=f"{r:.2f}x")
+                        if r >= 2:
+                            status = "HIGH"
+                            r_color = COLORS['gain']
+                        elif r >= 1.5:
+                            status = "ELEVATED"
+                            r_color = COLORS['warning']
+                        else:
+                            status = "NORMAL"
+                            r_color = COLORS['text_muted']
+                        self.synth_flow['rvol_status'].config(text=status, foreground=r_color)
+                except:
+                    pass
+                
+                try:
+                    sessions = self.flow_analysis.intraday_session_breakdown()
+                    if sessions:
+                        total_delta = sum(s.get('delta', 0) for s in sessions.values())
+                        delta_color = COLORS['gain'] if total_delta >= 0 else COLORS['loss']
+                        self.synth_flow['session_delta'].config(text=f"{total_delta:+,.0f}", foreground=delta_color)
+                        bias = "ACCUM" if total_delta > 0 else "DIST" if total_delta < 0 else "NEUTRAL"
+                        self.synth_flow['session_bias'].config(text=bias, foreground=delta_color)
+                except:
+                    pass
+                
+                # Flow gauge
+                try:
+                    gauge = self.synth_flow['gauge']
+                    gauge.delete('all')
+                    
+                    cum_delta = self.flow_analysis.cumulative_delta()
+                    if cum_delta and len(cum_delta) > 0:
+                        delta = cum_delta[-1].get('cumulative_delta', 0)
+                        max_delta = max(abs(d.get('cumulative_delta', 0)) for d in cum_delta) or 1
+                        pct = (delta / max_delta + 1) / 2  # 0 to 1
+                        
+                        gauge.create_rectangle(0, 5, 60, 20, fill=COLORS['loss'], outline='')
+                        gauge.create_rectangle(60, 5, 120, 20, fill=COLORS['gain'], outline='')
+                        gauge.create_line(60, 0, 60, 25, fill=COLORS['text_muted'], width=2)
+                        
+                        pos_x = int(pct * 120)
+                        gauge.create_oval(pos_x - 4, 8, pos_x + 4, 17, fill='white', outline='')
+                        
+                        bias = "BUYERS" if delta > 0 else "SELLERS" if delta < 0 else "BALANCED"
+                        bias_color = COLORS['gain'] if delta > 0 else COLORS['loss'] if delta < 0 else COLORS['warning']
+                        self.synth_flow['gauge_label'].config(text=bias, foreground=bias_color)
+                except:
+                    pass
+            
+            # ========== UPDATE ENHANCED INSIGHTS ==========
+            if hasattr(self, 'synth_insights'):
+                insights_data = synthesis.get('key_insights', [])
+                for i, card in enumerate(self.synth_insights):
+                    if i < len(insights_data):
+                        insight = insights_data[i]
+                        card['icon'].config(text=insight.get('icon', '💡'))
+                        card['text'].config(text=insight.get('title', '--'))
+                    else:
+                        card['icon'].config(text="⚪")
+                        card['text'].config(text="--")
+            
+            # ========== UPDATE ALERTS ==========
+            if hasattr(self, 'synth_alerts'):
+                try:
+                    alerts = self.flow_analysis.generate_alerts()[:4]
+                    for i, card in enumerate(self.synth_alerts):
+                        if i < len(alerts):
+                            alert = alerts[i]
+                            severity = alert.get('severity', 'LOW')
+                            if severity == 'HIGH':
+                                icon = "🔴"
+                            elif severity == 'MEDIUM':
+                                icon = "🟡"
+                            else:
+                                icon = "⚪"
+                            card['icon'].config(text=icon)
+                            card['text'].config(text=alert.get('message', '--')[:40], foreground=COLORS['text_primary'])
+                        else:
+                            card['icon'].config(text="⚪")
+                            card['text'].config(text="--", foreground=COLORS['text_muted'])
+                except:
+                    pass
+            
             # ========== UPDATE COMPONENT SCORES ==========
             component_scores = synthesis.get('component_scores', {})
             
@@ -3115,31 +3490,33 @@ class FlowTapeTab:
             self.narrative_text.insert('1.0', narrative)
             self.narrative_text.config(state='disabled')
             
-            # ========== UPDATE KEY INSIGHTS ==========
-            for widget in self.insights_container.winfo_children():
-                widget.destroy()
-            
-            insights = synthesis.get('key_insights', [])
-            if not insights:
-                ttk.Label(self.insights_container, text="No key insights at this time.",
-                         font=get_font('body'), foreground=COLORS['text_muted']).pack(anchor='w')
-            else:
-                insights_row = ttk.Frame(self.insights_container)
-                insights_row.pack(fill=tk.X)
+            # ========== UPDATE KEY INSIGHTS (Legacy - now handled above with synth_insights) ==========
+            # Only run this if synth_insights is not available (backward compatibility)
+            if not hasattr(self, 'synth_insights'):
+                for widget in self.insights_container.winfo_children():
+                    widget.destroy()
                 
-                for insight in insights[:4]:  # Max 4 insights
-                    card = ttk.Frame(insights_row, relief='ridge', borderwidth=1)
-                    card.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=5, pady=5)
+                insights = synthesis.get('key_insights', [])
+                if not insights:
+                    ttk.Label(self.insights_container, text="No key insights at this time.",
+                             font=get_font('body'), foreground=COLORS['text_muted']).pack(anchor='w')
+                else:
+                    insights_row = ttk.Frame(self.insights_container)
+                    insights_row.pack(fill=tk.X)
                     
-                    icon = insight.get('icon', '💡')
-                    title = insight.get('title', 'Insight')
-                    detail = insight.get('detail', '')
-                    color = insight.get('color', COLORS['primary'])
-                    
-                    ttk.Label(card, text=f"{icon} {title}",
-                             font=get_font('body'), foreground=color).pack(anchor='w', padx=10, pady=(5, 0))
-                    ttk.Label(card, text=detail,
-                             font=get_font('small'), foreground=COLORS['text_secondary']).pack(anchor='w', padx=10, pady=(0, 5))
+                    for insight in insights[:4]:  # Max 4 insights
+                        card = ttk.Frame(insights_row, relief='ridge', borderwidth=1)
+                        card.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=5, pady=5)
+                        
+                        icon = insight.get('icon', '💡')
+                        title = insight.get('title', 'Insight')
+                        detail = insight.get('detail', '')
+                        color = insight.get('color', COLORS['primary'])
+                        
+                        ttk.Label(card, text=f"{icon} {title}",
+                                 font=get_font('body'), foreground=color).pack(anchor='w', padx=10, pady=(5, 0))
+                        ttk.Label(card, text=detail,
+                                 font=get_font('small'), foreground=COLORS['text_secondary']).pack(anchor='w', padx=10, pady=(0, 5))
             
             # ========== UPDATE SIGNAL SUMMARY ==========
             signal_summary = synthesis.get('signal_summary', {})
@@ -3196,6 +3573,12 @@ class FlowTapeTab:
             logger.error(f"Error updating synthesis tab: {e}")
             import traceback
             traceback.print_exc()
+    
+    def _refresh_synthesis(self):
+        """Manual refresh button handler for AI Synthesis tab."""
+        if hasattr(self, 'synthesis_status') and 'live' in self.synthesis_status:
+            self.synthesis_status['live'].config(text="📡 Refreshing...", foreground=COLORS['warning'])
+        self._update_synthesis_tab()
     
     def _generate_ai_synthesis(self) -> dict:
         """Generate comprehensive AI synthesis from all data sources."""
