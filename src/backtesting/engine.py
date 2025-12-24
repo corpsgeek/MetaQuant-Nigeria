@@ -524,9 +524,11 @@ class BacktestEngine:
                 scores['trend'] = 1.0 if ma_20 > ma_50 else -1.0
             
             # ===== ML PREDICTION (25%) =====
+            ml_attempted = False
             if self.ml_engine and hasattr(self.ml_engine, 'predict'):
                 try:
                     ml_result = self.ml_engine.predict(symbol)
+                    ml_attempted = True
                     if ml_result and ml_result.get('success'):
                         direction = ml_result.get('direction', 'FLAT')
                         # Normalize confidence from 0-100 to 0-1
@@ -544,10 +546,23 @@ class BacktestEngine:
                 except Exception as e:
                     logger.debug(f"ML prediction error for {symbol}: {e}")
             
+            # Fallback: Use momentum as ML proxy if ML prediction failed
+            if not ml_attempted or scores['ml'] == 0:
+                # Use momentum as a simple ML proxy
+                scores['ml'] = scores['momentum'] * 0.5  # Damped version of momentum
+            
             # ===== FUNDAMENTALS (20%) =====
             if self.db:
                 fund_score = self._score_fundamentals(symbol)
                 scores['fundamental'] = fund_score
+            
+            # Fallback: Give slight positive bias if no fundamental data
+            if scores['fundamental'] == 0:
+                # Use price stability as proxy - lower volatility = better fundamentals
+                if len(close) >= 20:
+                    volatility = close.pct_change().tail(20).std()
+                    # Low volatility stocks get small positive, high volatility get negative
+                    scores['fundamental'] = max(-0.2, min(0.2, 0.1 - volatility * 5))
             
             # ===== ANOMALY (10%) =====
             if self.ml_engine and hasattr(self.ml_engine, 'detect_anomalies'):
@@ -601,7 +616,8 @@ class BacktestEngine:
                     self._fundamental_cache[symbol] = fund
                 else:
                     return 0.0
-            except:
+            except Exception as e:
+                logger.debug(f"Fundamental fetch failed for {symbol}: {e}")
                 return 0.0
         
         if not fund:
@@ -609,28 +625,42 @@ class BacktestEngine:
         
         score = 0.0
         
-        # P/E ratio (lower is better, but not negative)
+        # P/E ratio (lower is better, but not negative) - LOOSENED
         pe = fund.get('pe_ratio')
-        if pe and 0 < pe < 15:
-            score += 0.3
-        elif pe and 15 <= pe < 25:
-            score += 0.1
-        elif pe and pe >= 25:
-            score -= 0.1
+        if pe and pe > 0:
+            if pe < 10:
+                score += 0.4
+            elif pe < 20:
+                score += 0.2
+            elif pe < 30:
+                score += 0.1
+            else:
+                score -= 0.1
         
-        # Dividend yield (higher is better)
+        # Dividend yield (higher is better) - LOOSENED
         div_yield = fund.get('dividend_yield')
-        if div_yield and div_yield > 5:
-            score += 0.3
-        elif div_yield and div_yield > 2:
-            score += 0.1
+        if div_yield and div_yield > 0:
+            if div_yield > 4:
+                score += 0.3
+            elif div_yield > 1:
+                score += 0.2
+            else:
+                score += 0.1
         
-        # ROE (higher is better)
+        # ROE (higher is better) - LOOSENED
         roe = fund.get('roe')
-        if roe and roe > 15:
-            score += 0.3
-        elif roe and roe > 10:
-            score += 0.1
+        if roe and roe > 0:
+            if roe > 15:
+                score += 0.3
+            elif roe > 8:
+                score += 0.2
+            elif roe > 3:
+                score += 0.1
+        
+        # Market cap - give small boost for any stock with market cap data
+        mkt_cap = fund.get('market_cap')
+        if mkt_cap and mkt_cap > 0:
+            score += 0.05
         
         return max(-1, min(1, score))
     
