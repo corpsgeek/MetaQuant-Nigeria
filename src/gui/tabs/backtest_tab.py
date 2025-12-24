@@ -253,10 +253,10 @@ class BacktestTab:
         log_frame = ttk.LabelFrame(results_frame, text="📋 Trade Log")
         log_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
         
-        columns = ('Symbol', 'Size (₦)', 'Entry ₦', 'Exit ₦', 'Entry Date', 'Exit Date', 'P&L', 'Return', 'Days')
+        columns = ('Symbol', 'Size (₦)', 'Entry ₦', 'Exit ₦', 'Entry Date', 'Exit Date', 'P&L', 'Return', 'Days', 'Attribution')
         self.trade_tree = ttk.Treeview(log_frame, columns=columns, show='headings', height=10)
         
-        col_widths = {'Symbol': 65, 'Size (₦)': 85, 'Entry ₦': 70, 'Exit ₦': 70, 'Entry Date': 75, 'Exit Date': 75, 'P&L': 80, 'Return': 55, 'Days': 35}
+        col_widths = {'Symbol': 60, 'Size (₦)': 80, 'Entry ₦': 65, 'Exit ₦': 65, 'Entry Date': 70, 'Exit Date': 70, 'P&L': 75, 'Return': 50, 'Days': 32, 'Attribution': 180}
         for col in columns:
             self.trade_tree.heading(col, text=col)
             self.trade_tree.column(col, width=col_widths.get(col, 65))
@@ -513,6 +513,19 @@ class BacktestTab:
             # Calculate contribution to portfolio return (P&L / initial capital)
             contribution_return = (pnl / initial_capital) * 100
             
+            # Format attribution as compact string
+            entry_attr = t.get('entry_attribution', {})
+            attr_parts = []
+            if entry_attr.get('momentum', 0) != 0:
+                attr_parts.append(f"Mom:{entry_attr['momentum']:+.2f}")
+            if entry_attr.get('ml', 0) != 0:
+                attr_parts.append(f"ML:{entry_attr['ml']:+.2f}")
+            if entry_attr.get('fundamental', 0) != 0:
+                attr_parts.append(f"Fnd:{entry_attr['fundamental']:+.2f}")
+            if entry_attr.get('trend', 0) != 0:
+                attr_parts.append(f"Trd:{entry_attr['trend']:+.1f}")
+            attribution_str = ' | '.join(attr_parts) if attr_parts else '-'
+            
             self.trade_tree.insert('', 'end', values=(
                 t.get('symbol', ''),
                 f"₦{position_value:,.0f}",
@@ -522,7 +535,8 @@ class BacktestTab:
                 t.get('exit_date', '')[:10],
                 f"₦{pnl:,.0f}",
                 f"{contribution_return:+.2f}%",
-                t.get('holding_days', 0)
+                t.get('holding_days', 0),
+                attribution_str
             ), tags=(tag,))
         
         # Calculate totals

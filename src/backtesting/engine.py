@@ -33,6 +33,7 @@ class Position:
     quantity: int
     entry_score: float
     entry_signal: str
+    entry_attribution: Dict[str, float] = None  # Component scores at entry
 
 
 @dataclass
@@ -51,6 +52,8 @@ class Trade:
     exit_signal: str
     entry_score: float
     exit_score: float
+    entry_attribution: Dict[str, float] = None  # Signal component scores at entry
+    exit_attribution: Dict[str, float] = None   # Signal component scores at exit
 
 
 class BacktestEngine:
@@ -363,7 +366,8 @@ class BacktestEngine:
                     self._close_position(
                         sym, date, prices[sym], 
                         score_result['signal'], 
-                        score_result['composite_score']
+                        score_result['composite_score'],
+                        score_result.get('component_scores', {})
                     )
         
         # Check for buy signals
@@ -384,10 +388,11 @@ class BacktestEngine:
                 self._open_position(
                     sym, date, prices[sym],
                     score_result['signal'],
-                    score_result['composite_score']
+                    score_result['composite_score'],
+                    score_result.get('component_scores', {})
                 )
     
-    def _open_position(self, symbol: str, date: str, price: float, signal: str, score: float):
+    def _open_position(self, symbol: str, date: str, price: float, signal: str, score: float, attribution: Dict[str, float] = None):
         """Open a new position."""
         position_value = self.capital * self.position_size_pct
         quantity = int(position_value / price)
@@ -407,12 +412,13 @@ class BacktestEngine:
             entry_price=price,
             quantity=quantity,
             entry_score=score,
-            entry_signal=signal
+            entry_signal=signal,
+            entry_attribution=attribution or {}
         )
         
         logger.debug(f"OPEN: {symbol} @ {price:.2f} x {quantity} (score: {score:.3f})")
     
-    def _close_position(self, symbol: str, date: str, price: float, signal: str, score: float):
+    def _close_position(self, symbol: str, date: str, price: float, signal: str, score: float, exit_attribution: Dict[str, float] = None):
         """Close an existing position."""
         if symbol not in self.positions:
             return
@@ -454,7 +460,9 @@ class BacktestEngine:
             entry_signal=pos.entry_signal,
             exit_signal=signal,
             entry_score=pos.entry_score,
-            exit_score=score
+            exit_score=score,
+            entry_attribution=pos.entry_attribution or {},
+            exit_attribution=exit_attribution or {}
         )
         
         self.trades.append(trade)
