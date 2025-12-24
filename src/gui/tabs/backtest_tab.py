@@ -253,13 +253,13 @@ class BacktestTab:
         log_frame = ttk.LabelFrame(results_frame, text="📋 Trade Log")
         log_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
         
-        columns = ('Symbol', 'Size (₦)', '% Port', 'Entry', 'Exit', 'P&L', 'Return', 'Days')
+        columns = ('Symbol', 'Size (₦)', 'Entry ₦', 'Exit ₦', 'Entry Date', 'Exit Date', 'P&L', 'Return', 'Days')
         self.trade_tree = ttk.Treeview(log_frame, columns=columns, show='headings', height=10)
         
-        col_widths = {'Symbol': 70, 'Size (₦)': 90, '% Port': 50, 'Entry': 80, 'Exit': 80, 'P&L': 80, 'Return': 60, 'Days': 40}
+        col_widths = {'Symbol': 65, 'Size (₦)': 85, 'Entry ₦': 70, 'Exit ₦': 70, 'Entry Date': 75, 'Exit Date': 75, 'P&L': 80, 'Return': 55, 'Days': 35}
         for col in columns:
             self.trade_tree.heading(col, text=col)
-            self.trade_tree.column(col, width=col_widths.get(col, 70))
+            self.trade_tree.column(col, width=col_widths.get(col, 65))
         
         scrollbar = ttk.Scrollbar(log_frame, orient=tk.VERTICAL, command=self.trade_tree.yview)
         self.trade_tree.configure(yscrollcommand=scrollbar.set)
@@ -500,8 +500,8 @@ class BacktestTab:
             # Calculate position size
             qty = t.get('quantity', 0)
             entry_price = t.get('entry_price', 0)
+            exit_price = t.get('exit_price', 0)
             position_value = qty * entry_price
-            pct_port = (position_value / initial_capital) * 100
             
             # Calculate contribution to portfolio return (P&L / initial capital)
             contribution_return = (pnl / initial_capital) * 100
@@ -509,7 +509,8 @@ class BacktestTab:
             self.trade_tree.insert('', 'end', values=(
                 t.get('symbol', ''),
                 f"₦{position_value:,.0f}",
-                f"{pct_port:.1f}%",
+                f"₦{entry_price:,.2f}",
+                f"₦{exit_price:,.2f}",
                 t.get('entry_date', '')[:10],
                 t.get('exit_date', '')[:10],
                 f"₦{pnl:,.0f}",
