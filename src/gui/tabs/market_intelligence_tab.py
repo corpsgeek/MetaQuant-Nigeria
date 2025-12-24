@@ -2057,204 +2057,190 @@ class MarketIntelligenceTab:
     # ==================== AI SYNTHESIS ====================
     
     def _build_ai_synthesis_ui(self):
-        """Build the AI Synthesis sub-tab with comprehensive market intelligence."""
-        # Main scrollable frame
-        canvas = tk.Canvas(self.synthesis_frame, bg=COLORS['bg_dark'], highlightthickness=0)
-        scrollbar = ttk.Scrollbar(self.synthesis_frame, orient="vertical", command=canvas.yview)
-        self.synthesis_scrollable = ttk.Frame(canvas)
+        """Build SUPER SUPER SUPER enhanced AI Synthesis sub-tab with comprehensive market intelligence."""
+        # Main scrollable frame - FULL WIDTH
+        self.synth_canvas = tk.Canvas(self.synthesis_frame, bg=COLORS['bg_dark'], highlightthickness=0)
+        scrollbar = ttk.Scrollbar(self.synthesis_frame, orient="vertical", command=self.synth_canvas.yview)
+        self.synthesis_scrollable = ttk.Frame(self.synth_canvas)
         
         self.synthesis_scrollable.bind(
             "<Configure>",
-            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+            lambda e: self.synth_canvas.configure(scrollregion=self.synth_canvas.bbox("all"))
         )
         
-        canvas.create_window((0, 0), window=self.synthesis_scrollable, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
+        # Bind canvas width to update scrollable frame width
+        def _on_canvas_configure(event):
+            self.synth_canvas.itemconfig(self.synth_canvas_window, width=event.width)
+        self.synth_canvas.bind("<Configure>", _on_canvas_configure)
         
-        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.synth_canvas_window = self.synth_canvas.create_window((0, 0), window=self.synthesis_scrollable, anchor="nw")
+        self.synth_canvas.configure(yscrollcommand=scrollbar.set)
+        
+        self.synth_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         
         # Enable mouse wheel scrolling
         def _on_mousewheel(event):
-            canvas.yview_scroll(int(-1*(event.delta/120)), "units")
-        canvas.bind_all("<MouseWheel>", _on_mousewheel)
+            self.synth_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        self.synth_canvas.bind_all("<MouseWheel>", _on_mousewheel)
         
         main = self.synthesis_scrollable
         
-        # Header
+        # ========== HEADER ==========
         header = ttk.Frame(main)
         header.pack(fill=tk.X, padx=10, pady=10)
         
-        ttk.Label(
-            header,
-            text="🤖 AI Market Intelligence Synthesis",
-            font=get_font('subheading'),
-            foreground=COLORS['primary']
-        ).pack(side=tk.LEFT)
+        ttk.Label(header, text="🤖 AI Market Intelligence Synthesis", font=get_font('subheading'),
+                  foreground=COLORS['primary']).pack(side=tk.LEFT)
         
-        ttk.Label(
-            header,
-            text="Comprehensive AI-powered market analysis",
-            font=get_font('small'),
-            foreground=COLORS['text_secondary']
-        ).pack(side=tk.LEFT, padx=20)
+        self.synth_market_label = ttk.Label(header, text="NGX | 0 Stocks", font=get_font('body'),
+                                            foreground=COLORS['text_secondary'])
+        self.synth_market_label.pack(side=tk.LEFT, padx=20)
         
-        if TTKBOOTSTRAP_AVAILABLE:
-            refresh_btn = ttk_bs.Button(
-                header,
-                text="↻ Refresh Analysis",
-                bootstyle="primary-outline",
-                command=self._update_ai_synthesis
-            )
-        else:
-            refresh_btn = ttk.Button(header, text="↻ Refresh Analysis", command=self._update_ai_synthesis)
+        refresh_btn = ttk.Button(header, text="↻ Refresh", command=self._update_ai_synthesis)
         refresh_btn.pack(side=tk.RIGHT)
         
-        # ========== ROW 1: MARKET OVERVIEW CARDS ==========
+        # ========== ROW 1: MARKET OVERVIEW ==========
         overview_frame = ttk.LabelFrame(main, text="📊 Market Overview")
         overview_frame.pack(fill=tk.X, padx=10, pady=5)
         
-        overview_cards = ttk.Frame(overview_frame)
-        overview_cards.pack(fill=tk.X, padx=5, pady=5)
+        overview_row = ttk.Frame(overview_frame)
+        overview_row.pack(fill=tk.X, padx=5, pady=5)
         
         self.synthesis_overview = {}
         
-        # Card 1: Market Health
-        card1 = ttk.LabelFrame(overview_cards, text="🏥 Health", padding=8)
-        card1.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=3)
-        self.synthesis_overview['health_value'] = ttk.Label(card1, text="--", font=get_font('subheading'),
-                                                             foreground=COLORS['primary'])
-        self.synthesis_overview['health_value'].pack()
-        self.synthesis_overview['health_bar'] = tk.Canvas(card1, width=100, height=8, 
-                                                           bg=COLORS['bg_medium'], highlightthickness=0)
-        self.synthesis_overview['health_bar'].pack(pady=2)
-        self.synthesis_overview['health_driver'] = ttk.Label(card1, text="--", font=get_font('small'),
-                                                              foreground=COLORS['text_muted'])
-        self.synthesis_overview['health_driver'].pack()
+        overview_items = [
+            ('health', '🏥 Health', '/100'),
+            ('regime', '📈 Regime', ''),
+            ('breadth', '📊 Breadth', ''),
+            ('trend', '🧭 Trend', ''),
+            ('volatility', '📉 Volatility', '')
+        ]
         
-        # Card 2: Market Regime
-        card2 = ttk.LabelFrame(overview_cards, text="📈 Regime", padding=8)
-        card2.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=3)
-        self.synthesis_overview['regime_value'] = ttk.Label(card2, text="--", font=get_font('subheading'),
-                                                             foreground=COLORS['primary'])
-        self.synthesis_overview['regime_value'].pack()
-        self.synthesis_overview['regime_icon'] = ttk.Label(card2, text="⚪", font=('', 16))
-        self.synthesis_overview['regime_icon'].pack()
-        self.synthesis_overview['regime_driver'] = ttk.Label(card2, text="--", font=get_font('small'),
-                                                              foreground=COLORS['text_muted'])
-        self.synthesis_overview['regime_driver'].pack()
+        for key, title, suffix in overview_items:
+            card = ttk.Frame(overview_row, relief='ridge', borderwidth=1, padding=5)
+            card.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=2)
+            
+            ttk.Label(card, text=title, font=get_font('small'), foreground=COLORS['text_muted']).pack()
+            
+            value_frame = ttk.Frame(card)
+            value_frame.pack()
+            self.synthesis_overview[f'{key}_value'] = ttk.Label(value_frame, text="--", font=get_font('subheading'))
+            self.synthesis_overview[f'{key}_value'].pack(side=tk.LEFT)
+            if suffix:
+                ttk.Label(value_frame, text=suffix, font=get_font('small'), foreground=COLORS['text_muted']).pack(side=tk.LEFT)
+            
+            self.synthesis_overview[f'{key}_bar'] = tk.Canvas(card, width=100, height=8, bg=COLORS['bg_medium'], highlightthickness=0)
+            self.synthesis_overview[f'{key}_bar'].pack(pady=2)
+            
+            self.synthesis_overview[f'{key}_driver'] = ttk.Label(card, text="--", font=get_font('small'), foreground=COLORS['text_muted'])
+            self.synthesis_overview[f'{key}_driver'].pack()
         
-        # Card 3: Breadth
-        card3 = ttk.LabelFrame(overview_cards, text="📊 Breadth", padding=8)
-        card3.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=3)
-        self.synthesis_overview['breadth_value'] = ttk.Label(card3, text="--", font=get_font('subheading'),
-                                                              foreground=COLORS['primary'])
-        self.synthesis_overview['breadth_value'].pack()
-        self.synthesis_overview['breadth_detail'] = ttk.Label(card3, text="↑-- ↓--", font=get_font('body'))
-        self.synthesis_overview['breadth_detail'].pack()
-        self.synthesis_overview['breadth_driver'] = ttk.Label(card3, text="--", font=get_font('small'),
-                                                               foreground=COLORS['text_muted'])
-        self.synthesis_overview['breadth_driver'].pack()
+        # ========== ROW 2: BREADTH ANALYTICS ==========
+        breadth_frame = ttk.LabelFrame(main, text="📈 Market Breadth Analytics")
+        breadth_frame.pack(fill=tk.X, padx=10, pady=5)
         
-        # Card 4: Trend
-        card4 = ttk.LabelFrame(overview_cards, text="🧭 Trend", padding=8)
-        card4.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=3)
-        self.synthesis_overview['trend_value'] = ttk.Label(card4, text="--", font=get_font('subheading'),
-                                                            foreground=COLORS['primary'])
-        self.synthesis_overview['trend_value'].pack()
-        self.synthesis_overview['trend_icon'] = ttk.Label(card4, text="➡️", font=('', 16))
-        self.synthesis_overview['trend_icon'].pack()
-        self.synthesis_overview['trend_driver'] = ttk.Label(card4, text="--", font=get_font('small'),
-                                                             foreground=COLORS['text_muted'])
-        self.synthesis_overview['trend_driver'].pack()
+        breadth_row = ttk.Frame(breadth_frame)
+        breadth_row.pack(fill=tk.X, padx=5, pady=5)
         
-        # ========== ROW 2: SECTOR + STOCK INTELLIGENCE ==========
+        self.synth_breadth = {}
+        
+        breadth_items = [
+            ('gainers', '🟢 Gainers', ''),
+            ('losers', '🔴 Losers', ''),
+            ('unchanged', '⚪ Unchanged', ''),
+            ('adv_dec', '📊 A/D Ratio', ''),
+            ('new_highs', '🔝 New Highs', ''),
+            ('new_lows', '🔻 New Lows', '')
+        ]
+        
+        for key, title, _ in breadth_items:
+            card = ttk.Frame(breadth_row, relief='ridge', borderwidth=1, padding=5)
+            card.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=2)
+            
+            ttk.Label(card, text=title, font=get_font('small'), foreground=COLORS['text_muted']).pack()
+            self.synth_breadth[key] = ttk.Label(card, text="--", font=get_font('subheading'))
+            self.synth_breadth[key].pack()
+        
+        # ========== ROW 3: SECTOR INTELLIGENCE + STOCK MOVERS ==========
         intel_frame = ttk.Frame(main)
         intel_frame.pack(fill=tk.X, padx=10, pady=5)
         
         # LEFT: Sector Intelligence
-        sector_intel = ttk.LabelFrame(intel_frame, text="🔄 Sector Intelligence", padding=5)
+        sector_intel = ttk.LabelFrame(intel_frame, text="🔄 Sector Intelligence")
         sector_intel.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 5))
         
         self.synthesis_sector = {}
         
+        sector_row = ttk.Frame(sector_intel)
+        sector_row.pack(fill=tk.X, padx=5, pady=3)
+        
         # Leading Sectors
-        lead_row = ttk.Frame(sector_intel)
-        lead_row.pack(fill=tk.X, pady=2)
-        ttk.Label(lead_row, text="📈 Leading:", font=get_font('small'),
-                 foreground=COLORS['text_muted']).pack(side=tk.LEFT)
-        self.synthesis_sector['leading'] = ttk.Label(lead_row, text="--", font=get_font('small'),
-                                                      foreground=COLORS['gain'])
-        self.synthesis_sector['leading'].pack(side=tk.LEFT, padx=5)
+        lead_card = ttk.Frame(sector_row, relief='ridge', borderwidth=1, padding=5)
+        lead_card.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=2)
+        ttk.Label(lead_card, text="📈 Leading", font=get_font('small'), foreground=COLORS['gain']).pack()
+        self.synthesis_sector['leading'] = ttk.Label(lead_card, text="--", font=get_font('body'), foreground=COLORS['gain'])
+        self.synthesis_sector['leading'].pack()
         
         # Lagging Sectors
-        lag_row = ttk.Frame(sector_intel)
-        lag_row.pack(fill=tk.X, pady=2)
-        ttk.Label(lag_row, text="📉 Lagging:", font=get_font('small'),
-                 foreground=COLORS['text_muted']).pack(side=tk.LEFT)
-        self.synthesis_sector['lagging'] = ttk.Label(lag_row, text="--", font=get_font('small'),
-                                                      foreground=COLORS['loss'])
-        self.synthesis_sector['lagging'].pack(side=tk.LEFT, padx=5)
+        lag_card = ttk.Frame(sector_row, relief='ridge', borderwidth=1, padding=5)
+        lag_card.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=2)
+        ttk.Label(lag_card, text="📉 Lagging", font=get_font('small'), foreground=COLORS['loss']).pack()
+        self.synthesis_sector['lagging'] = ttk.Label(lag_card, text="--", font=get_font('body'), foreground=COLORS['loss'])
+        self.synthesis_sector['lagging'].pack()
         
-        # Rotation Phase
-        phase_row = ttk.Frame(sector_intel)
-        phase_row.pack(fill=tk.X, pady=2)
-        ttk.Label(phase_row, text="🔄 Phase:", font=get_font('small'),
-                 foreground=COLORS['text_muted']).pack(side=tk.LEFT)
-        self.synthesis_sector['phase'] = ttk.Label(phase_row, text="--", font=get_font('small'),
-                                                    foreground=COLORS['primary'])
-        self.synthesis_sector['phase'].pack(side=tk.LEFT, padx=5)
+        # Phase
+        phase_card = ttk.Frame(sector_row, relief='ridge', borderwidth=1, padding=5)
+        phase_card.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=2)
+        ttk.Label(phase_card, text="🔄 Phase", font=get_font('small'), foreground=COLORS['text_muted']).pack()
+        self.synthesis_sector['phase'] = ttk.Label(phase_card, text="--", font=get_font('body'))
+        self.synthesis_sector['phase'].pack()
         
-        # Sector Flow Pressure
-        sflow_row = ttk.Frame(sector_intel)
-        sflow_row.pack(fill=tk.X, pady=2)
-        ttk.Label(sflow_row, text="💧 Flow:", font=get_font('small'),
-                 foreground=COLORS['text_muted']).pack(side=tk.LEFT)
-        self.synthesis_sector['flow'] = ttk.Label(sflow_row, text="--", font=get_font('small'))
-        self.synthesis_sector['flow'].pack(side=tk.LEFT, padx=5)
+        # Flow
+        flow_card = ttk.Frame(sector_row, relief='ridge', borderwidth=1, padding=5)
+        flow_card.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=2)
+        ttk.Label(flow_card, text="💧 Flow", font=get_font('small'), foreground=COLORS['text_muted']).pack()
+        self.synthesis_sector['flow'] = ttk.Label(flow_card, text="--", font=get_font('body'))
+        self.synthesis_sector['flow'].pack()
         
-        # RIGHT: Stock Intelligence
-        stock_intel = ttk.LabelFrame(intel_frame, text="📊 Stock Intelligence", padding=5)
+        # RIGHT: Stock Movers
+        stock_intel = ttk.LabelFrame(intel_frame, text="📊 Top Movers")
         stock_intel.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=(5, 0))
         
         self.synthesis_stock = {}
         
+        stock_row = ttk.Frame(stock_intel)
+        stock_row.pack(fill=tk.X, padx=5, pady=3)
+        
         # Top Gainer
-        gain_row = ttk.Frame(stock_intel)
-        gain_row.pack(fill=tk.X, pady=2)
-        ttk.Label(gain_row, text="🏆 Top Gainer:", font=get_font('small'),
-                 foreground=COLORS['text_muted']).pack(side=tk.LEFT)
-        self.synthesis_stock['top_gainer'] = ttk.Label(gain_row, text="--", font=get_font('small'),
-                                                        foreground=COLORS['gain'])
-        self.synthesis_stock['top_gainer'].pack(side=tk.LEFT, padx=5)
+        gain_card = ttk.Frame(stock_row, relief='ridge', borderwidth=1, padding=5)
+        gain_card.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=2)
+        ttk.Label(gain_card, text="🏆 Top Gainer", font=get_font('small'), foreground=COLORS['gain']).pack()
+        self.synthesis_stock['top_gainer'] = ttk.Label(gain_card, text="--", font=get_font('body'), foreground=COLORS['gain'])
+        self.synthesis_stock['top_gainer'].pack()
         
         # Top Loser
-        loss_row = ttk.Frame(stock_intel)
-        loss_row.pack(fill=tk.X, pady=2)
-        ttk.Label(loss_row, text="📉 Top Loser:", font=get_font('small'),
-                 foreground=COLORS['text_muted']).pack(side=tk.LEFT)
-        self.synthesis_stock['top_loser'] = ttk.Label(loss_row, text="--", font=get_font('small'),
-                                                       foreground=COLORS['loss'])
-        self.synthesis_stock['top_loser'].pack(side=tk.LEFT, padx=5)
+        loss_card = ttk.Frame(stock_row, relief='ridge', borderwidth=1, padding=5)
+        loss_card.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=2)
+        ttk.Label(loss_card, text="📉 Top Loser", font=get_font('small'), foreground=COLORS['loss']).pack()
+        self.synthesis_stock['top_loser'] = ttk.Label(loss_card, text="--", font=get_font('body'), foreground=COLORS['loss'])
+        self.synthesis_stock['top_loser'].pack()
         
         # Most Active
-        active_row = ttk.Frame(stock_intel)
-        active_row.pack(fill=tk.X, pady=2)
-        ttk.Label(active_row, text="🔥 Most Active:", font=get_font('small'),
-                 foreground=COLORS['text_muted']).pack(side=tk.LEFT)
-        self.synthesis_stock['most_active'] = ttk.Label(active_row, text="--", font=get_font('small'),
-                                                         foreground=COLORS['warning'])
-        self.synthesis_stock['most_active'].pack(side=tk.LEFT, padx=5)
+        active_card = ttk.Frame(stock_row, relief='ridge', borderwidth=1, padding=5)
+        active_card.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=2)
+        ttk.Label(active_card, text="🔥 Most Active", font=get_font('small'), foreground=COLORS['warning']).pack()
+        self.synthesis_stock['most_active'] = ttk.Label(active_card, text="--", font=get_font('body'), foreground=COLORS['warning'])
+        self.synthesis_stock['most_active'].pack()
         
-        # Stock Flow
-        stflow_row = ttk.Frame(stock_intel)
-        stflow_row.pack(fill=tk.X, pady=2)
-        ttk.Label(stflow_row, text="💹 Flow Leaders:", font=get_font('small'),
-                 foreground=COLORS['text_muted']).pack(side=tk.LEFT)
-        self.synthesis_stock['flow_leaders'] = ttk.Label(stflow_row, text="--", font=get_font('small'))
-        self.synthesis_stock['flow_leaders'].pack(side=tk.LEFT, padx=5)
+        # Flow Leaders
+        flow_lead_card = ttk.Frame(stock_row, relief='ridge', borderwidth=1, padding=5)
+        flow_lead_card.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=2)
+        ttk.Label(flow_lead_card, text="💹 Flow Leader", font=get_font('small'), foreground=COLORS['text_muted']).pack()
+        self.synthesis_stock['flow_leaders'] = ttk.Label(flow_lead_card, text="--", font=get_font('body'))
+        self.synthesis_stock['flow_leaders'].pack()
         
-        # ========== ROW 3: FLOW PRESSURE GAUGES ==========
+        # ========== ROW 4: FLOW PRESSURE GAUGES ==========
         flow_frame = ttk.LabelFrame(main, text="⚡ Money Flow Pressure")
         flow_frame.pack(fill=tk.X, padx=10, pady=5)
         
@@ -2263,55 +2249,54 @@ class MarketIntelligenceTab:
         
         self.synthesis_flow = {}
         
-        # Market-wide Flow Gauge
-        market_flow = ttk.Frame(flow_row)
-        market_flow.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        flow_items = [
+            ('market', '📊 Market Flow', 'Net flow across all stocks'),
+            ('sector', '🔄 Sector Flow', 'Leading sector pressure'),
+            ('stock', '📈 Stock Flow', 'Individual stock inflows'),
+            ('smart', '🏛 Smart Money', 'Institutional activity')
+        ]
         
-        ttk.Label(market_flow, text="📊 Market", font=get_font('small'),
-                 foreground=COLORS['text_muted']).pack()
-        self.synthesis_flow['market_gauge'] = tk.Canvas(market_flow, width=200, height=20,
-                                                         bg=COLORS['bg_medium'], highlightthickness=0)
-        self.synthesis_flow['market_gauge'].pack(pady=2)
-        self.synthesis_flow['market_label'] = ttk.Label(market_flow, text="Buy: --% | Sell: --%",
-                                                         font=get_font('small'))
-        self.synthesis_flow['market_label'].pack()
+        for key, title, desc in flow_items:
+            card = ttk.Frame(flow_row, relief='ridge', borderwidth=1, padding=5)
+            card.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=2)
+            
+            ttk.Label(card, text=title, font=get_font('small'), foreground=COLORS['text_muted']).pack()
+            self.synthesis_flow[f'{key}_gauge'] = tk.Canvas(card, height=20, bg=COLORS['bg_medium'], highlightthickness=0)
+            self.synthesis_flow[f'{key}_gauge'].pack(fill=tk.X, pady=2)
+            self.synthesis_flow[f'{key}_label'] = ttk.Label(card, text="--", font=get_font('small'))
+            self.synthesis_flow[f'{key}_label'].pack()
         
-        # Sector Flow Gauge
-        sector_flow = ttk.Frame(flow_row)
-        sector_flow.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        # ========== ROW 5: VOLUME ANALYSIS ==========
+        volume_frame = ttk.LabelFrame(main, text="📊 Volume Analysis")
+        volume_frame.pack(fill=tk.X, padx=10, pady=5)
         
-        ttk.Label(sector_flow, text="🔄 Sector", font=get_font('small'),
-                 foreground=COLORS['text_muted']).pack()
-        self.synthesis_flow['sector_gauge'] = tk.Canvas(sector_flow, width=200, height=20,
-                                                         bg=COLORS['bg_medium'], highlightthickness=0)
-        self.synthesis_flow['sector_gauge'].pack(pady=2)
-        self.synthesis_flow['sector_label'] = ttk.Label(sector_flow, text="In: -- | Out: --",
-                                                         font=get_font('small'))
-        self.synthesis_flow['sector_label'].pack()
+        volume_row = ttk.Frame(volume_frame)
+        volume_row.pack(fill=tk.X, padx=5, pady=5)
         
-        # Stock Flow Gauge
-        stock_flow = ttk.Frame(flow_row)
-        stock_flow.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.synth_volume = {}
         
-        ttk.Label(stock_flow, text="📈 Stock", font=get_font('small'),
-                 foreground=COLORS['text_muted']).pack()
-        self.synthesis_flow['stock_gauge'] = tk.Canvas(stock_flow, width=200, height=20,
-                                                        bg=COLORS['bg_medium'], highlightthickness=0)
-        self.synthesis_flow['stock_gauge'].pack(pady=2)
-        self.synthesis_flow['stock_label'] = ttk.Label(stock_flow, text="Inflow: -- | Outflow: --",
-                                                        font=get_font('small'))
-        self.synthesis_flow['stock_label'].pack()
+        volume_items = [
+            ('total', '📈 Total Volume', ''),
+            ('avg', '📊 vs Avg', ''),
+            ('buy_vol', '🟢 Buy Vol', ''),
+            ('sell_vol', '🔴 Sell Vol', ''),
+            ('ratio', '⚖️ B/S Ratio', '')
+        ]
         
-        # ========== ROW 4: AI NARRATIVE REPORT ==========
+        for key, title, _ in volume_items:
+            card = ttk.Frame(volume_row, relief='ridge', borderwidth=1, padding=5)
+            card.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=2)
+            
+            ttk.Label(card, text=title, font=get_font('small'), foreground=COLORS['text_muted']).pack()
+            self.synth_volume[key] = ttk.Label(card, text="--", font=get_font('subheading'))
+            self.synth_volume[key].pack()
+        
+        # ========== ROW 6: AI NARRATIVE REPORT ==========
         narrative_frame = ttk.LabelFrame(main, text="🧠 AI Market Narrative")
         narrative_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
         
-        # Text container with scrollbar
         text_container = ttk.Frame(narrative_frame)
         text_container.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
-        
-        text_scrollbar = ttk.Scrollbar(text_container)
-        text_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         
         self.synthesis_narrative = tk.Text(
             text_container,
@@ -2321,94 +2306,89 @@ class MarketIntelligenceTab:
             fg=COLORS['text_primary'],
             padx=10,
             pady=10,
-            height=15,
+            height=12,
             state=tk.DISABLED
         )
         self.synthesis_narrative.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        
+        text_scrollbar = ttk.Scrollbar(text_container, command=self.synthesis_narrative.yview)
+        text_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         self.synthesis_narrative.config(yscrollcommand=text_scrollbar.set)
-        text_scrollbar.config(command=self.synthesis_narrative.yview)
         
-        # ========== ROW 5: KEY INSIGHTS (Market + Stock Level) ==========
-        insights_frame = ttk.LabelFrame(main, text="💡 Key Insights")
-        insights_frame.pack(fill=tk.X, padx=10, pady=5)
+        # ========== ROW 7: KEY INSIGHTS (Market) ==========
+        market_insights_frame = ttk.LabelFrame(main, text="💡 Market Insights")
+        market_insights_frame.pack(fill=tk.X, padx=10, pady=5)
         
-        # Market-Level Insights
-        market_insights_row = ttk.Frame(insights_frame)
-        market_insights_row.pack(fill=tk.X, padx=5, pady=3)
-        
-        ttk.Label(market_insights_row, text="📊 Market:", font=get_font('small'),
-                 foreground=COLORS['text_muted']).pack(side=tk.LEFT)
+        market_insights_row = ttk.Frame(market_insights_frame)
+        market_insights_row.pack(fill=tk.X, padx=5, pady=5)
         
         self.synthesis_insights_market = []
-        for i in range(4):
-            insight_card = ttk.Frame(market_insights_row, padding=3)
-            insight_card.pack(side=tk.LEFT, padx=5)
+        for i in range(6):
+            card = ttk.Frame(market_insights_row, padding=3)
+            card.pack(side=tk.LEFT, fill=tk.X, expand=True)
             
-            icon_lbl = ttk.Label(insight_card, text="⚪", font=('', 12))
-            icon_lbl.pack(side=tk.LEFT)
-            
-            text_lbl = ttk.Label(insight_card, text="--", font=get_font('small'))
-            text_lbl.pack(side=tk.LEFT, padx=3)
+            icon_lbl = ttk.Label(card, text="⚪", font=('', 12))
+            icon_lbl.pack()
+            text_lbl = ttk.Label(card, text="--", font=get_font('small'), foreground=COLORS['text_primary'])
+            text_lbl.pack()
             
             self.synthesis_insights_market.append({'icon': icon_lbl, 'text': text_lbl})
         
-        # Stock-Level Insights
-        stock_insights_row = ttk.Frame(insights_frame)
-        stock_insights_row.pack(fill=tk.X, padx=5, pady=3)
+        # ========== ROW 8: KEY INSIGHTS (Stocks) ==========
+        stock_insights_frame = ttk.LabelFrame(main, text="📈 Stock Insights")
+        stock_insights_frame.pack(fill=tk.X, padx=10, pady=5)
         
-        ttk.Label(stock_insights_row, text="📈 Stocks:", font=get_font('small'),
-                 foreground=COLORS['text_muted']).pack(side=tk.LEFT)
+        stock_insights_row = ttk.Frame(stock_insights_frame)
+        stock_insights_row.pack(fill=tk.X, padx=5, pady=5)
         
         self.synthesis_insights_stock = []
-        for i in range(4):
-            insight_card = ttk.Frame(stock_insights_row, padding=3)
-            insight_card.pack(side=tk.LEFT, padx=5)
+        for i in range(6):
+            card = ttk.Frame(stock_insights_row, padding=3)
+            card.pack(side=tk.LEFT, fill=tk.X, expand=True)
             
-            icon_lbl = ttk.Label(insight_card, text="⚪", font=('', 12))
-            icon_lbl.pack(side=tk.LEFT)
-            
-            text_lbl = ttk.Label(insight_card, text="--", font=get_font('small'))
-            text_lbl.pack(side=tk.LEFT, padx=3)
+            icon_lbl = ttk.Label(card, text="⚪", font=('', 12))
+            icon_lbl.pack()
+            text_lbl = ttk.Label(card, text="--", font=get_font('small'), foreground=COLORS['text_primary'])
+            text_lbl.pack()
             
             self.synthesis_insights_stock.append({'icon': icon_lbl, 'text': text_lbl})
         
-        # ========== ROW 6: ANOMALY ALERTS ==========
+        # ========== ROW 9: SMART MONEY ALERTS ==========
         alerts_frame = ttk.LabelFrame(main, text="🚨 Smart Money Alerts")
         alerts_frame.pack(fill=tk.X, padx=10, pady=5)
         
-        self.synthesis_alerts_container = ttk.Frame(alerts_frame)
-        self.synthesis_alerts_container.pack(fill=tk.X, padx=5, pady=3)
+        alerts_row = ttk.Frame(alerts_frame)
+        alerts_row.pack(fill=tk.X, padx=5, pady=5)
         
+        self.synthesis_alerts_container = alerts_row
         self.synthesis_alerts = []
-        for i in range(3):
-            alert_row = ttk.Frame(self.synthesis_alerts_container)
-            alert_row.pack(fill=tk.X, pady=1)
+        for i in range(4):
+            card = ttk.Frame(alerts_row, padding=3)
+            card.pack(side=tk.LEFT, fill=tk.X, expand=True)
             
-            icon_lbl = ttk.Label(alert_row, text="⚠️", font=('', 10))
+            icon_lbl = ttk.Label(card, text="⚪", font=('', 12))
             icon_lbl.pack(side=tk.LEFT)
-            
-            text_lbl = ttk.Label(alert_row, text="--", font=get_font('small'),
-                                foreground=COLORS['text_muted'])
+            text_lbl = ttk.Label(card, text="--", font=get_font('small'), foreground=COLORS['text_muted'])
             text_lbl.pack(side=tk.LEFT, padx=5)
             
             self.synthesis_alerts.append({'icon': icon_lbl, 'text': text_lbl})
         
         # ========== STATUS BAR ==========
         status_frame = ttk.Frame(main)
-        status_frame.pack(fill=tk.X, padx=10, pady=5)
+        status_frame.pack(fill=tk.X, padx=10, pady=10)
         
         self.synthesis_status = {}
         
-        self.synthesis_status['live'] = ttk.Label(status_frame, text="📡 LIVE",
-                                                   font=get_font('small'), foreground=COLORS['gain'])
+        self.synthesis_status['live'] = ttk.Label(status_frame, text="📡 LIVE", font=get_font('small'), foreground=COLORS['gain'])
         self.synthesis_status['live'].pack(side=tk.LEFT)
         
-        self.synthesis_status['update'] = ttk.Label(status_frame, text="Last Update: --",
-                                                     font=get_font('small'), foreground=COLORS['text_muted'])
+        self.synthesis_status['count'] = ttk.Label(status_frame, text="0 stocks analyzed", font=get_font('small'), foreground=COLORS['text_muted'])
+        self.synthesis_status['count'].pack(side=tk.LEFT, padx=20)
+        
+        self.synthesis_status['update'] = ttk.Label(status_frame, text="Last Update: --", font=get_font('small'), foreground=COLORS['text_muted'])
         self.synthesis_status['update'].pack(side=tk.LEFT, padx=20)
         
-        self.synthesis_status['ai'] = ttk.Label(status_frame, text="Powered by Groq AI",
-                                                 font=get_font('small'), foreground=COLORS['text_muted'])
+        self.synthesis_status['ai'] = ttk.Label(status_frame, text="Powered by Groq AI", font=get_font('small'), foreground=COLORS['text_muted'])
         self.synthesis_status['ai'].pack(side=tk.RIGHT)
     
     def _load_smart_money_data(self):
