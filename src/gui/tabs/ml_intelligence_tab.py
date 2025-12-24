@@ -140,11 +140,13 @@ class MLIntelligenceTab:
             lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
         )
         
-        canvas.create_window((0, 0), window=self.pred_scrollable, anchor="nw")
+        canvas_window = canvas.create_window((0, 0), window=self.pred_scrollable, anchor="nw")
         canvas.configure(yscrollcommand=scrollbar.set)
         
-        # Bind mousewheel
-        canvas.bind_all("<MouseWheel>", lambda e: canvas.yview_scroll(int(-1*(e.delta/120)), "units"))
+        # Make inner frame expand to full width
+        def on_canvas_configure(event):
+            canvas.itemconfig(canvas_window, width=event.width)
+        canvas.bind('<Configure>', on_canvas_configure)
         
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
@@ -399,8 +401,13 @@ class MLIntelligenceTab:
             lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
         )
         
-        canvas.create_window((0, 0), window=self.anomaly_scrollable, anchor="nw")
+        canvas_window = canvas.create_window((0, 0), window=self.anomaly_scrollable, anchor="nw")
         canvas.configure(yscrollcommand=scrollbar.set)
+        
+        # Make inner frame expand to full width
+        def on_canvas_configure(event):
+            canvas.itemconfig(canvas_window, width=event.width)
+        canvas.bind('<Configure>', on_canvas_configure)
         
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
@@ -577,8 +584,13 @@ class MLIntelligenceTab:
             lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
         )
         
-        canvas.create_window((0, 0), window=self.cluster_scrollable, anchor="nw")
+        canvas_window = canvas.create_window((0, 0), window=self.cluster_scrollable, anchor="nw")
         canvas.configure(yscrollcommand=scrollbar.set)
+        
+        # Make inner frame expand to full width
+        def on_canvas_configure(event):
+            canvas.itemconfig(canvas_window, width=event.width)
+        canvas.bind('<Configure>', on_canvas_configure)
         
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
@@ -764,8 +776,13 @@ class MLIntelligenceTab:
             lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
         )
         
-        canvas.create_window((0, 0), window=self.rotation_scrollable, anchor="nw")
+        canvas_window = canvas.create_window((0, 0), window=self.rotation_scrollable, anchor="nw")
         canvas.configure(yscrollcommand=scrollbar.set)
+        
+        # Make inner frame expand to full width
+        def on_canvas_configure(event):
+            canvas.itemconfig(canvas_window, width=event.width)
+        canvas.bind('<Configure>', on_canvas_configure)
         
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
