@@ -469,14 +469,18 @@ class BacktestTab:
         
         for t in r.get('trades', [])[:100]:  # Last 100 trades
             pnl = t.get('pnl', 0)
-            ret_pct = t.get('return_pct', 0)
             tag = 'profit' if pnl > 0 else 'loss'
             
             # Calculate position size
             qty = t.get('quantity', 0)
             entry_price = t.get('entry_price', 0)
             position_value = qty * entry_price
-            pct_port = (position_value / self.backtest_results.get('settings', {}).get('initial_capital', 1)) * 100
+            initial_capital = self.backtest_results.get('settings', {}).get('initial_capital', 1)
+            pct_port = (position_value / initial_capital) * 100
+            
+            # Calculate contribution to portfolio return (P&L / initial capital)
+            # This makes returns additive to total return
+            contribution_return = (pnl / initial_capital) * 100
             
             self.trade_tree.insert('', 'end', values=(
                 t.get('symbol', ''),
@@ -485,7 +489,7 @@ class BacktestTab:
                 t.get('entry_date', '')[:10],
                 t.get('exit_date', '')[:10],
                 f"₦{pnl:,.0f}",
-                f"{ret_pct:+.1f}%",
+                f"{contribution_return:+.2f}%",
                 t.get('holding_days', 0)
             ), tags=(tag,))
         
