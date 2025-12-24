@@ -98,8 +98,9 @@ class ParameterOptimizer:
             if result['n_trades'] < self.min_trades:
                 continue
             
-            # Score: Sharpe-like metric (return / volatility) weighted by win rate
-            score = result['expectancy'] * result['win_rate'] / max(0.01, volatility_info['daily_vol'])
+            # Score: Prioritize highest win rate (user preference)
+            # Use win rate as primary score, profit factor as tiebreaker
+            score = result['win_rate'] + (result['profit_factor'] * 0.01)
             
             if score > best_score:
                 best_score = score
