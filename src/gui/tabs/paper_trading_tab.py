@@ -524,13 +524,13 @@ class PaperTradingTab:
             self.status_label.config(text=f"Error: {e}", foreground=COLORS['loss'])
     
     def _optimize_strategies(self):
-        """Optimize trading strategies."""
+        """Optimize trading strategies in background thread."""
         if not self._strategy_optimizer:
             messagebox.showerror("Error", "Strategy optimizer not initialized")
             return
         
         if not self._price_data:
-            messagebox.showwarning("Warning", "No price data available")
+            messagebox.showwarning("Warning", "No price data available. Run backtest first to load data.")
             return
         
         if not messagebox.askyesno("Confirm", 
@@ -540,30 +540,49 @@ class PaperTradingTab:
             "This may take several minutes."):
             return
         
-        self.status_label.config(text="Optimizing strategies...", foreground=COLORS['warning'])
-        self.parent.update()
+        self.status_label.config(text="Optimizing strategies (running in background)...", foreground=COLORS['warning'])
         
-        try:
-            symbols = list(self._price_data.keys())
-            
-            def progress_callback(current, total, symbol):
-                self.status_label.config(
-                    text=f"Optimizing {current}/{total}: {symbol}"
-                )
-                self.parent.update()
-            
-            results = self._strategy_optimizer.optimize_all_stocks(
-                symbols, self._price_data, progress_callback
-            )
-            
-            self.status_label.config(
-                text=f"Optimized {len(results)} strategies",
-                foreground=COLORS['gain']
-            )
-            
-        except Exception as e:
-            logger.error(f"Optimization failed: {e}")
-            self.status_label.config(text=f"Error: {e}", foreground=COLORS['loss'])
+        import threading
+        
+        def run_optimization():
+            try:
+                symbols = list(self._price_data.keys())
+                total = len(symbols)
+                optimized = 0
+                
+                for i, symbol in enumerate(symbols):
+                    if symbol not in self._price_data or self._price_data[symbol].empty:
+                        continue
+                    
+                    try:
+                        strategy = self._strategy_optimizer.optimize_stock(symbol, self._price_data)
+                        if strategy:
+                            self._trading_tables.save_stock_strategy(symbol, strategy)
+                            optimized += 1
+                    except Exception as e:
+                        logger.debug(f"Failed to optimize {symbol}: {e}")
+                    
+                    # Update status every 10 stocks
+                    if (i + 1) % 10 == 0:
+                        self.frame.after(0, lambda c=i+1, t=total: 
+                            self.status_label.config(text=f"Optimizing {c}/{t} stocks..."))
+                
+                # Done
+                self.frame.after(0, lambda: self.status_label.config(
+                    text=f"Optimized {optimized} strategies", 
+                    foreground=COLORS['gain']
+                ))
+                
+            except Exception as e:
+                logger.error(f"Optimization failed: {e}")
+                self.frame.after(0, lambda: self.status_label.config(
+                    text=f"Error: {e}", 
+                    foreground=COLORS['loss']
+                ))
+        
+        # Run in background thread
+        thread = threading.Thread(target=run_optimization, daemon=True)
+        thread.start()
     
     def _create_new_book(self):
         """Create a new portfolio book."""

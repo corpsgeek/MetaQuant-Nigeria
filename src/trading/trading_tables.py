@@ -297,37 +297,65 @@ class TradingTables:
     
     def save_stock_strategy(self, symbol: str, strategy: Dict):
         """Save or update optimized strategy for a stock."""
-        self.conn.execute("""
-            INSERT INTO stock_strategies 
-            (symbol, optimal_stop_loss, optimal_take_profit, buy_threshold, 
-             sell_threshold, avg_hold_days, min_hold_days, backtest_return,
-             backtest_win_rate, backtest_sharpe, backtest_trades, last_optimized)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-            ON CONFLICT(symbol) DO UPDATE SET
-                optimal_stop_loss = EXCLUDED.optimal_stop_loss,
-                optimal_take_profit = EXCLUDED.optimal_take_profit,
-                buy_threshold = EXCLUDED.buy_threshold,
-                sell_threshold = EXCLUDED.sell_threshold,
-                avg_hold_days = EXCLUDED.avg_hold_days,
-                min_hold_days = EXCLUDED.min_hold_days,
-                backtest_return = EXCLUDED.backtest_return,
-                backtest_win_rate = EXCLUDED.backtest_win_rate,
-                backtest_sharpe = EXCLUDED.backtest_sharpe,
-                backtest_trades = EXCLUDED.backtest_trades,
-                last_optimized = CURRENT_TIMESTAMP
-        """, [
-            symbol,
-            strategy.get('stop_loss', 0.05),
-            strategy.get('take_profit', 0.15),
-            strategy.get('buy_threshold', 0.3),
-            strategy.get('sell_threshold', -0.3),
-            strategy.get('avg_hold_days', 10),
-            strategy.get('min_hold_days', 3),
-            strategy.get('return', 0),
-            strategy.get('win_rate', 0),
-            strategy.get('sharpe', 0),
-            strategy.get('trades', 0)
-        ])
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        
+        # Check if exists first
+        existing = self.conn.execute(
+            "SELECT symbol FROM stock_strategies WHERE symbol = ?", [symbol]
+        ).fetchone()
+        
+        if existing:
+            # Update existing
+            self.conn.execute("""
+                UPDATE stock_strategies SET
+                    optimal_stop_loss = ?,
+                    optimal_take_profit = ?,
+                    buy_threshold = ?,
+                    sell_threshold = ?,
+                    avg_hold_days = ?,
+                    min_hold_days = ?,
+                    backtest_return = ?,
+                    backtest_win_rate = ?,
+                    backtest_sharpe = ?,
+                    backtest_trades = ?,
+                    last_optimized = ?
+                WHERE symbol = ?
+            """, [
+                strategy.get('stop_loss', 0.05),
+                strategy.get('take_profit', 0.15),
+                strategy.get('buy_threshold', 0.3),
+                strategy.get('sell_threshold', -0.3),
+                strategy.get('avg_hold_days', 10),
+                strategy.get('min_hold_days', 3),
+                strategy.get('return', 0),
+                strategy.get('win_rate', 0),
+                strategy.get('sharpe', 0),
+                strategy.get('trades', 0),
+                now,
+                symbol
+            ])
+        else:
+            # Insert new
+            self.conn.execute("""
+                INSERT INTO stock_strategies 
+                (symbol, optimal_stop_loss, optimal_take_profit, buy_threshold, 
+                 sell_threshold, avg_hold_days, min_hold_days, backtest_return,
+                 backtest_win_rate, backtest_sharpe, backtest_trades, last_optimized)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, [
+                symbol,
+                strategy.get('stop_loss', 0.05),
+                strategy.get('take_profit', 0.15),
+                strategy.get('buy_threshold', 0.3),
+                strategy.get('sell_threshold', -0.3),
+                strategy.get('avg_hold_days', 10),
+                strategy.get('min_hold_days', 3),
+                strategy.get('return', 0),
+                strategy.get('win_rate', 0),
+                strategy.get('sharpe', 0),
+                strategy.get('trades', 0),
+                now
+            ])
     
     def get_stock_strategy(self, symbol: str) -> Optional[Dict]:
         """Get strategy for a specific stock."""
