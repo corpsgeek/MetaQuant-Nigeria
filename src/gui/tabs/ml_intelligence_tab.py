@@ -519,37 +519,49 @@ class MLIntelligenceTab:
     
     def _display_prediction(self, result: Dict):
         """Display prediction results."""
+        logger.info(f"Displaying prediction result: {result}")
+        
         if not result.get('success'):
-            self.pred_status.config(text=f"Prediction failed: {result.get('error', 'Unknown')}")
+            error_msg = result.get('error', 'Unknown')
+            logger.error(f"Prediction not successful: {error_msg}")
+            self.pred_status.config(text=f"Prediction failed: {error_msg}")
             return
         
-        # Direction
-        direction = result.get('direction', '--')
-        dir_color = COLORS['gain'] if direction == 'UP' else COLORS['loss'] if direction == 'DOWN' else COLORS['warning']
-        self.pred_results['direction'].config(text=direction, foreground=dir_color)
-        
-        # Confidence
-        conf = result.get('confidence', 0)
-        self.pred_results['confidence'].config(text=f"{conf:.1f}%")
-        
-        # Expected return
-        ret = result.get('expected_return', 0)
-        ret_color = COLORS['gain'] if ret > 0 else COLORS['loss'] if ret < 0 else COLORS['text_primary']
-        self.pred_results['return'].config(text=f"{ret:+.2f}%", foreground=ret_color)
-        
-        # Predicted price
-        pred_price = result.get('predicted_price', 0)
-        self.pred_results['price'].config(text=f"₦{pred_price:,.2f}")
-        
-        # Model accuracy
-        acc = result.get('model_accuracy', 0)
-        self.pred_results['accuracy'].config(text=f"{acc:.1f}%")
-        
-        # Feature importance
-        importance = self.ml_engine.get_feature_importance(result.get('symbol', ''))
-        self._display_feature_importance(importance)
-        
-        self.pred_status.config(text=f"Prediction complete at {datetime.now().strftime('%H:%M:%S')}")
+        try:
+            # Direction
+            direction = result.get('direction', '--')
+            dir_color = COLORS['gain'] if direction == 'UP' else COLORS['loss'] if direction == 'DOWN' else COLORS['warning']
+            self.pred_results['direction'].config(text=direction, foreground=dir_color)
+            
+            # Confidence
+            conf = result.get('confidence', 0)
+            self.pred_results['confidence'].config(text=f"{conf:.1f}%")
+            
+            # Expected return
+            ret = result.get('expected_return', 0)
+            ret_color = COLORS['gain'] if ret > 0 else COLORS['loss'] if ret < 0 else COLORS['text_primary']
+            self.pred_results['return'].config(text=f"{ret:+.2f}%", foreground=ret_color)
+            
+            # Predicted price
+            pred_price = result.get('predicted_price', 0)
+            self.pred_results['price'].config(text=f"₦{pred_price:,.2f}")
+            
+            # Model accuracy
+            acc = result.get('model_accuracy', 0)
+            self.pred_results['accuracy'].config(text=f"{acc:.1f}%")
+            
+            # Feature importance
+            importance = self.ml_engine.get_feature_importance(result.get('symbol', ''))
+            self._display_feature_importance(importance)
+            
+            self.pred_status.config(text=f"Prediction complete at {datetime.now().strftime('%H:%M:%S')}")
+            logger.info("Prediction display complete")
+            
+        except Exception as e:
+            logger.error(f"Error displaying prediction: {e}")
+            import traceback
+            traceback.print_exc()
+            self.pred_status.config(text=f"Display error: {e}")
     
     def _display_feature_importance(self, importance: Dict[str, float]):
         """Display feature importance in tree."""
