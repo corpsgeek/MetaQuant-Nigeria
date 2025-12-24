@@ -74,8 +74,14 @@ class ParameterOptimizer:
             # Not enough data, use volatility-based defaults
             return self._volatility_based_params(symbol, price_df)
         
+        # Convert Decimal to float for all numeric columns (DuckDB returns Decimal)
+        df = price_df.copy()
+        for col in ['open', 'high', 'low', 'close', 'volume']:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce').astype(float)
+        
         # Calculate stock volatility (ATR and standard deviation)
-        volatility_info = self._calculate_volatility(price_df)
+        volatility_info = self._calculate_volatility(df)
         
         # Grid search for optimal parameters
         best_score = -np.inf
@@ -87,7 +93,7 @@ class ParameterOptimizer:
                 continue
             
             # Simulate trades with these parameters
-            result = self._simulate_trades(price_df, sl, tp, signals)
+            result = self._simulate_trades(df, sl, tp, signals)
             
             if result['n_trades'] < self.min_trades:
                 continue
