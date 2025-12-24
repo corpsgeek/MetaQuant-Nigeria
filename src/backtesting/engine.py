@@ -158,21 +158,30 @@ class BacktestEngine:
         self.trades = []
         self.equity_curve = []
         
-        # Get date range
+        # Get date range from data
         all_dates = set()
         for sym, df in price_data.items():
             if sym in symbols and not df.empty:
                 if 'date' in df.columns:
-                    all_dates.update(df['date'].astype(str).tolist())
+                    # Convert to string format YYYY-MM-DD
+                    dates_str = pd.to_datetime(df['date']).dt.strftime('%Y-%m-%d').tolist()
+                    all_dates.update(dates_str)
                 elif isinstance(df.index, pd.DatetimeIndex):
                     all_dates.update(df.index.strftime('%Y-%m-%d').tolist())
         
         dates = sorted(all_dates)
         
+        # Log original date range
+        if dates:
+            logger.info(f"Data available: {dates[0]} to {dates[-1]} ({len(dates)} total days)")
+        
+        # Apply date filters
         if start_date:
-            dates = [d for d in dates if d >= start_date]
+            start_str = str(start_date)[:10]  # Ensure YYYY-MM-DD format
+            dates = [d for d in dates if d >= start_str]
         if end_date:
-            dates = [d for d in dates if d <= end_date]
+            end_str = str(end_date)[:10]  # Ensure YYYY-MM-DD format
+            dates = [d for d in dates if d <= end_str]
         
         if not dates:
             return {'success': False, 'error': 'No dates in range'}
