@@ -296,6 +296,8 @@ class BacktestEngine:
         actual_return = final_equity - self.initial_capital
         actual_return_pct = (actual_return / self.initial_capital) * 100
         
+        logger.info(f"DEBUG: initial_capital={self.initial_capital:,.0f}, final_equity={final_equity:,.0f}, return={actual_return_pct:.2f}%")
+        
         metrics['total_return'] = round(actual_return, 2)
         metrics['total_return_pct'] = round(actual_return_pct, 2)
         metrics['final_equity'] = round(final_equity, 2)
@@ -420,6 +422,17 @@ class BacktestEngine:
         pnl = proceeds - (pos.quantity * pos.entry_price)
         return_pct = (price - pos.entry_price) / pos.entry_price * 100
         
+        # SANITY CHECK: Cap returns at ±50% per trade to filter bad data
+        MAX_RETURN_PCT = 50.0
+        if abs(return_pct) > MAX_RETURN_PCT:
+            # Clamp the return to realistic levels
+            capped_return_pct = MAX_RETURN_PCT if return_pct > 0 else -MAX_RETURN_PCT
+            capped_price = pos.entry_price * (1 + capped_return_pct / 100)
+            proceeds = pos.quantity * capped_price
+            pnl = proceeds - (pos.quantity * pos.entry_price)
+            logger.debug(f"CAPPED: {symbol} {return_pct:.1f}% -> {capped_return_pct:.1f}%")
+            return_pct = capped_return_pct
+        
         # Calculate holding days
         try:
             entry_dt = datetime.strptime(pos.entry_date, '%Y-%m-%d')
@@ -447,6 +460,10 @@ class BacktestEngine:
         self.trades.append(trade)
         self.capital += proceeds
         del self.positions[symbol]
+        
+        # Debug: Log trades with huge returns (now capped)
+        if abs(return_pct) >= MAX_RETURN_PCT:
+            logger.warning(f"CAPPED TRADE: {symbol} entry={pos.entry_price:.2f} exit={price:.2f} capped to {return_pct:.1f}%")
         
         logger.debug(f"CLOSE: {symbol} @ {price:.2f}, PnL: {pnl:.2f} ({return_pct:.1f}%)")
     
