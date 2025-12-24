@@ -175,6 +175,15 @@ class BacktestEngine:
         if dates:
             logger.info(f"Data available: {dates[0]} to {dates[-1]} ({len(dates)} total days)")
         
+        # CRITICAL: Filter out future dates (synthetic data)
+        today_str = datetime.now().strftime('%Y-%m-%d')
+        dates = [d for d in dates if d <= today_str]
+        
+        if not dates:
+            return {'success': False, 'error': 'No historical data (only future synthetic dates found)'}
+        
+        logger.info(f"Valid historical data: {dates[0]} to {dates[-1]} ({len(dates)} days)")
+        
         # Apply date filters
         if start_date:
             start_str = str(start_date)[:10]  # Ensure YYYY-MM-DD format
@@ -184,7 +193,7 @@ class BacktestEngine:
             dates = [d for d in dates if d <= end_str]
         
         if not dates:
-            return {'success': False, 'error': 'No dates in range'}
+            return {'success': False, 'error': 'No dates in range after filtering'}
         
         logger.info(f"Backtesting from {dates[0]} to {dates[-1]} ({len(dates)} days)")
         
