@@ -487,19 +487,22 @@ class BacktestTab:
         for item in self.trade_tree.get_children():
             self.trade_tree.delete(item)
         
-        for t in r.get('trades', [])[:100]:  # Last 100 trades
+        all_trades = r.get('trades', [])
+        initial_capital = self.backtest_results.get('settings', {}).get('initial_capital', 1)
+        visible_pnl_sum = 0
+        
+        for t in all_trades:  # Show ALL trades
             pnl = t.get('pnl', 0)
+            visible_pnl_sum += pnl
             tag = 'profit' if pnl > 0 else 'loss'
             
             # Calculate position size
             qty = t.get('quantity', 0)
             entry_price = t.get('entry_price', 0)
             position_value = qty * entry_price
-            initial_capital = self.backtest_results.get('settings', {}).get('initial_capital', 1)
             pct_port = (position_value / initial_capital) * 100
             
             # Calculate contribution to portfolio return (P&L / initial capital)
-            # This makes returns additive to total return
             contribution_return = (pnl / initial_capital) * 100
             
             self.trade_tree.insert('', 'end', values=(
@@ -514,14 +517,13 @@ class BacktestTab:
             ), tags=(tag,))
         
         # Calculate totals
-        total_pnl = sum(t.get('pnl', 0) for t in r.get('trades', []))
         total_return_pct = m.get('total_return_pct', 0)
-        unique_stocks = len(set(t.get('symbol', '') for t in r.get('trades', [])))
-        total_trades = m.get('total_trades', 0)
+        unique_stocks = len(set(t.get('symbol', '') for t in all_trades))
+        total_trades = len(all_trades)
         
         self.bt_status.config(
-            text=f"✅ {total_trades} trades across {unique_stocks} stocks | Total P&L: ₦{total_pnl:,.0f} ({total_return_pct:+.2f}%)", 
-            foreground=COLORS['gain'] if total_pnl >= 0 else COLORS['loss']
+            text=f"✅ {total_trades} trades across {unique_stocks} stocks | Total P&L: ₦{visible_pnl_sum:,.0f} ({total_return_pct:+.2f}%)", 
+            foreground=COLORS['gain'] if visible_pnl_sum >= 0 else COLORS['loss']
         )
     
     def _run_optimization(self):
