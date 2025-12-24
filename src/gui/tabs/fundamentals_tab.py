@@ -3697,221 +3697,258 @@ class FundamentalsTab:
     # =========================================================================
     
     def _create_ai_synthesis_tab(self):
-        """Create AI Synthesis sub-tab with comprehensive fundamental analysis."""
-        # Main scrollable frame
-        canvas = tk.Canvas(self.ai_synthesis_tab, bg=COLORS['bg_dark'], highlightthickness=0)
-        scrollbar = ttk.Scrollbar(self.ai_synthesis_tab, orient="vertical", command=canvas.yview)
-        self.synthesis_scrollable = ttk.Frame(canvas)
+        """Create SUPER SUPER SUPER enhanced AI Synthesis sub-tab with comprehensive fundamental analysis."""
+        # Main scrollable frame - FULL WIDTH
+        self.synth_canvas = tk.Canvas(self.ai_synthesis_tab, bg=COLORS['bg_dark'], highlightthickness=0)
+        scrollbar = ttk.Scrollbar(self.ai_synthesis_tab, orient="vertical", command=self.synth_canvas.yview)
+        self.synthesis_scrollable = ttk.Frame(self.synth_canvas)
         
         self.synthesis_scrollable.bind(
             "<Configure>",
-            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+            lambda e: self.synth_canvas.configure(scrollregion=self.synth_canvas.bbox("all"))
         )
         
-        canvas.create_window((0, 0), window=self.synthesis_scrollable, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
+        # Bind canvas width to update scrollable frame width
+        def _on_canvas_configure(event):
+            self.synth_canvas.itemconfig(self.synth_canvas_window, width=event.width)
+        self.synth_canvas.bind("<Configure>", _on_canvas_configure)
         
-        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.synth_canvas_window = self.synth_canvas.create_window((0, 0), window=self.synthesis_scrollable, anchor="nw")
+        self.synth_canvas.configure(yscrollcommand=scrollbar.set)
+        
+        self.synth_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         
         # Enable mouse wheel scrolling
         def _on_mousewheel(event):
-            canvas.yview_scroll(int(-1*(event.delta/120)), "units")
-        canvas.bind_all("<MouseWheel>", _on_mousewheel)
+            self.synth_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        self.synth_canvas.bind_all("<MouseWheel>", _on_mousewheel)
         
         main = self.synthesis_scrollable
         
-        # Header
+        # ========== HEADER ==========
         header = ttk.Frame(main)
         header.pack(fill=tk.X, padx=10, pady=10)
         
-        ttk.Label(
-            header,
-            text="🤖 AI Fundamental Analysis",
-            font=get_font('subheading'),
-            foreground=COLORS['primary']
-        ).pack(side=tk.LEFT)
+        ttk.Label(header, text="🤖 AI Fundamental Analysis", font=get_font('subheading'),
+                  foreground=COLORS['primary']).pack(side=tk.LEFT)
         
-        self.synthesis_symbol_label = ttk.Label(
-            header,
-            text="Select a symbol",
-            font=get_font('body'),
-            foreground=COLORS['text_secondary']
-        )
+        self.synthesis_symbol_label = ttk.Label(header, text="Select a symbol", font=get_font('body'),
+                                                foreground=COLORS['text_secondary'])
         self.synthesis_symbol_label.pack(side=tk.LEFT, padx=20)
         
-        refresh_btn = ttk.Button(header, text="↻ Refresh Analysis", command=self._update_ai_synthesis)
+        refresh_btn = ttk.Button(header, text="↻ Refresh", command=self._update_ai_synthesis)
         refresh_btn.pack(side=tk.RIGHT)
         
-        # ========== ROW 1: OVERVIEW CARDS ==========
-        overview_frame = ttk.LabelFrame(main, text="📊 Key Metrics")
-        overview_frame.pack(fill=tk.X, padx=10, pady=5)
+        # ========== ROW 1: KEY METRICS (6 cards) ==========
+        metrics_frame = ttk.LabelFrame(main, text="📊 Key Metrics")
+        metrics_frame.pack(fill=tk.X, padx=10, pady=5)
         
-        overview_row = ttk.Frame(overview_frame)
-        overview_row.pack(fill=tk.X, padx=5, pady=5)
+        metrics_row = ttk.Frame(metrics_frame)
+        metrics_row.pack(fill=tk.X, padx=5, pady=5)
         
         self.synth_metrics = {}
         
-        # Price Card
-        card1 = ttk.LabelFrame(overview_row, text="💰 Price", padding=5)
-        card1.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=2)
-        self.synth_metrics['price'] = ttk.Label(card1, text="--", font=get_font('subheading'))
-        self.synth_metrics['price'].pack()
-        self.synth_metrics['change'] = ttk.Label(card1, text="--", font=get_font('small'))
-        self.synth_metrics['change'].pack()
+        metric_items = [
+            ('price', '💰 Price', 'change'),
+            ('mcap', '📈 Market Cap', 'mcap_rank'),
+            ('pe', '📊 P/E Ratio', 'pe_vs_sector'),
+            ('pb', '📖 P/B Ratio', 'pb_vs_sector'),
+            ('dividend', '💵 Div Yield', 'div_vs_sector'),
+            ('eps', '📈 EPS', 'eps_growth')
+        ]
         
-        # Market Cap Card
-        card2 = ttk.LabelFrame(overview_row, text="📈 Market Cap", padding=5)
-        card2.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=2)
-        self.synth_metrics['mcap'] = ttk.Label(card2, text="--", font=get_font('subheading'))
-        self.synth_metrics['mcap'].pack()
-        self.synth_metrics['mcap_rank'] = ttk.Label(card2, text="--", font=get_font('small'),
-                                                     foreground=COLORS['text_muted'])
-        self.synth_metrics['mcap_rank'].pack()
+        for key, title, sub_key in metric_items:
+            card = ttk.Frame(metrics_row, relief='ridge', borderwidth=1, padding=5)
+            card.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=2)
+            
+            ttk.Label(card, text=title, font=get_font('small'), foreground=COLORS['text_muted']).pack()
+            self.synth_metrics[key] = ttk.Label(card, text="--", font=get_font('subheading'))
+            self.synth_metrics[key].pack()
+            self.synth_metrics[sub_key] = ttk.Label(card, text="--", font=get_font('small'), foreground=COLORS['text_muted'])
+            self.synth_metrics[sub_key].pack()
         
-        # P/E Card
-        card3 = ttk.LabelFrame(overview_row, text="📊 P/E Ratio", padding=5)
-        card3.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=2)
-        self.synth_metrics['pe'] = ttk.Label(card3, text="--", font=get_font('subheading'))
-        self.synth_metrics['pe'].pack()
-        self.synth_metrics['pe_vs_sector'] = ttk.Label(card3, text="vs sector: --", font=get_font('small'),
-                                                        foreground=COLORS['text_muted'])
-        self.synth_metrics['pe_vs_sector'].pack()
+        # ========== ROW 2: VALUATION ASSESSMENT (5 cards) ==========
+        valuation_frame = ttk.LabelFrame(main, text="💎 Valuation Assessment")
+        valuation_frame.pack(fill=tk.X, padx=10, pady=5)
         
-        # Dividend Card
-        card4 = ttk.LabelFrame(overview_row, text="💵 Dividend", padding=5)
-        card4.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=2)
-        self.synth_metrics['dividend'] = ttk.Label(card4, text="--", font=get_font('subheading'))
-        self.synth_metrics['dividend'].pack()
-        self.synth_metrics['div_vs_sector'] = ttk.Label(card4, text="vs sector: --", font=get_font('small'),
-                                                         foreground=COLORS['text_muted'])
-        self.synth_metrics['div_vs_sector'].pack()
-        
-        # ========== ROW 2: VALUATION + FAIR VALUE ==========
-        val_frame = ttk.Frame(main)
-        val_frame.pack(fill=tk.X, padx=10, pady=5)
-        
-        # Valuation Panel
-        valuation_panel = ttk.LabelFrame(val_frame, text="💎 Valuation Assessment", padding=5)
-        valuation_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 5))
+        val_row = ttk.Frame(valuation_frame)
+        val_row.pack(fill=tk.X, padx=5, pady=5)
         
         self.synth_valuation = {}
         
-        val_row1 = ttk.Frame(valuation_panel)
-        val_row1.pack(fill=tk.X, pady=2)
-        ttk.Label(val_row1, text="P/E:", font=get_font('small'), foreground=COLORS['text_muted']).pack(side=tk.LEFT)
-        self.synth_valuation['pe_val'] = ttk.Label(val_row1, text="--", font=get_font('small'))
-        self.synth_valuation['pe_val'].pack(side=tk.LEFT, padx=5)
-        self.synth_valuation['pe_status'] = ttk.Label(val_row1, text="--", font=get_font('small'))
-        self.synth_valuation['pe_status'].pack(side=tk.LEFT, padx=10)
+        val_items = [
+            ('pe_val', 'P/E Value', 'pe_status'),
+            ('pb_val', 'P/B Value', 'pb_status'),
+            ('ps_val', 'P/S Value', 'ps_status'),
+            ('ev_ebitda', 'EV/EBITDA', 'ev_status'),
+            ('overall', '✅ Overall', 'overall_score')
+        ]
         
-        val_row2 = ttk.Frame(valuation_panel)
-        val_row2.pack(fill=tk.X, pady=2)
-        ttk.Label(val_row2, text="P/B:", font=get_font('small'), foreground=COLORS['text_muted']).pack(side=tk.LEFT)
-        self.synth_valuation['pb_val'] = ttk.Label(val_row2, text="--", font=get_font('small'))
-        self.synth_valuation['pb_val'].pack(side=tk.LEFT, padx=5)
-        self.synth_valuation['pb_status'] = ttk.Label(val_row2, text="--", font=get_font('small'))
-        self.synth_valuation['pb_status'].pack(side=tk.LEFT, padx=10)
+        for key, title, status_key in val_items:
+            card = ttk.Frame(val_row, relief='ridge', borderwidth=1, padding=5)
+            card.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=2)
+            
+            ttk.Label(card, text=title, font=get_font('small'), foreground=COLORS['text_muted']).pack()
+            self.synth_valuation[key] = ttk.Label(card, text="--", font=get_font('body'))
+            self.synth_valuation[key].pack()
+            self.synth_valuation[status_key] = ttk.Label(card, text="--", font=get_font('small'))
+            self.synth_valuation[status_key].pack()
         
-        val_row3 = ttk.Frame(valuation_panel)
-        val_row3.pack(fill=tk.X, pady=2)
-        ttk.Label(val_row3, text="P/S:", font=get_font('small'), foreground=COLORS['text_muted']).pack(side=tk.LEFT)
-        self.synth_valuation['ps_val'] = ttk.Label(val_row3, text="--", font=get_font('small'))
-        self.synth_valuation['ps_val'].pack(side=tk.LEFT, padx=5)
-        self.synth_valuation['ps_status'] = ttk.Label(val_row3, text="--", font=get_font('small'))
-        self.synth_valuation['ps_status'].pack(side=tk.LEFT, padx=10)
+        # ========== ROW 3: FAIR VALUE (4 cards) ==========
+        fv_frame = ttk.LabelFrame(main, text="🎯 Fair Value Estimate")
+        fv_frame.pack(fill=tk.X, padx=10, pady=5)
         
-        val_row4 = ttk.Frame(valuation_panel)
-        val_row4.pack(fill=tk.X, pady=5)
-        ttk.Label(val_row4, text="Overall:", font=get_font('body'), foreground=COLORS['text_muted']).pack(side=tk.LEFT)
-        self.synth_valuation['overall'] = ttk.Label(val_row4, text="--", font=get_font('body'))
-        self.synth_valuation['overall'].pack(side=tk.LEFT, padx=10)
-        
-        # Fair Value Panel
-        fv_panel = ttk.LabelFrame(val_frame, text="🎯 Fair Value Estimate", padding=5)
-        fv_panel.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=(5, 0))
+        fv_row = ttk.Frame(fv_frame)
+        fv_row.pack(fill=tk.X, padx=5, pady=5)
         
         self.synth_fv = {}
         
-        fv_row1 = ttk.Frame(fv_panel)
-        fv_row1.pack(fill=tk.X, pady=2)
-        ttk.Label(fv_row1, text="Current Price:", font=get_font('small'), foreground=COLORS['text_muted']).pack(side=tk.LEFT)
-        self.synth_fv['current'] = ttk.Label(fv_row1, text="--", font=get_font('small'))
-        self.synth_fv['current'].pack(side=tk.LEFT, padx=5)
+        fv_items = [
+            ('current', '💹 Current', ''),
+            ('fair', '🎯 Fair Value', ''),
+            ('upside', '📈 Upside', ''),
+            ('signal', '🚦 Signal', '')
+        ]
         
-        fv_row2 = ttk.Frame(fv_panel)
-        fv_row2.pack(fill=tk.X, pady=2)
-        ttk.Label(fv_row2, text="Fair Value:", font=get_font('small'), foreground=COLORS['text_muted']).pack(side=tk.LEFT)
-        self.synth_fv['fair'] = ttk.Label(fv_row2, text="--", font=get_font('body'))
-        self.synth_fv['fair'].pack(side=tk.LEFT, padx=5)
+        for key, title, _ in fv_items:
+            card = ttk.Frame(fv_row, relief='ridge', borderwidth=1, padding=5)
+            card.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=2)
+            
+            ttk.Label(card, text=title, font=get_font('small'), foreground=COLORS['text_muted']).pack()
+            self.synth_fv[key] = ttk.Label(card, text="--", font=get_font('subheading'))
+            self.synth_fv[key].pack()
         
-        fv_row3 = ttk.Frame(fv_panel)
-        fv_row3.pack(fill=tk.X, pady=2)
-        ttk.Label(fv_row3, text="Upside:", font=get_font('small'), foreground=COLORS['text_muted']).pack(side=tk.LEFT)
-        self.synth_fv['upside'] = ttk.Label(fv_row3, text="--", font=get_font('body'))
-        self.synth_fv['upside'].pack(side=tk.LEFT, padx=5)
+        # ========== ROW 4: PROFITABILITY (5 cards) ==========
+        profit_frame = ttk.LabelFrame(main, text="💰 Profitability Metrics")
+        profit_frame.pack(fill=tk.X, padx=10, pady=5)
         
-        fv_row4 = ttk.Frame(fv_panel)
-        fv_row4.pack(fill=tk.X, pady=5)
-        ttk.Label(fv_row4, text="Signal:", font=get_font('body'), foreground=COLORS['text_muted']).pack(side=tk.LEFT)
-        self.synth_fv['signal'] = ttk.Label(fv_row4, text="--", font=get_font('body'))
-        self.synth_fv['signal'].pack(side=tk.LEFT, padx=10)
+        profit_row = ttk.Frame(profit_frame)
+        profit_row.pack(fill=tk.X, padx=5, pady=5)
         
-        # ========== ROW 3: SECTOR + PEERS ==========
+        self.synth_profit = {}
+        
+        profit_items = [
+            ('roe', 'ROE', ''),
+            ('roa', 'ROA', ''),
+            ('npm', 'Net Margin', ''),
+            ('opm', 'Op Margin', ''),
+            ('gpm', 'Gross Margin', '')
+        ]
+        
+        for key, title, _ in profit_items:
+            card = ttk.Frame(profit_row, relief='ridge', borderwidth=1, padding=5)
+            card.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=2)
+            
+            ttk.Label(card, text=title, font=get_font('small'), foreground=COLORS['text_muted']).pack()
+            self.synth_profit[key] = ttk.Label(card, text="--", font=get_font('subheading'))
+            self.synth_profit[key].pack()
+        
+        # ========== ROW 5: GROWTH + FINANCIALS ==========
+        gf_frame = ttk.Frame(main)
+        gf_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        # Growth Panel
+        growth_panel = ttk.LabelFrame(gf_frame, text="📈 Growth Metrics")
+        growth_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 5))
+        
+        growth_row = ttk.Frame(growth_panel)
+        growth_row.pack(fill=tk.X, padx=5, pady=5)
+        
+        self.synth_growth = {}
+        
+        growth_items = [('rev_growth', 'Revenue'), ('earnings_growth', 'Earnings'), ('eps_growth', 'EPS'), ('asset_growth', 'Assets')]
+        
+        for key, title in growth_items:
+            card = ttk.Frame(growth_row, relief='ridge', borderwidth=1, padding=3)
+            card.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=2)
+            ttk.Label(card, text=title, font=get_font('small'), foreground=COLORS['text_muted']).pack()
+            self.synth_growth[key] = ttk.Label(card, text="--", font=get_font('body'))
+            self.synth_growth[key].pack()
+        
+        # Financial Health Panel
+        fin_panel = ttk.LabelFrame(gf_frame, text="🏦 Financial Health")
+        fin_panel.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=(5, 0))
+        
+        fin_row = ttk.Frame(fin_panel)
+        fin_row.pack(fill=tk.X, padx=5, pady=5)
+        
+        self.synth_financial = {}
+        
+        fin_items = [('debt_equity', 'D/E'), ('current_ratio', 'Current'), ('quick_ratio', 'Quick'), ('interest_cov', 'Int Cov')]
+        
+        for key, title in fin_items:
+            card = ttk.Frame(fin_row, relief='ridge', borderwidth=1, padding=3)
+            card.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=2)
+            ttk.Label(card, text=title, font=get_font('small'), foreground=COLORS['text_muted']).pack()
+            self.synth_financial[key] = ttk.Label(card, text="--", font=get_font('body'))
+            self.synth_financial[key].pack()
+        
+        # ========== ROW 6: SECTOR + PEERS ==========
         comp_frame = ttk.Frame(main)
         comp_frame.pack(fill=tk.X, padx=10, pady=5)
         
         # Sector Position
-        sector_panel = ttk.LabelFrame(comp_frame, text="📊 Sector Position", padding=5)
+        sector_panel = ttk.LabelFrame(comp_frame, text="📊 Sector Position")
         sector_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 5))
+        
+        sector_row = ttk.Frame(sector_panel)
+        sector_row.pack(fill=tk.X, padx=5, pady=5)
         
         self.synth_sector = {}
         
-        sec_row1 = ttk.Frame(sector_panel)
-        sec_row1.pack(fill=tk.X, pady=2)
-        ttk.Label(sec_row1, text="Sector:", font=get_font('small'), foreground=COLORS['text_muted']).pack(side=tk.LEFT)
-        self.synth_sector['name'] = ttk.Label(sec_row1, text="--", font=get_font('small'))
-        self.synth_sector['name'].pack(side=tk.LEFT, padx=5)
+        sector_items = [('name', 'Sector'), ('rank', 'Rank'), ('vs_avg', 'vs Avg'), ('perf', 'Perf')]
         
-        sec_row2 = ttk.Frame(sector_panel)
-        sec_row2.pack(fill=tk.X, pady=2)
-        ttk.Label(sec_row2, text="Rank:", font=get_font('small'), foreground=COLORS['text_muted']).pack(side=tk.LEFT)
-        self.synth_sector['rank'] = ttk.Label(sec_row2, text="--", font=get_font('small'))
-        self.synth_sector['rank'].pack(side=tk.LEFT, padx=5)
-        
-        sec_row3 = ttk.Frame(sector_panel)
-        sec_row3.pack(fill=tk.X, pady=2)
-        ttk.Label(sec_row3, text="vs Sector Avg:", font=get_font('small'), foreground=COLORS['text_muted']).pack(side=tk.LEFT)
-        self.synth_sector['vs_avg'] = ttk.Label(sec_row3, text="--", font=get_font('small'))
-        self.synth_sector['vs_avg'].pack(side=tk.LEFT, padx=5)
+        for key, title in sector_items:
+            card = ttk.Frame(sector_row, relief='ridge', borderwidth=1, padding=3)
+            card.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=2)
+            ttk.Label(card, text=title, font=get_font('small'), foreground=COLORS['text_muted']).pack()
+            self.synth_sector[key] = ttk.Label(card, text="--", font=get_font('body'))
+            self.synth_sector[key].pack()
         
         # Peer Comparison
-        peer_panel = ttk.LabelFrame(comp_frame, text="👥 Top Peers", padding=5)
+        peer_panel = ttk.LabelFrame(comp_frame, text="👥 Top Peers")
         peer_panel.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=(5, 0))
         
+        peer_row = ttk.Frame(peer_panel)
+        peer_row.pack(fill=tk.X, padx=5, pady=5)
+        
         self.synth_peers = []
-        for i in range(3):
-            peer_row = ttk.Frame(peer_panel)
-            peer_row.pack(fill=tk.X, pady=1)
+        for i in range(4):
+            card = ttk.Frame(peer_row, relief='ridge', borderwidth=1, padding=3)
+            card.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=2)
             
-            name_lbl = ttk.Label(peer_row, text="--", font=get_font('small'))
-            name_lbl.pack(side=tk.LEFT)
-            
-            val_lbl = ttk.Label(peer_row, text="--", font=get_font('small'), foreground=COLORS['text_muted'])
-            val_lbl.pack(side=tk.RIGHT)
+            name_lbl = ttk.Label(card, text="--", font=get_font('small'))
+            name_lbl.pack()
+            val_lbl = ttk.Label(card, text="--", font=get_font('small'), foreground=COLORS['text_muted'])
+            val_lbl.pack()
             
             self.synth_peers.append({'name': name_lbl, 'value': val_lbl})
         
-        # ========== ROW 4: AI NARRATIVE ==========
+        # ========== ROW 7: DIVIDEND INFO ==========
+        div_frame = ttk.LabelFrame(main, text="💵 Dividend Analysis")
+        div_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        div_row = ttk.Frame(div_frame)
+        div_row.pack(fill=tk.X, padx=5, pady=5)
+        
+        self.synth_dividend = {}
+        
+        div_items = [('yield', '📊 Yield'), ('payout', '💰 Payout'), ('dps', '💵 DPS'), ('growth', '📈 Growth'), ('years', '📅 Years')]
+        
+        for key, title in div_items:
+            card = ttk.Frame(div_row, relief='ridge', borderwidth=1, padding=5)
+            card.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=2)
+            ttk.Label(card, text=title, font=get_font('small'), foreground=COLORS['text_muted']).pack()
+            self.synth_dividend[key] = ttk.Label(card, text="--", font=get_font('subheading'))
+            self.synth_dividend[key].pack()
+        
+        # ========== ROW 8: AI NARRATIVE ==========
         narrative_frame = ttk.LabelFrame(main, text="🧠 AI Fundamental Analysis")
         narrative_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
         
-        # Text container with scrollbar
         text_container = ttk.Frame(narrative_frame)
         text_container.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
-        
-        text_scrollbar = ttk.Scrollbar(text_container)
-        text_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         
         self.synthesis_narrative = tk.Text(
             text_container,
@@ -3925,10 +3962,12 @@ class FundamentalsTab:
             state=tk.DISABLED
         )
         self.synthesis_narrative.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        self.synthesis_narrative.config(yscrollcommand=text_scrollbar.set)
-        text_scrollbar.config(command=self.synthesis_narrative.yview)
         
-        # ========== ROW 5: KEY INSIGHTS ==========
+        text_scrollbar = ttk.Scrollbar(text_container, command=self.synthesis_narrative.yview)
+        text_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.synthesis_narrative.config(yscrollcommand=text_scrollbar.set)
+        
+        # ========== ROW 9: KEY INSIGHTS (6 cards) ==========
         insights_frame = ttk.LabelFrame(main, text="💡 Key Investment Insights")
         insights_frame.pack(fill=tk.X, padx=10, pady=5)
         
@@ -3936,31 +3975,30 @@ class FundamentalsTab:
         insights_row.pack(fill=tk.X, padx=5, pady=5)
         
         self.synth_insights = []
-        for i in range(4):
-            card = ttk.Frame(insights_row, padding=5)
-            card.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=3)
+        for i in range(6):
+            card = ttk.Frame(insights_row, padding=3)
+            card.pack(side=tk.LEFT, fill=tk.X, expand=True)
             
-            icon_lbl = ttk.Label(card, text="⚪", font=('', 14))
+            icon_lbl = ttk.Label(card, text="⚪", font=('', 12))
             icon_lbl.pack()
-            
-            text_lbl = ttk.Label(card, text="--", font=get_font('small'),
-                                foreground=COLORS['text_primary'])
+            text_lbl = ttk.Label(card, text="--", font=get_font('small'), foreground=COLORS['text_primary'])
             text_lbl.pack()
             
             self.synth_insights.append({'icon': icon_lbl, 'text': text_lbl})
         
         # ========== STATUS BAR ==========
         status_frame = ttk.Frame(main)
-        status_frame.pack(fill=tk.X, padx=10, pady=5)
+        status_frame.pack(fill=tk.X, padx=10, pady=10)
         
         self.synth_status = {}
         
-        self.synth_status['update'] = ttk.Label(status_frame, text="Last Update: --",
-                                                 font=get_font('small'), foreground=COLORS['text_muted'])
-        self.synth_status['update'].pack(side=tk.LEFT)
+        self.synth_status['live'] = ttk.Label(status_frame, text="📡 LIVE", font=get_font('small'), foreground=COLORS['gain'])
+        self.synth_status['live'].pack(side=tk.LEFT)
         
-        self.synth_status['ai'] = ttk.Label(status_frame, text="Powered by Groq AI",
-                                             font=get_font('small'), foreground=COLORS['text_muted'])
+        self.synth_status['update'] = ttk.Label(status_frame, text="Last Update: --", font=get_font('small'), foreground=COLORS['text_muted'])
+        self.synth_status['update'].pack(side=tk.LEFT, padx=20)
+        
+        self.synth_status['ai'] = ttk.Label(status_frame, text="Powered by Groq AI", font=get_font('small'), foreground=COLORS['text_muted'])
         self.synth_status['ai'].pack(side=tk.RIGHT)
     
     def _generate_fundamental_synthesis(self) -> Dict:
