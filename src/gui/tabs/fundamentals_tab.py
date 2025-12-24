@@ -19,6 +19,15 @@ from src.database.db_manager import DatabaseManager
 from src.gui.theme import COLORS, get_font
 from src.collectors.tradingview_collector import TradingViewCollector
 
+import os
+
+# Try to import AI Insight Engine
+try:
+    from src.ai.insight_engine import InsightEngine
+    INSIGHT_ENGINE_AVAILABLE = True
+except ImportError:
+    INSIGHT_ENGINE_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
 
 
@@ -56,6 +65,17 @@ class FundamentalsTab:
         self.current_symbol = None
         self.all_stocks_data = None
         self.collector = TradingViewCollector()
+        self.insight_engine = None  # AI Insight Engine
+        
+        # Initialize AI Insight Engine
+        if INSIGHT_ENGINE_AVAILABLE:
+            try:
+                groq_api_key = os.environ.get('GROQ_API_KEY')
+                if groq_api_key:
+                    self.insight_engine = InsightEngine(groq_api_key=groq_api_key)
+                    logger.info("Fundamentals: AI Insight Engine initialized with Groq")
+            except Exception as e:
+                logger.warning(f"Fundamentals: Failed to initialize AI Insight Engine: {e}")
         
         self._create_header()
         self._create_sub_notebook()
@@ -157,6 +177,11 @@ class FundamentalsTab:
         self.ps_history_tab = ttk.Frame(self.sub_notebook)
         self.sub_notebook.add(self.ps_history_tab, text="📉 P/S")
         self._create_valuation_chart_tab('ps')
+        
+        # Tab 9: AI Synthesis
+        self.ai_synthesis_tab = ttk.Frame(self.sub_notebook)
+        self.sub_notebook.add(self.ai_synthesis_tab, text="🤖 AI Synthesis")
+        self._create_ai_synthesis_tab()
     
     # =========================================================================
     # OVERVIEW TAB
@@ -3667,6 +3692,686 @@ class FundamentalsTab:
                 signal
             ), tags=(tag,))
     
+    # =========================================================================
+    # AI SYNTHESIS TAB
+    # =========================================================================
+    
+    def _create_ai_synthesis_tab(self):
+        """Create AI Synthesis sub-tab with comprehensive fundamental analysis."""
+        # Main scrollable frame
+        canvas = tk.Canvas(self.ai_synthesis_tab, bg=COLORS['bg_dark'], highlightthickness=0)
+        scrollbar = ttk.Scrollbar(self.ai_synthesis_tab, orient="vertical", command=canvas.yview)
+        self.synthesis_scrollable = ttk.Frame(canvas)
+        
+        self.synthesis_scrollable.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=self.synthesis_scrollable, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # Enable mouse wheel scrolling
+        def _on_mousewheel(event):
+            canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        canvas.bind_all("<MouseWheel>", _on_mousewheel)
+        
+        main = self.synthesis_scrollable
+        
+        # Header
+        header = ttk.Frame(main)
+        header.pack(fill=tk.X, padx=10, pady=10)
+        
+        ttk.Label(
+            header,
+            text="🤖 AI Fundamental Analysis",
+            font=get_font('subheading'),
+            foreground=COLORS['primary']
+        ).pack(side=tk.LEFT)
+        
+        self.synthesis_symbol_label = ttk.Label(
+            header,
+            text="Select a symbol",
+            font=get_font('body'),
+            foreground=COLORS['text_secondary']
+        )
+        self.synthesis_symbol_label.pack(side=tk.LEFT, padx=20)
+        
+        refresh_btn = ttk.Button(header, text="↻ Refresh Analysis", command=self._update_ai_synthesis)
+        refresh_btn.pack(side=tk.RIGHT)
+        
+        # ========== ROW 1: OVERVIEW CARDS ==========
+        overview_frame = ttk.LabelFrame(main, text="📊 Key Metrics")
+        overview_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        overview_row = ttk.Frame(overview_frame)
+        overview_row.pack(fill=tk.X, padx=5, pady=5)
+        
+        self.synth_metrics = {}
+        
+        # Price Card
+        card1 = ttk.LabelFrame(overview_row, text="💰 Price", padding=5)
+        card1.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=2)
+        self.synth_metrics['price'] = ttk.Label(card1, text="--", font=get_font('subheading'))
+        self.synth_metrics['price'].pack()
+        self.synth_metrics['change'] = ttk.Label(card1, text="--", font=get_font('small'))
+        self.synth_metrics['change'].pack()
+        
+        # Market Cap Card
+        card2 = ttk.LabelFrame(overview_row, text="📈 Market Cap", padding=5)
+        card2.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=2)
+        self.synth_metrics['mcap'] = ttk.Label(card2, text="--", font=get_font('subheading'))
+        self.synth_metrics['mcap'].pack()
+        self.synth_metrics['mcap_rank'] = ttk.Label(card2, text="--", font=get_font('small'),
+                                                     foreground=COLORS['text_muted'])
+        self.synth_metrics['mcap_rank'].pack()
+        
+        # P/E Card
+        card3 = ttk.LabelFrame(overview_row, text="📊 P/E Ratio", padding=5)
+        card3.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=2)
+        self.synth_metrics['pe'] = ttk.Label(card3, text="--", font=get_font('subheading'))
+        self.synth_metrics['pe'].pack()
+        self.synth_metrics['pe_vs_sector'] = ttk.Label(card3, text="vs sector: --", font=get_font('small'),
+                                                        foreground=COLORS['text_muted'])
+        self.synth_metrics['pe_vs_sector'].pack()
+        
+        # Dividend Card
+        card4 = ttk.LabelFrame(overview_row, text="💵 Dividend", padding=5)
+        card4.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=2)
+        self.synth_metrics['dividend'] = ttk.Label(card4, text="--", font=get_font('subheading'))
+        self.synth_metrics['dividend'].pack()
+        self.synth_metrics['div_vs_sector'] = ttk.Label(card4, text="vs sector: --", font=get_font('small'),
+                                                         foreground=COLORS['text_muted'])
+        self.synth_metrics['div_vs_sector'].pack()
+        
+        # ========== ROW 2: VALUATION + FAIR VALUE ==========
+        val_frame = ttk.Frame(main)
+        val_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        # Valuation Panel
+        valuation_panel = ttk.LabelFrame(val_frame, text="💎 Valuation Assessment", padding=5)
+        valuation_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 5))
+        
+        self.synth_valuation = {}
+        
+        val_row1 = ttk.Frame(valuation_panel)
+        val_row1.pack(fill=tk.X, pady=2)
+        ttk.Label(val_row1, text="P/E:", font=get_font('small'), foreground=COLORS['text_muted']).pack(side=tk.LEFT)
+        self.synth_valuation['pe_val'] = ttk.Label(val_row1, text="--", font=get_font('small'))
+        self.synth_valuation['pe_val'].pack(side=tk.LEFT, padx=5)
+        self.synth_valuation['pe_status'] = ttk.Label(val_row1, text="--", font=get_font('small'))
+        self.synth_valuation['pe_status'].pack(side=tk.LEFT, padx=10)
+        
+        val_row2 = ttk.Frame(valuation_panel)
+        val_row2.pack(fill=tk.X, pady=2)
+        ttk.Label(val_row2, text="P/B:", font=get_font('small'), foreground=COLORS['text_muted']).pack(side=tk.LEFT)
+        self.synth_valuation['pb_val'] = ttk.Label(val_row2, text="--", font=get_font('small'))
+        self.synth_valuation['pb_val'].pack(side=tk.LEFT, padx=5)
+        self.synth_valuation['pb_status'] = ttk.Label(val_row2, text="--", font=get_font('small'))
+        self.synth_valuation['pb_status'].pack(side=tk.LEFT, padx=10)
+        
+        val_row3 = ttk.Frame(valuation_panel)
+        val_row3.pack(fill=tk.X, pady=2)
+        ttk.Label(val_row3, text="P/S:", font=get_font('small'), foreground=COLORS['text_muted']).pack(side=tk.LEFT)
+        self.synth_valuation['ps_val'] = ttk.Label(val_row3, text="--", font=get_font('small'))
+        self.synth_valuation['ps_val'].pack(side=tk.LEFT, padx=5)
+        self.synth_valuation['ps_status'] = ttk.Label(val_row3, text="--", font=get_font('small'))
+        self.synth_valuation['ps_status'].pack(side=tk.LEFT, padx=10)
+        
+        val_row4 = ttk.Frame(valuation_panel)
+        val_row4.pack(fill=tk.X, pady=5)
+        ttk.Label(val_row4, text="Overall:", font=get_font('body'), foreground=COLORS['text_muted']).pack(side=tk.LEFT)
+        self.synth_valuation['overall'] = ttk.Label(val_row4, text="--", font=get_font('body'))
+        self.synth_valuation['overall'].pack(side=tk.LEFT, padx=10)
+        
+        # Fair Value Panel
+        fv_panel = ttk.LabelFrame(val_frame, text="🎯 Fair Value Estimate", padding=5)
+        fv_panel.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=(5, 0))
+        
+        self.synth_fv = {}
+        
+        fv_row1 = ttk.Frame(fv_panel)
+        fv_row1.pack(fill=tk.X, pady=2)
+        ttk.Label(fv_row1, text="Current Price:", font=get_font('small'), foreground=COLORS['text_muted']).pack(side=tk.LEFT)
+        self.synth_fv['current'] = ttk.Label(fv_row1, text="--", font=get_font('small'))
+        self.synth_fv['current'].pack(side=tk.LEFT, padx=5)
+        
+        fv_row2 = ttk.Frame(fv_panel)
+        fv_row2.pack(fill=tk.X, pady=2)
+        ttk.Label(fv_row2, text="Fair Value:", font=get_font('small'), foreground=COLORS['text_muted']).pack(side=tk.LEFT)
+        self.synth_fv['fair'] = ttk.Label(fv_row2, text="--", font=get_font('body'))
+        self.synth_fv['fair'].pack(side=tk.LEFT, padx=5)
+        
+        fv_row3 = ttk.Frame(fv_panel)
+        fv_row3.pack(fill=tk.X, pady=2)
+        ttk.Label(fv_row3, text="Upside:", font=get_font('small'), foreground=COLORS['text_muted']).pack(side=tk.LEFT)
+        self.synth_fv['upside'] = ttk.Label(fv_row3, text="--", font=get_font('body'))
+        self.synth_fv['upside'].pack(side=tk.LEFT, padx=5)
+        
+        fv_row4 = ttk.Frame(fv_panel)
+        fv_row4.pack(fill=tk.X, pady=5)
+        ttk.Label(fv_row4, text="Signal:", font=get_font('body'), foreground=COLORS['text_muted']).pack(side=tk.LEFT)
+        self.synth_fv['signal'] = ttk.Label(fv_row4, text="--", font=get_font('body'))
+        self.synth_fv['signal'].pack(side=tk.LEFT, padx=10)
+        
+        # ========== ROW 3: SECTOR + PEERS ==========
+        comp_frame = ttk.Frame(main)
+        comp_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        # Sector Position
+        sector_panel = ttk.LabelFrame(comp_frame, text="📊 Sector Position", padding=5)
+        sector_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 5))
+        
+        self.synth_sector = {}
+        
+        sec_row1 = ttk.Frame(sector_panel)
+        sec_row1.pack(fill=tk.X, pady=2)
+        ttk.Label(sec_row1, text="Sector:", font=get_font('small'), foreground=COLORS['text_muted']).pack(side=tk.LEFT)
+        self.synth_sector['name'] = ttk.Label(sec_row1, text="--", font=get_font('small'))
+        self.synth_sector['name'].pack(side=tk.LEFT, padx=5)
+        
+        sec_row2 = ttk.Frame(sector_panel)
+        sec_row2.pack(fill=tk.X, pady=2)
+        ttk.Label(sec_row2, text="Rank:", font=get_font('small'), foreground=COLORS['text_muted']).pack(side=tk.LEFT)
+        self.synth_sector['rank'] = ttk.Label(sec_row2, text="--", font=get_font('small'))
+        self.synth_sector['rank'].pack(side=tk.LEFT, padx=5)
+        
+        sec_row3 = ttk.Frame(sector_panel)
+        sec_row3.pack(fill=tk.X, pady=2)
+        ttk.Label(sec_row3, text="vs Sector Avg:", font=get_font('small'), foreground=COLORS['text_muted']).pack(side=tk.LEFT)
+        self.synth_sector['vs_avg'] = ttk.Label(sec_row3, text="--", font=get_font('small'))
+        self.synth_sector['vs_avg'].pack(side=tk.LEFT, padx=5)
+        
+        # Peer Comparison
+        peer_panel = ttk.LabelFrame(comp_frame, text="👥 Top Peers", padding=5)
+        peer_panel.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=(5, 0))
+        
+        self.synth_peers = []
+        for i in range(3):
+            peer_row = ttk.Frame(peer_panel)
+            peer_row.pack(fill=tk.X, pady=1)
+            
+            name_lbl = ttk.Label(peer_row, text="--", font=get_font('small'))
+            name_lbl.pack(side=tk.LEFT)
+            
+            val_lbl = ttk.Label(peer_row, text="--", font=get_font('small'), foreground=COLORS['text_muted'])
+            val_lbl.pack(side=tk.RIGHT)
+            
+            self.synth_peers.append({'name': name_lbl, 'value': val_lbl})
+        
+        # ========== ROW 4: AI NARRATIVE ==========
+        narrative_frame = ttk.LabelFrame(main, text="🧠 AI Fundamental Analysis")
+        narrative_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        
+        # Text container with scrollbar
+        text_container = ttk.Frame(narrative_frame)
+        text_container.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        text_scrollbar = ttk.Scrollbar(text_container)
+        text_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        self.synthesis_narrative = tk.Text(
+            text_container,
+            wrap=tk.WORD,
+            font=get_font('body'),
+            bg=COLORS['bg_medium'],
+            fg=COLORS['text_primary'],
+            padx=10,
+            pady=10,
+            height=12,
+            state=tk.DISABLED
+        )
+        self.synthesis_narrative.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.synthesis_narrative.config(yscrollcommand=text_scrollbar.set)
+        text_scrollbar.config(command=self.synthesis_narrative.yview)
+        
+        # ========== ROW 5: KEY INSIGHTS ==========
+        insights_frame = ttk.LabelFrame(main, text="💡 Key Investment Insights")
+        insights_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        insights_row = ttk.Frame(insights_frame)
+        insights_row.pack(fill=tk.X, padx=5, pady=5)
+        
+        self.synth_insights = []
+        for i in range(4):
+            card = ttk.Frame(insights_row, padding=5)
+            card.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=3)
+            
+            icon_lbl = ttk.Label(card, text="⚪", font=('', 14))
+            icon_lbl.pack()
+            
+            text_lbl = ttk.Label(card, text="--", font=get_font('small'),
+                                foreground=COLORS['text_primary'])
+            text_lbl.pack()
+            
+            self.synth_insights.append({'icon': icon_lbl, 'text': text_lbl})
+        
+        # ========== STATUS BAR ==========
+        status_frame = ttk.Frame(main)
+        status_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        self.synth_status = {}
+        
+        self.synth_status['update'] = ttk.Label(status_frame, text="Last Update: --",
+                                                 font=get_font('small'), foreground=COLORS['text_muted'])
+        self.synth_status['update'].pack(side=tk.LEFT)
+        
+        self.synth_status['ai'] = ttk.Label(status_frame, text="Powered by Groq AI",
+                                             font=get_font('small'), foreground=COLORS['text_muted'])
+        self.synth_status['ai'].pack(side=tk.RIGHT)
+    
+    def _generate_fundamental_synthesis(self) -> Dict:
+        """Generate comprehensive fundamental synthesis data."""
+        synthesis = {
+            'symbol': self.current_symbol or '--',
+            'price': 0,
+            'change': 0,
+            'market_cap': 0,
+            'pe': 0,
+            'pb': 0,
+            'ps': 0,
+            'dividend_yield': 0,
+            'eps': 0,
+            'sector': '--',
+            'sector_rank': 0,
+            'sector_count': 0,
+            'sector_avg_pe': 0,
+            'sector_avg_div': 0,
+            'fair_value': 0,
+            'upside': 0,
+            'peers': [],
+            'valuation_status': 'NEUTRAL',
+            'insights': [],
+        }
+        
+        if not self.current_symbol:
+            return synthesis
+        
+        try:
+            # Get current stock data
+            data = self._get_stock_data(self.current_symbol)
+            if not data:
+                return synthesis
+            
+            synthesis['symbol'] = self.current_symbol
+            synthesis['price'] = data.get('close', 0) or 0
+            synthesis['change'] = data.get('change', 0) or 0
+            synthesis['market_cap'] = data.get('market_cap_basic', 0) or 0
+            synthesis['pe'] = data.get('price_earnings_ttm', 0) or 0
+            synthesis['pb'] = data.get('price_book_ratio', 0) or 0
+            synthesis['ps'] = data.get('price_sales_ratio', 0) or 0
+            synthesis['dividend_yield'] = data.get('dividend_yield_recent', 0) or 0
+            synthesis['eps'] = data.get('earnings_per_share_basic_ttm', 0) or 0
+            
+            # Get sector data
+            sector = self._get_stock_sector(self.current_symbol)
+            synthesis['sector'] = sector
+            
+            sector_stocks = self._get_sector_stocks(sector)
+            sector_data = []
+            for sym in sector_stocks:
+                s_data = self._get_stock_data(sym)
+                if s_data:
+                    sector_data.append(s_data)
+            
+            synthesis['sector_count'] = len(sector_data)
+            
+            # Calculate sector averages
+            if sector_data:
+                pes = [s.get('price_earnings_ttm', 0) or 0 for s in sector_data if (s.get('price_earnings_ttm', 0) or 0) > 0]
+                divs = [s.get('dividend_yield_recent', 0) or 0 for s in sector_data if (s.get('dividend_yield_recent', 0) or 0) > 0]
+                
+                synthesis['sector_avg_pe'] = sum(pes) / len(pes) if pes else 0
+                synthesis['sector_avg_div'] = sum(divs) / len(divs) if divs else 0
+                
+                # Calculate rank by market cap
+                mcaps = [(s.get('symbol', ''), s.get('market_cap_basic', 0) or 0) for s in sector_data]
+                mcaps.sort(key=lambda x: -x[1])
+                for i, (sym, _) in enumerate(mcaps):
+                    if sym == self.current_symbol:
+                        synthesis['sector_rank'] = i + 1
+                        break
+            
+            # Simple fair value estimate (Graham Number approach)
+            if synthesis['eps'] > 0 and synthesis['pb'] > 0:
+                book_value = synthesis['price'] / synthesis['pb'] if synthesis['pb'] > 0 else 0
+                graham = (22.5 * synthesis['eps'] * book_value) ** 0.5 if book_value > 0 else 0
+                synthesis['fair_value'] = graham
+                if synthesis['price'] > 0:
+                    synthesis['upside'] = (graham - synthesis['price']) / synthesis['price'] * 100
+            
+            # Get peers
+            peers_data = []
+            for s_data in sector_data[:5]:
+                if s_data.get('symbol') != self.current_symbol:
+                    peers_data.append({
+                        'symbol': s_data.get('symbol', ''),
+                        'pe': s_data.get('price_earnings_ttm', 0) or 0,
+                        'div': s_data.get('dividend_yield_recent', 0) or 0,
+                    })
+            synthesis['peers'] = peers_data[:3]
+            
+            # Valuation status
+            pe = synthesis['pe']
+            sector_pe = synthesis['sector_avg_pe']
+            if pe > 0 and sector_pe > 0:
+                if pe < sector_pe * 0.7:
+                    synthesis['valuation_status'] = 'UNDERVALUED'
+                elif pe > sector_pe * 1.3:
+                    synthesis['valuation_status'] = 'OVERVALUED'
+                else:
+                    synthesis['valuation_status'] = 'FAIRLY VALUED'
+            
+            # Generate insights
+            insights = []
+            
+            # P/E insight
+            if synthesis['pe'] > 0:
+                if synthesis['pe'] < 10:
+                    insights.append(('🟢', f"Low P/E: {synthesis['pe']:.1f}"))
+                elif synthesis['pe'] > 25:
+                    insights.append(('🔴', f"High P/E: {synthesis['pe']:.1f}"))
+            
+            # Dividend insight
+            if synthesis['dividend_yield'] >= 5:
+                insights.append(('💰', f"High Yield: {synthesis['dividend_yield']:.1f}%"))
+            elif synthesis['dividend_yield'] >= 3:
+                insights.append(('💵', f"Good Yield: {synthesis['dividend_yield']:.1f}%"))
+            
+            # Valuation insight
+            if synthesis['upside'] > 30:
+                insights.append(('🎯', f"Upside: +{synthesis['upside']:.0f}%"))
+            elif synthesis['upside'] < -20:
+                insights.append(('⚠️', f"Downside: {synthesis['upside']:.0f}%"))
+            
+            # Sector position
+            if synthesis['sector_rank'] <= 3:
+                insights.append(('🏆', f"Top {synthesis['sector_rank']} in Sector"))
+            
+            synthesis['insights'] = insights[:4]
+            
+        except Exception as e:
+            logger.error(f"Error generating fundamental synthesis: {e}")
+            import traceback
+            traceback.print_exc()
+        
+        return synthesis
+    
+    def _update_ai_synthesis(self):
+        """Update the AI Synthesis tab with current stock data."""
+        if not self.current_symbol:
+            return
+        
+        try:
+            synthesis = self._generate_fundamental_synthesis()
+            
+            # Update symbol label
+            self.synthesis_symbol_label.config(text=f"Analyzing: {synthesis['symbol']}")
+            
+            # ========== UPDATE METRICS CARDS ==========
+            price = synthesis.get('price', 0)
+            change = synthesis.get('change', 0)
+            mcap = synthesis.get('market_cap', 0)
+            
+            self.synth_metrics['price'].config(text=f"₦{price:,.2f}")
+            chg_color = COLORS['gain'] if change >= 0 else COLORS['loss']
+            self.synth_metrics['change'].config(text=f"{change:+.2f}%", foreground=chg_color)
+            
+            mcap_str = f"₦{mcap/1e12:.2f}T" if mcap >= 1e12 else f"₦{mcap/1e9:.2f}B" if mcap >= 1e9 else f"₦{mcap/1e6:.0f}M"
+            self.synth_metrics['mcap'].config(text=mcap_str)
+            self.synth_metrics['mcap_rank'].config(text=f"Rank: #{synthesis.get('sector_rank', '--')}")
+            
+            pe = synthesis.get('pe', 0)
+            self.synth_metrics['pe'].config(text=f"{pe:.1f}" if pe > 0 else "--")
+            sector_pe = synthesis.get('sector_avg_pe', 0)
+            if pe > 0 and sector_pe > 0:
+                vs_pe = ((pe - sector_pe) / sector_pe * 100)
+                self.synth_metrics['pe_vs_sector'].config(text=f"vs sector: {vs_pe:+.0f}%")
+            
+            div = synthesis.get('dividend_yield', 0)
+            self.synth_metrics['dividend'].config(text=f"{div:.1f}%" if div > 0 else "--")
+            sector_div = synthesis.get('sector_avg_div', 0)
+            if div > 0 and sector_div > 0:
+                vs_div = ((div - sector_div) / sector_div * 100)
+                self.synth_metrics['div_vs_sector'].config(text=f"vs sector: {vs_div:+.0f}%")
+            
+            # ========== UPDATE VALUATION ==========
+            self.synth_valuation['pe_val'].config(text=f"{pe:.1f}" if pe > 0 else "--")
+            pe_status = "Cheap" if pe > 0 and pe < 10 else "Fair" if pe <= 20 else "Expensive" if pe > 20 else "--"
+            pe_color = COLORS['gain'] if pe < 10 else COLORS['loss'] if pe > 20 else COLORS['warning']
+            self.synth_valuation['pe_status'].config(text=pe_status, foreground=pe_color)
+            
+            pb = synthesis.get('pb', 0)
+            self.synth_valuation['pb_val'].config(text=f"{pb:.1f}" if pb > 0 else "--")
+            pb_status = "Cheap" if pb > 0 and pb < 1 else "Fair" if pb <= 2 else "Expensive" if pb > 2 else "--"
+            pb_color = COLORS['gain'] if pb < 1 else COLORS['loss'] if pb > 2 else COLORS['warning']
+            self.synth_valuation['pb_status'].config(text=pb_status, foreground=pb_color)
+            
+            ps = synthesis.get('ps', 0)
+            self.synth_valuation['ps_val'].config(text=f"{ps:.1f}" if ps > 0 else "--")
+            ps_status = "Cheap" if ps > 0 and ps < 1 else "Fair" if ps <= 3 else "Expensive" if ps > 3 else "--"
+            ps_color = COLORS['gain'] if ps < 1 else COLORS['loss'] if ps > 3 else COLORS['warning']
+            self.synth_valuation['ps_status'].config(text=ps_status, foreground=ps_color)
+            
+            overall = synthesis.get('valuation_status', 'NEUTRAL')
+            overall_color = COLORS['gain'] if 'UNDER' in overall else COLORS['loss'] if 'OVER' in overall else COLORS['warning']
+            self.synth_valuation['overall'].config(text=overall, foreground=overall_color)
+            
+            # ========== UPDATE FAIR VALUE ==========
+            self.synth_fv['current'].config(text=f"₦{price:,.2f}")
+            fv = synthesis.get('fair_value', 0)
+            self.synth_fv['fair'].config(text=f"₦{fv:,.2f}" if fv > 0 else "--")
+            
+            upside = synthesis.get('upside', 0)
+            up_color = COLORS['gain'] if upside > 0 else COLORS['loss'] if upside < 0 else COLORS['text_primary']
+            self.synth_fv['upside'].config(text=f"{upside:+.1f}%", foreground=up_color)
+            
+            if upside > 20:
+                signal = "BUY"
+                sig_color = COLORS['gain']
+            elif upside < -15:
+                signal = "SELL"
+                sig_color = COLORS['loss']
+            else:
+                signal = "HOLD"
+                sig_color = COLORS['warning']
+            self.synth_fv['signal'].config(text=signal, foreground=sig_color)
+            
+            # ========== UPDATE SECTOR ==========
+            self.synth_sector['name'].config(text=synthesis.get('sector', '--'))
+            self.synth_sector['rank'].config(text=f"#{synthesis.get('sector_rank', '--')} of {synthesis.get('sector_count', '--')}")
+            
+            if pe > 0 and sector_pe > 0:
+                vs_sector = ((pe - sector_pe) / sector_pe * 100)
+                vs_text = f"{vs_sector:+.0f}% P/E"
+                vs_color = COLORS['gain'] if vs_sector < 0 else COLORS['loss']
+                self.synth_sector['vs_avg'].config(text=vs_text, foreground=vs_color)
+            
+            # ========== UPDATE PEERS ==========
+            peers = synthesis.get('peers', [])
+            for i, card in enumerate(self.synth_peers):
+                if i < len(peers):
+                    p = peers[i]
+                    card['name'].config(text=p.get('symbol', '--'))
+                    card['value'].config(text=f"P/E: {p.get('pe', 0):.1f}")
+                else:
+                    card['name'].config(text="--")
+                    card['value'].config(text="--")
+            
+            # ========== UPDATE NARRATIVE ==========
+            narrative = self._build_fundamental_narrative(synthesis)
+            self.synthesis_narrative.config(state=tk.NORMAL)
+            self.synthesis_narrative.delete(1.0, tk.END)
+            self.synthesis_narrative.insert(tk.END, narrative)
+            self.synthesis_narrative.config(state=tk.DISABLED)
+            
+            # ========== UPDATE INSIGHTS ==========
+            insights = synthesis.get('insights', [])
+            for i, card in enumerate(self.synth_insights):
+                if i < len(insights):
+                    icon, text = insights[i]
+                    card['icon'].config(text=icon)
+                    card['text'].config(text=text)
+                else:
+                    card['icon'].config(text="⚪")
+                    card['text'].config(text="--")
+            
+            # ========== UPDATE STATUS ==========
+            self.synth_status['update'].config(text=f"Last Update: {datetime.now().strftime('%H:%M:%S')}")
+            if self.insight_engine:
+                self.synth_status['ai'].config(text="✨ Powered by Groq AI")
+            else:
+                self.synth_status['ai'].config(text="📊 Rule-based Analysis")
+                
+        except Exception as e:
+            logger.error(f"Error updating AI synthesis: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def _build_fundamental_narrative(self, synthesis: Dict) -> str:
+        """Build AI-powered fundamental analysis narrative."""
+        
+        if self.insight_engine:
+            try:
+                logger.info(f"Generating Fundamental AI narrative for {synthesis.get('symbol', '?')} via Groq...")
+                
+                system_prompt = """You are an elite equity research analyst specializing in Nigerian Stock Exchange (NGX) stocks.
+Provide detailed, institutional-quality fundamental analysis for portfolio managers and investors.
+Use specific numbers and data points. Be decisive with recommendations.
+Your analysis should cover valuation, competitive position, dividend quality, and investment thesis."""
+
+                prompt = f"""Provide a COMPREHENSIVE fundamental analysis for {synthesis.get('symbol', '?')} on the Nigerian Stock Exchange:
+
+═══════════════════════════════════════════════════════════════════════════════
+                        FUNDAMENTAL DATA DASHBOARD
+═══════════════════════════════════════════════════════════════════════════════
+
+▸ SYMBOL: {synthesis.get('symbol', '?')}
+▸ CURRENT PRICE: ₦{synthesis.get('price', 0):,.2f}
+▸ CHANGE: {synthesis.get('change', 0):+.2f}%
+▸ MARKET CAP: ₦{synthesis.get('market_cap', 0):,.0f}
+
+───────────────────────────────────────────────────────────────────────────────
+                        VALUATION METRICS
+───────────────────────────────────────────────────────────────────────────────
+▸ P/E Ratio: {synthesis.get('pe', 0):.1f}x (Sector Avg: {synthesis.get('sector_avg_pe', 0):.1f}x)
+▸ P/B Ratio: {synthesis.get('pb', 0):.2f}x
+▸ P/S Ratio: {synthesis.get('ps', 0):.2f}x
+▸ EPS: ₦{synthesis.get('eps', 0):.2f}
+▸ Valuation Status: {synthesis.get('valuation_status', 'NEUTRAL')}
+
+───────────────────────────────────────────────────────────────────────────────
+                        DIVIDEND ANALYSIS
+───────────────────────────────────────────────────────────────────────────────
+▸ Dividend Yield: {synthesis.get('dividend_yield', 0):.2f}%
+▸ Sector Avg Yield: {synthesis.get('sector_avg_div', 0):.2f}%
+
+───────────────────────────────────────────────────────────────────────────────
+                        SECTOR & COMPETITIVE POSITION
+───────────────────────────────────────────────────────────────────────────────
+▸ Sector: {synthesis.get('sector', '--')}
+▸ Sector Rank: #{synthesis.get('sector_rank', '--')} of {synthesis.get('sector_count', '--')}
+
+───────────────────────────────────────────────────────────────────────────────
+                        FAIR VALUE ESTIMATE
+───────────────────────────────────────────────────────────────────────────────
+▸ Graham Number Fair Value: ₦{synthesis.get('fair_value', 0):,.2f}
+▸ Potential Upside: {synthesis.get('upside', 0):+.1f}%
+
+═══════════════════════════════════════════════════════════════════════════════
+
+Based on this fundamental data, provide an institutional-quality analysis including:
+
+1. **EXECUTIVE SUMMARY** (2-3 sentences)
+   - Overall investment thesis
+   - Key recommendation with price context
+
+2. **VALUATION ANALYSIS**
+   - P/E, P/B, P/S interpretation
+   - Comparison to sector peers
+   - Is the stock overvalued, undervalued, or fairly valued?
+
+3. **DIVIDEND ASSESSMENT**
+   - Yield quality and sustainability
+   - Income investor suitability
+   
+4. **COMPETITIVE POSITION**
+   - Market position within sector
+   - Relative strengths/weaknesses
+
+5. **FAIR VALUE & TARGET**
+   - Intrinsic value assessment
+   - Upside/downside potential
+   - Margin of safety
+
+6. **INVESTMENT RECOMMENDATION**
+   - Clear BUY/HOLD/SELL with rationale
+   - Key catalysts to watch
+   - Risk factors
+
+7. **KEY TAKEAWAYS**
+   - 3 bullet points for quick decision"""
+
+                ai_response = self.insight_engine.generate(prompt, system_prompt)
+                
+                if ai_response and "unavailable" not in ai_response.lower():
+                    logger.info("Groq AI fundamental narrative generated successfully")
+                    lines = []
+                    lines.append("═" * 55)
+                    lines.append(f"  🤖 AI FUNDAMENTAL ANALYSIS: {synthesis.get('symbol', '?')}")
+                    lines.append("═" * 55)
+                    lines.append("")
+                    lines.append(ai_response)
+                    lines.append("")
+                    lines.append("─" * 55)
+                    lines.append(f"  Generated via Groq AI: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+                    lines.append("─" * 55)
+                    return "\n".join(lines)
+                    
+            except Exception as e:
+                logger.error(f"Groq AI fundamental narrative failed: {e}")
+                import traceback
+                traceback.print_exc()
+        
+        # Fallback to rule-based narrative
+        lines = []
+        lines.append("═" * 55)
+        lines.append(f"  📊 FUNDAMENTAL ANALYSIS: {synthesis.get('symbol', '?')}")
+        lines.append("═" * 55)
+        lines.append("")
+        
+        lines.append("▶ OVERVIEW:")
+        lines.append(f"  • Price: ₦{synthesis.get('price', 0):,.2f} ({synthesis.get('change', 0):+.2f}%)")
+        lines.append(f"  • Market Cap: ₦{synthesis.get('market_cap', 0):,.0f}")
+        lines.append(f"  • Sector: {synthesis.get('sector', '--')}")
+        lines.append("")
+        
+        lines.append("▶ VALUATION:")
+        lines.append(f"  • P/E: {synthesis.get('pe', 0):.1f}x (Sector: {synthesis.get('sector_avg_pe', 0):.1f}x)")
+        lines.append(f"  • P/B: {synthesis.get('pb', 0):.2f}x")
+        lines.append(f"  • Status: {synthesis.get('valuation_status', 'NEUTRAL')}")
+        lines.append("")
+        
+        lines.append("▶ DIVIDENDS:")
+        lines.append(f"  • Yield: {synthesis.get('dividend_yield', 0):.2f}%")
+        lines.append(f"  • Sector Avg: {synthesis.get('sector_avg_div', 0):.2f}%")
+        lines.append("")
+        
+        lines.append("▶ FAIR VALUE:")
+        lines.append(f"  • Estimated: ₦{synthesis.get('fair_value', 0):,.2f}")
+        lines.append(f"  • Upside: {synthesis.get('upside', 0):+.1f}%")
+        lines.append("")
+        
+        lines.append("─" * 55)
+        lines.append(f"  Generated (Rule-based): {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        lines.append("─" * 55)
+        
+        return "\n".join(lines)
+    
     def refresh(self):
         """Refresh the tab."""
         self._refresh_data()
+
