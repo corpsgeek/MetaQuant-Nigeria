@@ -42,9 +42,9 @@ class MLIntelligenceTab:
         self.parent = parent
         self.db = db
         
-        # Initialize ML Engine
+        # Initialize ML Engine with database for sector rotation history
         if ML_AVAILABLE:
-            self.ml_engine = MLEngine()
+            self.ml_engine = MLEngine(db=db)
             logger.info(f"ML Engine Status: {self.ml_engine.get_status()}")
         else:
             self.ml_engine = None
@@ -793,14 +793,36 @@ class MLIntelligenceTab:
         header = ttk.Frame(content)
         header.pack(fill=tk.X, padx=10, pady=10)
         
-        ttk.Label(header, text="🔄 Sector Rotation Analysis Engine", font=get_font('heading'),
+        ttk.Label(header, text="🔄 ML Sector Rotation Predictor", font=get_font('heading'),
                   foreground=COLORS['primary']).pack(side=tk.LEFT)
         
         btn_frame = ttk.Frame(header)
         btn_frame.pack(side=tk.RIGHT)
         
+        train_btn = ttk.Button(btn_frame, text="🧠 Train Model", command=self._train_sector_rotation)
+        train_btn.pack(side=tk.LEFT, padx=5)
+        
         refresh_btn = ttk.Button(btn_frame, text="↻ Refresh Analysis", command=self._update_rotation)
         refresh_btn.pack(side=tk.LEFT, padx=5)
+        
+        # ========== ML STATUS BAR ==========
+        ml_status_frame = ttk.Frame(content)
+        ml_status_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        # Data points collected
+        self.sector_data_points = ttk.Label(ml_status_frame, text="📊 Data: 0/30 days", 
+                                             foreground=COLORS['warning'])
+        self.sector_data_points.pack(side=tk.LEFT, padx=10)
+        
+        # ML Status
+        self.sector_ml_status = ttk.Label(ml_status_frame, text="🔶 Statistical Mode", 
+                                           foreground=COLORS['warning'])
+        self.sector_ml_status.pack(side=tk.LEFT, padx=10)
+        
+        # Model accuracy
+        self.sector_accuracy = ttk.Label(ml_status_frame, text="Accuracy: --", 
+                                          foreground=COLORS['text_muted'])
+        self.sector_accuracy.pack(side=tk.LEFT, padx=10)
         
         # ========== ROTATION CYCLE INDICATOR ==========
         cycle_frame = ttk.LabelFrame(content, text="📊 Economic Cycle Position")
@@ -1522,43 +1544,33 @@ class MLIntelligenceTab:
         
         self.rotation_label.config(text="🔄 Analyzing sector rotation...")
         
-        # Track current performance (adds to history)
+        # Track current performance (stores to database for ML training)
         self.ml_engine.track_sector_performance(self.all_stocks_data)
         
-        # Get prediction
+        # Get prediction from ML predictor
         rotation = self.ml_engine.predict_sector_rotation()
         
-        # If insufficient history, compute sector momentum directly from current data
-        if rotation.get('prediction') == 'INSUFFICIENT_DATA':
-            # Compute sector performance directly
-            from collections import defaultdict
-            sector_perf = defaultdict(list)
-            
-            for stock in self.all_stocks_data:
-                sector = stock.get('sector', 'Unknown')
-                if sector and sector != 'Unknown':
-                    change = stock.get('change', 0) or 0
-                    sector_perf[sector].append(change)
-            
-            # Calculate average momentum
-            momentum = {}
-            for sector, changes in sector_perf.items():
-                if changes:
-                    momentum[sector] = sum(changes) / len(changes)
-            
-            # Sort and identify leaders/laggards
-            sorted_sectors = sorted(momentum.items(), key=lambda x: x[1], reverse=True)
-            leading = [s[0] for s in sorted_sectors[:3] if s[1] > 0]
-            lagging = [s[0] for s in sorted_sectors[-3:] if s[1] < 0]
-            
-            rotation = {
-                'prediction': 'ANALYZING',
-                'leading': leading,
-                'lagging': lagging,
-                'rotating_to': leading[0] if leading else None,
-                'momentum': momentum,
-                'confidence': 40  # Lower confidence with less data
-            }
+        # Update ML status bar
+        data_points = rotation.get('data_points', 0)
+        ml_active = rotation.get('ml_active', False)
+        accuracy = rotation.get('model_accuracy', 0)
+        
+        if hasattr(self, 'sector_data_points'):
+            color = COLORS['gain'] if data_points >= 30 else COLORS['warning']
+            self.sector_data_points.config(text=f"📊 Data: {data_points}/30 days", foreground=color)
+        
+        if hasattr(self, 'sector_ml_status'):
+            if ml_active:
+                self.sector_ml_status.config(text="🟢 ML Active", foreground=COLORS['gain'])
+            else:
+                self.sector_ml_status.config(text="🔶 Statistical Mode", foreground=COLORS['warning'])
+        
+        if hasattr(self, 'sector_accuracy'):
+            if accuracy > 0:
+                self.sector_accuracy.config(text=f"Accuracy: {accuracy:.1f}%", 
+                                             foreground=COLORS['gain'] if accuracy > 50 else COLORS['warning'])
+            else:
+                self.sector_accuracy.config(text="Accuracy: --", foreground=COLORS['text_muted'])
         
         # Update cycle indicator
         leading = rotation.get('leading', [])
@@ -1666,6 +1678,35 @@ class MLIntelligenceTab:
             ), tags=(tag,))
         
         self.rotation_label.config(text=f"✅ Updated at {datetime.now().strftime('%H:%M:%S')}")
+    
+    def _train_sector_rotation(self):
+        """Train the sector rotation ML model."""
+        if not self.ml_engine:
+            return
+        
+        self.rotation_label.config(text="🧠 Training ML model...")
+        
+        def train():
+            result = self.ml_engine.train_sector_rotation()
+            self.frame.after(0, lambda r=result: self._show_training_result(r))
+        
+        import threading
+        threading.Thread(target=train, daemon=True).start()
+    
+    def _show_training_result(self, result: Dict):
+        """Show result of model training."""
+        if result.get('success'):
+            accuracy = result.get('accuracy', 0)
+            samples = result.get('training_samples', 0)
+            self.rotation_label.config(
+                text=f"✅ Model trained! Accuracy: {accuracy:.1f}% on {samples} samples"
+            )
+            self._update_rotation()  # Refresh to show new ML status
+        else:
+            error = result.get('error', 'Unknown error')
+            self.rotation_label.config(
+                text=f"⚠️ Training: {error}",
+            )
     
     def refresh(self):
         """Refresh all ML data."""

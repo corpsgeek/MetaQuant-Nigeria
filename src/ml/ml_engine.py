@@ -14,6 +14,7 @@ import pandas as pd
 from .xgb_predictor import XGBPredictor
 from .anomaly_detector import AnomalyDetector, Anomaly, AnomalyType
 from .stock_clusterer import StockClusterer
+from .sector_rotation_predictor import SectorRotationPredictor
 
 logger = logging.getLogger(__name__)
 
@@ -26,15 +27,16 @@ class MLEngine:
     - Price prediction (XGBoost)
     - Anomaly detection (Isolation Forest + statistical)
     - Stock clustering (K-Means)
-    - Sector rotation prediction
+    - Sector rotation prediction (XGBoost classifier)
     """
     
-    def __init__(self, model_dir: Optional[str] = None):
+    def __init__(self, model_dir: Optional[str] = None, db=None):
         """
         Initialize the ML Engine.
         
         Args:
             model_dir: Directory for storing trained models
+            db: DatabaseManager instance for sector history
         """
         if model_dir is None:
             self.model_dir = Path(__file__).parent / "models"
@@ -42,11 +44,13 @@ class MLEngine:
             self.model_dir = Path(model_dir)
         
         self.model_dir.mkdir(parents=True, exist_ok=True)
+        self.db = db
         
         # Initialize sub-engines
         self.predictor = XGBPredictor(model_dir=str(self.model_dir))
         self.anomaly_detector = AnomalyDetector(model_dir=str(self.model_dir))
         self.clusterer = StockClusterer(model_dir=str(self.model_dir))
+        self.sector_predictor = SectorRotationPredictor(db=db, model_dir=str(self.model_dir))
         
         # Status tracking
         self.initialized = False
@@ -288,13 +292,32 @@ class MLEngine:
     
     # ========== SECTOR ROTATION ==========
     
-    def track_sector_performance(self, stocks: List[Dict]):
-        """Track sector performance for rotation analysis."""
-        self.clusterer.track_sector_performance(stocks)
+    def track_sector_performance(self, stocks: List[Dict], date: Optional[str] = None):
+        """
+        Store sector performance for ML training.
+        
+        Args:
+            stocks: List of stock data with sector and change
+            date: Date string (YYYY-MM-DD), defaults to today
+        """
+        self.sector_predictor.store_daily_performance(stocks, date)
     
     def predict_sector_rotation(self) -> Dict[str, Any]:
-        """Predict sector rotation."""
-        return self.clusterer.predict_sector_rotation()
+        """
+        Predict sector rotation using ML if available.
+        
+        Returns:
+            Dictionary with prediction, confidence, and analysis
+        """
+        return self.sector_predictor.predict()
+    
+    def train_sector_rotation(self) -> Dict[str, Any]:
+        """Train the sector rotation ML model."""
+        return self.sector_predictor.train()
+    
+    def get_sector_rotation_status(self) -> Dict[str, Any]:
+        """Get status of sector rotation predictor."""
+        return self.sector_predictor.get_status()
     
     # ========== COMPREHENSIVE ANALYSIS ==========
     
