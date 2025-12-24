@@ -527,13 +527,20 @@ class BacktestEngine:
             if self.ml_engine and hasattr(self.ml_engine, 'predict'):
                 try:
                     ml_result = self.ml_engine.predict(symbol)
-                    if ml_result and 'direction' in ml_result:
-                        direction = ml_result.get('direction', 'NEUTRAL')
-                        confidence = ml_result.get('confidence', 0.5)
+                    if ml_result and ml_result.get('success'):
+                        direction = ml_result.get('direction', 'FLAT')
+                        # Normalize confidence from 0-100 to 0-1
+                        raw_conf = ml_result.get('confidence', 50)
+                        confidence = raw_conf / 100 if raw_conf > 1 else raw_conf
+                        
                         if direction == 'UP':
-                            scores['ml'] = confidence
+                            scores['ml'] = confidence  # +0.0 to +1.0
                         elif direction == 'DOWN':
-                            scores['ml'] = -confidence
+                            scores['ml'] = -confidence  # -1.0 to 0.0
+                        else:  # FLAT
+                            # Use expected return to determine slight bias
+                            exp_ret = ml_result.get('expected_return', 0)
+                            scores['ml'] = max(-0.3, min(0.3, exp_ret / 10))
                 except Exception as e:
                     logger.debug(f"ML prediction error for {symbol}: {e}")
             
