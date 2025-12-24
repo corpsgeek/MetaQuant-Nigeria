@@ -211,6 +211,128 @@ class PortfolioOptimizer:
         weights = np.array([1/self.n_assets] * self.n_assets)
         return self._build_result(weights, 'EQUAL_WEIGHT')
     
+    def optimize_alpha_seeking(
+        self, 
+        alpha_scores: Dict[str, float] = None,
+        alpha_weight: float = 0.5,
+        min_allocation: float = 0.02,
+        max_allocation: float = 0.25
+    ) -> Dict[str, Any]:
+        """
+        Alpha-seeking optimization: Maximize expected alpha while managing risk.
+        
+        Combines historical returns with forward-looking alpha scores (ML predictions,
+        fundamentals, momentum) to tilt toward high-conviction opportunities.
+        
+        Args:
+            alpha_scores: Dict of symbol -> alpha score (-1 to 1)
+            alpha_weight: How much to weight alpha vs historical returns (0-1)
+            min_allocation: Minimum allocation per stock
+            max_allocation: Maximum allocation per stock
+            
+        Returns:
+            Dict with optimal weights and metrics
+        """
+        if not SCIPY_AVAILABLE:
+            return self.equal_weight()
+        
+        # Build alpha-adjusted expected returns
+        if alpha_scores:
+            # Scale alpha scores to expected return boost (e.g., +50% alpha = +10% return boost)
+            alpha_return_boost = 0.20  # Max 20% annual return adjustment
+            adjusted_returns = self.mean_returns.copy()
+            
+            for symbol in self.symbols:
+                if symbol in alpha_scores:
+                    alpha = alpha_scores[symbol]  # -1 to 1
+                    # Boost expected return by alpha * weight * max_boost
+                    boost = alpha * alpha_weight * alpha_return_boost
+                    adjusted_returns[symbol] = adjusted_returns[symbol] + boost
+            
+            logger.info(f"Alpha scores applied to {len(alpha_scores)} stocks")
+        else:
+            adjusted_returns = self.mean_returns
+        
+        # Store temporarily for optimization
+        original_mean_returns = self.mean_returns
+        self.mean_returns = adjusted_returns
+        
+        n = self.n_assets
+        init_weights = np.array([1/n] * n)
+        
+        # Objective: Maximize alpha-adjusted Sharpe ratio
+        def neg_alpha_sharpe(weights):
+            ret = np.dot(weights, adjusted_returns)
+            vol = self.portfolio_volatility(weights)
+            return -(ret - self.RISK_FREE_RATE) / vol if vol > 0 else 0
+        
+        constraints = ({'type': 'eq', 'fun': lambda x: np.sum(x) - 1})
+        bounds = tuple((min_allocation, max_allocation) for _ in range(n))
+        
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            result = minimize(
+                neg_alpha_sharpe,
+                init_weights,
+                method='SLSQP',
+                bounds=bounds,
+                constraints=constraints
+            )
+        
+        # Restore original returns for reporting
+        self.mean_returns = original_mean_returns
+        
+        if not result.success:
+            logger.warning("Alpha-seeking optimization did not converge")
+            return self.optimize_max_sharpe()
+        
+        weights = result.x
+        
+        result_dict = self._build_result(weights, 'ALPHA_SEEKING')
+        result_dict['alpha_scores'] = alpha_scores
+        result_dict['adjusted_returns'] = {
+            sym: float(adjusted_returns[sym]) for sym in self.symbols
+        }
+        
+        return result_dict
+    
+    def optimize_momentum_alpha(self, lookback_days: int = 20) -> Dict[str, Any]:
+        """
+        Momentum-based alpha seeking.
+        
+        Uses recent price momentum to boost allocations to trending stocks.
+        
+        Args:
+            lookback_days: Days for momentum calculation
+            
+        Returns:
+            Dict with optimal weights and metrics
+        """
+        # Calculate momentum scores
+        if len(self.returns) < lookback_days:
+            return self.optimize_max_sharpe()
+        
+        recent_returns = self.returns.tail(lookback_days)
+        cumulative_returns = (1 + recent_returns).prod() - 1
+        
+        # Normalize to -1 to 1
+        ret_mean = cumulative_returns.mean()
+        ret_std = cumulative_returns.std()
+        if ret_std > 0:
+            momentum_scores = (cumulative_returns - ret_mean) / ret_std
+            momentum_scores = momentum_scores.clip(-1, 1)
+        else:
+            momentum_scores = pd.Series(0, index=self.symbols)
+        
+        alpha_scores = momentum_scores.to_dict()
+        
+        return self.optimize_alpha_seeking(
+            alpha_scores=alpha_scores,
+            alpha_weight=0.6,  # Weight momentum heavily
+            min_allocation=0.02,
+            max_allocation=0.20
+        )
+    
     def optimize_target_return(self, target_return: float) -> Dict[str, Any]:
         """
         Find minimum volatility portfolio for a target return.

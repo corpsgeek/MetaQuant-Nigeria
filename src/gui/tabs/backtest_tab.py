@@ -288,16 +288,17 @@ class BacktestTab:
         row1.pack(fill=tk.X, pady=5)
         
         ttk.Label(row1, text="Strategy:").pack(side=tk.LEFT, padx=5)
-        self.opt_strategy_var = tk.StringVar(value="MAX_SHARPE")
+        self.opt_strategy_var = tk.StringVar(value="ALPHA_SEEKING")
         strategies = [
-            ("MAX_SHARPE", "Maximum Sharpe"),
-            ("MIN_VOL", "Minimum Volatility"),
+            ("ALPHA_SEEKING", "🎯 Alpha Seeking"),
+            ("MOMENTUM_ALPHA", "📈 Momentum Alpha"),
+            ("MAX_SHARPE", "Max Sharpe"),
+            ("MIN_VOL", "Min Volatility"),
             ("RISK_PARITY", "Risk Parity"),
-            ("EQUAL", "Equal Weight")
         ]
         for val, text in strategies:
             ttk.Radiobutton(row1, text=text, value=val, 
-                           variable=self.opt_strategy_var).pack(side=tk.LEFT, padx=10)
+                           variable=self.opt_strategy_var).pack(side=tk.LEFT, padx=8)
         
         # Run button
         btn_frame = ttk.Frame(controls_inner)
@@ -545,7 +546,13 @@ class BacktestTab:
                 # Run selected strategy
                 strategy = self.opt_strategy_var.get()
                 
-                if strategy == "MAX_SHARPE":
+                if strategy == "ALPHA_SEEKING":
+                    # Compute alpha scores from fundamentals
+                    alpha_scores = self._compute_alpha_scores()
+                    result = optimizer.optimize_alpha_seeking(alpha_scores=alpha_scores)
+                elif strategy == "MOMENTUM_ALPHA":
+                    result = optimizer.optimize_momentum_alpha(lookback_days=20)
+                elif strategy == "MAX_SHARPE":
                     result = optimizer.optimize_max_sharpe()
                 elif strategy == "MIN_VOL":
                     result = optimizer.optimize_min_volatility()
@@ -679,6 +686,83 @@ class BacktestTab:
         
         # Auto-enable checkbox
         self.use_optimized_var.set(True)
+    
+    def _compute_alpha_scores(self) -> Dict[str, float]:
+        """
+        Compute alpha scores for each stock using fundamentals and momentum.
+        
+        Returns:
+            Dict of symbol -> alpha score (-1 to 1)
+        """
+        alpha_scores = {}
+        
+        for symbol, df in self.price_data.items():
+            if df.empty or len(df) < 20:
+                continue
+            
+            score = 0.0
+            
+            # Momentum component (40%)
+            try:
+                close = pd.to_numeric(df['close'], errors='coerce').astype(float)
+                if len(close) >= 20:
+                    mom_20 = (close.iloc[-1] - close.iloc[-20]) / close.iloc[-20]
+                    mom_score = max(-1, min(1, float(mom_20) * 5))
+                    score += 0.4 * mom_score
+            except:
+                pass
+            
+            # Fundamental component (40%)
+            try:
+                stock = self.db.get_stock(symbol)
+                if stock:
+                    fund = self.db.get_fundamentals(stock['id'])
+                    if fund:
+                        fund_score = 0
+                        
+                        # P/E < 15 = positive, P/E > 25 = negative
+                        pe = fund.get('pe_ratio')
+                        if pe and 0 < pe < 15:
+                            fund_score += 0.3
+                        elif pe and pe > 25:
+                            fund_score -= 0.2
+                        
+                        # Dividend yield > 5% = positive
+                        div = fund.get('dividend_yield')
+                        if div and div > 5:
+                            fund_score += 0.3
+                        elif div and div > 2:
+                            fund_score += 0.1
+                        
+                        # ROE > 15% = positive
+                        roe = fund.get('roe')
+                        if roe and roe > 15:
+                            fund_score += 0.3
+                        elif roe and roe > 10:
+                            fund_score += 0.1
+                        
+                        score += 0.4 * fund_score
+            except:
+                pass
+            
+            # ML component (20%) - if available
+            if self.ml_engine and hasattr(self.ml_engine, 'predict'):
+                try:
+                    result = self.ml_engine.predict(symbol)
+                    if result:
+                        direction = result.get('direction', 'NEUTRAL')
+                        confidence = result.get('confidence', 0.5)
+                        if direction == 'UP':
+                            score += 0.2 * confidence
+                        elif direction == 'DOWN':
+                            score -= 0.2 * confidence
+                except:
+                    pass
+            
+            alpha_scores[symbol] = max(-1, min(1, score))
+        
+        logger.info(f"Computed alpha scores for {len(alpha_scores)} stocks")
+        return alpha_scores
     
     def refresh(self):
         """Refresh data."""
