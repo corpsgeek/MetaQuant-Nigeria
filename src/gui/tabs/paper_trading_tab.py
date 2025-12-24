@@ -140,7 +140,7 @@ class PaperTradingTab:
         self._create_history_panel(right_frame)
         
         # Status bar
-        self.status_label = ttk.Label(main_frame, text="Ready", foreground=COLORS['fg'])
+        self.status_label = ttk.Label(main_frame, text="Ready", foreground=COLORS['text_primary'])
         self.status_label.pack(fill=tk.X, pady=5)
     
     def _create_top_bar(self, parent):
