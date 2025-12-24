@@ -59,6 +59,7 @@ class BacktestEngine:
     
     Features:
     - Uses SignalScorer for unified signals
+    - Per-stock stop loss/take profit (volatility-adjusted)
     - Supports multiple positions
     - Tracks equity curve
     - Calculates comprehensive metrics
@@ -69,11 +70,12 @@ class BacktestEngine:
         initial_capital: float = 10_000_000,  # 10M NGN
         max_positions: int = 10,
         position_size_pct: float = 0.10,  # 10% per position
-        stop_loss_pct: float = 0.05,  # 5% stop loss
-        take_profit_pct: float = 0.15,  # 15% take profit
+        stop_loss_pct: float = 0.05,  # Default 5% stop loss
+        take_profit_pct: float = 0.15,  # Default 15% take profit
         buy_threshold: float = 0.3,
         sell_threshold: float = -0.3,
-        signal_weights: Optional[Dict[str, float]] = None
+        signal_weights: Optional[Dict[str, float]] = None,
+        stock_params: Optional[Dict[str, Dict[str, float]]] = None  # Per-stock SL/TP
     ):
         """
         Initialize the backtesting engine.
@@ -82,20 +84,24 @@ class BacktestEngine:
             initial_capital: Starting capital in NGN
             max_positions: Maximum concurrent positions
             position_size_pct: Position size as % of capital
-            stop_loss_pct: Stop loss percentage
-            take_profit_pct: Take profit percentage
+            stop_loss_pct: Default stop loss percentage
+            take_profit_pct: Default take profit percentage
             buy_threshold: Score threshold for buying
             sell_threshold: Score threshold for selling
             signal_weights: Custom signal weights
+            stock_params: Per-stock parameters {symbol: {'stop_loss': 0.05, 'take_profit': 0.15}}
         """
         self.initial_capital = initial_capital
         self.capital = initial_capital
         self.max_positions = max_positions
         self.position_size_pct = position_size_pct
-        self.stop_loss_pct = stop_loss_pct
-        self.take_profit_pct = take_profit_pct
+        self.default_stop_loss = stop_loss_pct
+        self.default_take_profit = take_profit_pct
         self.buy_threshold = buy_threshold
         self.sell_threshold = sell_threshold
+        
+        # Per-stock parameters
+        self.stock_params = stock_params or {}
         
         # Signal scorer
         self.scorer = SignalScorer(weights=signal_weights)
@@ -266,7 +272,7 @@ class BacktestEngine:
         return self.results
     
     def _check_stops_and_targets(self, date: str, prices: Dict[str, float]):
-        """Check stop losses and take profits."""
+        """Check stop losses and take profits using per-stock parameters."""
         for sym in list(self.positions.keys()):
             if sym not in prices:
                 continue
@@ -274,13 +280,18 @@ class BacktestEngine:
             pos = self.positions[sym]
             price = prices[sym]
             
+            # Get stock-specific or default parameters
+            params = self.stock_params.get(sym, {})
+            stop_loss_pct = params.get('stop_loss', self.default_stop_loss)
+            take_profit_pct = params.get('take_profit', self.default_take_profit)
+            
             # Stop loss
-            if price <= pos.entry_price * (1 - self.stop_loss_pct):
+            if price <= pos.entry_price * (1 - stop_loss_pct):
                 self._close_position(sym, date, price, 'STOP_LOSS', -1)
                 continue
             
             # Take profit
-            if price >= pos.entry_price * (1 + self.take_profit_pct):
+            if price >= pos.entry_price * (1 + take_profit_pct):
                 self._close_position(sym, date, price, 'TAKE_PROFIT', 1)
     
     def _execute_signals(self, date: str, scores: Dict[str, Dict], prices: Dict[str, float]):

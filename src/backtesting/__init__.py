@@ -6,6 +6,10 @@ from .engine import BacktestEngine
 from .signal_scorer import SignalScorer
 from .metrics import calculate_metrics
 from .optimizer import PortfolioOptimizer, calculate_returns
+from .param_optimizer import ParameterOptimizer
 
-__all__ = ['BacktestEngine', 'SignalScorer', 'calculate_metrics', 'PortfolioOptimizer', 'calculate_returns']
+__all__ = [
+    'BacktestEngine', 'SignalScorer', 'calculate_metrics', 
+    'PortfolioOptimizer', 'calculate_returns', 'ParameterOptimizer'
+]
 

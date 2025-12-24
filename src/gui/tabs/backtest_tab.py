@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 # Try to import backtesting modules
 try:
-    from ...backtesting import BacktestEngine, SignalScorer, PortfolioOptimizer, calculate_returns
+    from ...backtesting import BacktestEngine, SignalScorer, PortfolioOptimizer, calculate_returns, ParameterOptimizer
     BACKTEST_AVAILABLE = True
 except ImportError as e:
     logger.warning(f"Backtesting not available: {e}")
@@ -37,6 +37,7 @@ class BacktestTab:
         self.price_data: Dict[str, pd.DataFrame] = {}
         self.backtest_results: Optional[Dict] = None
         self.optimization_results: Optional[Dict] = None
+        self.stock_params: Dict[str, Dict] = {}  # Per-stock SL/TP params
         
         # Create main frame
         self.frame = ttk.Frame(parent)
@@ -80,10 +81,68 @@ class BacktestTab:
         self.sub_notebook.add(self.backtest_tab, text="📈 Strategy Backtest")
         self._create_backtest_ui()
         
-        # Tab 2: Portfolio Optimization
+        # Tab 2: Parameter Optimization
+        self.param_tab = ttk.Frame(self.sub_notebook)
+        self.sub_notebook.add(self.param_tab, text="🎯 Stop/Target Optimizer")
+        self._create_param_optimizer_ui()
+        
+        # Tab 3: Portfolio Optimization
         self.optimize_tab = ttk.Frame(self.sub_notebook)
         self.sub_notebook.add(self.optimize_tab, text="⚖️ Portfolio Optimizer")
         self._create_optimizer_ui()
+    
+    def _create_param_optimizer_ui(self):
+        """Create parameter optimizer sub-tab."""
+        main = ttk.Frame(self.param_tab)
+        main.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        # Header
+        header = ttk.Frame(main)
+        header.pack(fill=tk.X, pady=5)
+        
+        ttk.Label(header, text="🎯 Find Optimal Stop Loss & Take Profit Per Stock",
+                  font=get_font('heading'), foreground=COLORS['primary']).pack(side=tk.LEFT)
+        
+        # Description
+        ttk.Label(main, text="Uses grid search to find the best SL/TP for each stock based on its volatility profile",
+                  foreground=COLORS['text_muted']).pack(anchor='w', pady=5)
+        
+        # Controls
+        btn_frame = ttk.Frame(main)
+        btn_frame.pack(fill=tk.X, pady=10)
+        
+        self.opt_params_btn = ttk.Button(btn_frame, text="⚡ Optimize All Stocks", 
+                                          command=self._run_param_optimization)
+        self.opt_params_btn.pack(side=tk.LEFT, padx=5)
+        
+        self.use_optimized_var = tk.BooleanVar(value=False)
+        self.use_optimized_check = ttk.Checkbutton(btn_frame, text="Use optimized params in backtest",
+                                                    variable=self.use_optimized_var)
+        self.use_optimized_check.pack(side=tk.LEFT, padx=20)
+        
+        self.param_status = ttk.Label(btn_frame, text="Ready", foreground=COLORS['text_muted'])
+        self.param_status.pack(side=tk.LEFT, padx=15)
+        
+        # Progress bar
+        self.param_progress = ttk.Progressbar(main, mode='determinate', maximum=100)
+        self.param_progress.pack(fill=tk.X, pady=5)
+        
+        # Results table
+        results_frame = ttk.LabelFrame(main, text="📊 Optimized Parameters")
+        results_frame.pack(fill=tk.BOTH, expand=True, pady=5)
+        
+        columns = ('Symbol', 'Stop Loss %', 'Take Profit %', 'Win Rate %', 'Volatility %')
+        self.param_tree = ttk.Treeview(results_frame, columns=columns, show='headings', height=15)
+        
+        for col in columns:
+            self.param_tree.heading(col, text=col)
+            self.param_tree.column(col, width=100)
+        
+        scrollbar = ttk.Scrollbar(results_frame, orient=tk.VERTICAL, command=self.param_tree.yview)
+        self.param_tree.configure(yscrollcommand=scrollbar.set)
+        
+        self.param_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
     
     def _create_backtest_ui(self):
         """Create backtest sub-tab."""
@@ -338,6 +397,13 @@ class BacktestTab:
                 end_date = datetime.now().strftime('%Y-%m-%d')
                 start_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
                 
+                # Check if using optimized per-stock parameters
+                use_optimized = self.use_optimized_var.get() if hasattr(self, 'use_optimized_var') else False
+                stock_params = self.stock_params if use_optimized and self.stock_params else None
+                
+                if stock_params:
+                    logger.info(f"Using optimized params for {len(stock_params)} stocks")
+                
                 # Create engine
                 engine = BacktestEngine(
                     initial_capital=capital,
@@ -345,7 +411,8 @@ class BacktestTab:
                     stop_loss_pct=stop_loss,
                     take_profit_pct=take_profit,
                     buy_threshold=buy_thresh,
-                    sell_threshold=sell_thresh
+                    sell_threshold=sell_thresh,
+                    stock_params=stock_params  # Per-stock SL/TP
                 )
                 
                 # Build signal data (empty for now - signals computed on-the-fly would need historical storage)
@@ -505,6 +572,72 @@ class BacktestTab:
             foreground=COLORS['gain']
         )
     
+    def _run_param_optimization(self):
+        """Run parameter optimization for all stocks."""
+        self.param_status.config(text="Optimizing...", foreground=COLORS['warning'])
+        self.opt_params_btn.state(['disabled'])
+        self.param_progress['value'] = 0
+        
+        def optimize():
+            try:
+                optimizer = ParameterOptimizer(min_trades=5)
+                total = len(self.price_data)
+                
+                def update_progress(current, total_count, symbol):
+                    pct = (current / total_count) * 100
+                    self.frame.after(0, lambda: self._update_param_progress(pct, symbol))
+                
+                # Run optimization
+                results = optimizer.optimize_all(self.price_data, update_progress)
+                
+                # Store results for use in backtest
+                self.stock_params = optimizer.get_all_params()
+                
+                self.frame.after(0, lambda: self._display_param_results(optimizer))
+                
+            except Exception as e:
+                logger.error(f"Parameter optimization error: {e}")
+                import traceback
+                traceback.print_exc()
+                self.frame.after(0, lambda: self.param_status.config(
+                    text=f"Error: {e}", foreground=COLORS['loss']))
+            finally:
+                self.frame.after(0, lambda: self.opt_params_btn.state(['!disabled']))
+        
+        threading.Thread(target=optimize, daemon=True).start()
+    
+    def _update_param_progress(self, pct: float, symbol: str):
+        """Update parameter optimization progress."""
+        self.param_progress['value'] = pct
+        self.param_status.config(text=f"Optimizing: {symbol}...")
+    
+    def _display_param_results(self, optimizer):
+        """Display parameter optimization results."""
+        # Clear existing
+        for item in self.param_tree.get_children():
+            self.param_tree.delete(item)
+        
+        # Populate tree
+        df = optimizer.to_dataframe()
+        for _, row in df.iterrows():
+            self.param_tree.insert('', 'end', values=(
+                row['Symbol'],
+                f"{row['Stop Loss %']:.1f}%",
+                f"{row['Take Profit %']:.1f}%",
+                f"{row['Win Rate %']:.1f}%",
+                f"{row['Volatility %']:.1f}%"
+            ))
+        
+        self.param_progress['value'] = 100
+        self.param_status.config(
+            text=f"✅ Optimized {len(self.stock_params)} stocks", 
+            foreground=COLORS['gain']
+        )
+        
+        # Auto-enable checkbox
+        self.use_optimized_var.set(True)
+    
     def refresh(self):
         """Refresh data."""
         self._load_data()
+
