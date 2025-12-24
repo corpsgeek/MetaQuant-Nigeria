@@ -23,6 +23,7 @@ from src.gui.tabs.history_tab import HistoryTab
 from src.gui.tabs.flow_tape_tab import FlowTapeTab
 from src.gui.tabs.fundamentals_tab import FundamentalsTab
 from src.gui.tabs.ml_intelligence_tab import MLIntelligenceTab
+from src.gui.tabs.backtest_tab import BacktestTab
 from src.gui.components.tv_login_dialog import show_tv_login_dialog
 
 
@@ -212,6 +213,7 @@ class MetaQuantApp:
         self.flow_tape_tab = FlowTapeTab(self.notebook, self.db)
         self.fundamentals_tab = FundamentalsTab(self.notebook, self.db)
         self.ml_intel_tab = MLIntelligenceTab(self.notebook, self.db)
+        self.backtest_tab = BacktestTab(self.notebook, self.db)
         
         # Add tabs to notebook
         self.notebook.add(self.market_intel_tab.frame, text="🧠 Market Intel")
@@ -220,6 +222,7 @@ class MetaQuantApp:
         self.notebook.add(self.flow_tape_tab.frame, text="📊 Flow Tape")
         self.notebook.add(self.fundamentals_tab.frame, text="💰 Fundamentals")
         self.notebook.add(self.ml_intel_tab.frame, text="🤖 ML Intelligence")
+        self.notebook.add(self.backtest_tab.frame, text="📈 Backtest")
         self.notebook.add(self.history_tab.frame, text="📅 History")
     
     def _create_status_bar(self):
