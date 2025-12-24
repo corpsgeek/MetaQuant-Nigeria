@@ -200,11 +200,17 @@ class BacktestEngine:
                 if sym not in date_prices:
                     continue
                 
-                score_result = self.scorer.score_for_backtest(
-                    date=date,
-                    symbol=sym,
-                    historical_data=signal_data
-                )
+                # If we have signal data, use the full scorer
+                if signal_data:
+                    score_result = self.scorer.score_for_backtest(
+                        date=date,
+                        symbol=sym,
+                        historical_data=signal_data
+                    )
+                else:
+                    # Fallback: Simple price-based scoring using momentum
+                    score_result = self._price_based_score(sym, date, price_data.get(sym), date_prices[sym])
+                
                 scores[sym] = score_result
             
             # Execute trades based on scores
@@ -397,6 +403,68 @@ class BacktestEngine:
         
         logger.debug(f"CLOSE: {symbol} @ {price:.2f}, PnL: {pnl:.2f} ({return_pct:.1f}%)")
     
+    def _price_based_score(self, symbol: str, date: str, df: pd.DataFrame, current_price: float) -> Dict[str, Any]:
+        """
+        Generate trading signal from price data when no external signals available.
+        Uses momentum (5, 20 day) and mean reversion.
+        """
+        if df is None or df.empty or len(df) < 25:
+            return {'composite_score': 0, 'signal': 'HOLD', 'component_scores': {}}
+        
+        try:
+            # Convert Decimal to float if needed
+            close_col = df['close'].apply(lambda x: float(x) if hasattr(x, '__float__') else x)
+            
+            # Get recent prices
+            recent_close = close_col.tail(25).values
+            if len(recent_close) < 20:
+                return {'composite_score': 0, 'signal': 'HOLD', 'component_scores': {}}
+            
+            # Momentum signals
+            mom_5 = (recent_close[-1] - recent_close[-5]) / recent_close[-5] if recent_close[-5] > 0 else 0
+            mom_20 = (recent_close[-1] - recent_close[-20]) / recent_close[-20] if recent_close[-20] > 0 else 0
+            
+            # Mean reversion: price vs 20-day MA
+            ma_20 = np.mean(recent_close[-20:])
+            deviation = (recent_close[-1] - ma_20) / ma_20 if ma_20 > 0 else 0
+            
+            # Trend strength
+            trend = 1 if mom_20 > 0 else -1
+            
+            # Composite score
+            # Trend following: positive momentum = buy
+            momentum_score = (mom_5 * 2 + mom_20) * 3  # Scale up
+            
+            # Mean reversion: if trending up but oversold, stronger buy
+            if trend > 0 and deviation < -0.05:
+                momentum_score += 0.3  # Oversold in uptrend = buy
+            elif trend < 0 and deviation > 0.05:
+                momentum_score -= 0.3  # Overbought in downtrend = sell
+            
+            # Clamp to [-1, 1] and then scale to threshold range
+            score = max(-1, min(1, momentum_score))
+            
+            # Determine signal
+            if score > 0.1:
+                signal = 'BUY'
+            elif score < -0.1:
+                signal = 'SELL'
+            else:
+                signal = 'HOLD'
+            
+            return {
+                'composite_score': score,
+                'signal': signal,
+                'component_scores': {
+                    'momentum_5d': mom_5,
+                    'momentum_20d': mom_20,
+                    'deviation': deviation
+                }
+            }
+        except Exception as e:
+            logger.debug(f"Price scoring error for {symbol}: {e}")
+            return {'composite_score': 0, 'signal': 'HOLD', 'component_scores': {}}
+    
     def get_trade_log(self) -> pd.DataFrame:
         """Get trades as DataFrame."""
         if not self.trades:
@@ -410,3 +478,4 @@ class BacktestEngine:
             return pd.DataFrame()
         
         return pd.DataFrame(self.equity_curve)
+

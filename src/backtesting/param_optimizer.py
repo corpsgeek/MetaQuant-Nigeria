@@ -194,6 +194,12 @@ class ParameterOptimizer:
     
     def _volatility_based_params(self, symbol: str, df: pd.DataFrame) -> OptimalParams:
         """Create default params based on volatility when not enough data."""
+        # Convert Decimal to float if needed
+        if not df.empty:
+            for col in ['open', 'high', 'low', 'close', 'volume']:
+                if col in df.columns:
+                    df[col] = pd.to_numeric(df[col], errors='coerce').astype(float)
+        
         vol_info = self._calculate_volatility(df)
         
         # Rule of thumb: Stop = 2x ATR, TP = 3x ATR
