@@ -444,10 +444,12 @@ class BacktestEngine:
             # Clamp to [-1, 1]
             score = max(-1, min(1, momentum_score))
             
-            # More selective thresholds - only strong signals
-            if score > 0.05 and mom_5 > 0.02 and mom_20 > 0.03:
+            # Loosened thresholds - trade more stocks
+            # Buy: positive momentum with some strength
+            if (score > 0.03 and mom_5 > 0.01) or (mom_5 > 0 and mom_20 > 0.02):
                 signal = 'BUY'
-            elif score < -0.05 and mom_5 < -0.02:
+            # Sell: negative momentum
+            elif score < -0.03 and (mom_5 < -0.01 or mom_20 < -0.02):
                 signal = 'SELL'
             else:
                 signal = 'HOLD'

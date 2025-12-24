@@ -493,8 +493,16 @@ class BacktestTab:
                 t.get('holding_days', 0)
             ), tags=(tag,))
         
-        self.bt_status.config(text=f"✅ Complete: {m.get('total_trades', 0)} trades", 
-                              foreground=COLORS['gain'])
+        # Calculate totals
+        total_pnl = sum(t.get('pnl', 0) for t in r.get('trades', []))
+        total_return_pct = m.get('total_return_pct', 0)
+        unique_stocks = len(set(t.get('symbol', '') for t in r.get('trades', [])))
+        total_trades = m.get('total_trades', 0)
+        
+        self.bt_status.config(
+            text=f"✅ {total_trades} trades across {unique_stocks} stocks | Total P&L: ₦{total_pnl:,.0f} ({total_return_pct:+.2f}%)", 
+            foreground=COLORS['gain'] if total_pnl >= 0 else COLORS['loss']
+        )
     
     def _run_optimization(self):
         """Run portfolio optimization."""
