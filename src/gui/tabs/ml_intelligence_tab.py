@@ -127,97 +127,261 @@ class MLIntelligenceTab:
         self._create_rotation_ui()
     
     def _create_predictions_ui(self):
-        """Create price predictions sub-tab UI."""
+        """Create super-enhanced price predictions sub-tab UI."""
         main = self.predictions_tab
         
+        # Create scrollable canvas for all content
+        canvas = tk.Canvas(main, bg=COLORS['bg_dark'], highlightthickness=0)
+        scrollbar = ttk.Scrollbar(main, orient=tk.VERTICAL, command=canvas.yview)
+        self.pred_scrollable = ttk.Frame(canvas)
+        
+        self.pred_scrollable.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=self.pred_scrollable, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        # Bind mousewheel
+        canvas.bind_all("<MouseWheel>", lambda e: canvas.yview_scroll(int(-1*(e.delta/120)), "units"))
+        
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        
+        content = self.pred_scrollable
+        
         # ========== HEADER ==========
-        header = ttk.Frame(main)
+        header = ttk.Frame(content)
         header.pack(fill=tk.X, padx=10, pady=10)
         
-        ttk.Label(header, text="📈 ML Price Predictions", font=get_font('subheading'),
+        ttk.Label(header, text="🤖 ML Price Prediction Engine", font=get_font('heading'),
                   foreground=COLORS['primary']).pack(side=tk.LEFT)
         
-        # Symbol Selector
-        ttk.Label(header, text="Symbol:", font=get_font('body')).pack(side=tk.LEFT, padx=(30, 5))
+        # Symbol Selector on right
+        selector_frame = ttk.Frame(header)
+        selector_frame.pack(side=tk.RIGHT)
+        
+        ttk.Label(selector_frame, text="Symbol:", font=get_font('body')).pack(side=tk.LEFT, padx=(0, 5))
         
         self.pred_symbol_var = tk.StringVar(value="DANGCEM")
-        self.pred_symbol_combo = ttk.Combobox(header, textvariable=self.pred_symbol_var, width=15)
+        self.pred_symbol_combo = ttk.Combobox(selector_frame, textvariable=self.pred_symbol_var, width=12)
         self.pred_symbol_combo.pack(side=tk.LEFT, padx=5)
         self.pred_symbol_combo.bind("<<ComboboxSelected>>", lambda e: self._update_prediction())
         
-        predict_btn = ttk.Button(header, text="🔮 Predict", command=self._update_prediction)
-        predict_btn.pack(side=tk.LEFT, padx=10)
+        predict_btn = ttk.Button(selector_frame, text="🔮 Predict", command=self._update_prediction)
+        predict_btn.pack(side=tk.LEFT, padx=5)
         
-        train_btn = ttk.Button(header, text="🎯 Train Model", command=self._train_model)
+        train_btn = ttk.Button(selector_frame, text="🎯 Train", command=self._train_model)
         train_btn.pack(side=tk.LEFT)
         
-        # ========== PREDICTION RESULTS ==========
-        results_frame = ttk.LabelFrame(main, text="🎯 Prediction Results")
-        results_frame.pack(fill=tk.X, padx=10, pady=5)
+        # ========== MAIN PREDICTION SIGNAL ==========
+        signal_frame = ttk.LabelFrame(content, text="📊 Prediction Signal")
+        signal_frame.pack(fill=tk.X, padx=10, pady=5)
         
-        results_row = ttk.Frame(results_frame)
-        results_row.pack(fill=tk.X, padx=10, pady=10)
+        signal_content = ttk.Frame(signal_frame)
+        signal_content.pack(fill=tk.X, padx=15, pady=15)
+        
+        # Left: Big Direction Indicator
+        dir_frame = ttk.Frame(signal_content)
+        dir_frame.pack(side=tk.LEFT, padx=20)
         
         self.pred_results = {}
         
-        # Direction Card
-        card1 = ttk.Frame(results_row, relief='ridge', borderwidth=1, padding=10)
-        card1.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=5)
-        ttk.Label(card1, text="📊 Direction", font=get_font('small'), foreground=COLORS['text_muted']).pack()
-        self.pred_results['direction'] = ttk.Label(card1, text="--", font=get_font('heading'))
+        ttk.Label(dir_frame, text="Direction", font=get_font('small'), foreground=COLORS['text_muted']).pack()
+        self.pred_results['direction'] = ttk.Label(dir_frame, text="--", font=('Helvetica', 48, 'bold'))
         self.pred_results['direction'].pack()
+        self.pred_results['direction_icon'] = ttk.Label(dir_frame, text="", font=('Helvetica', 24))
+        self.pred_results['direction_icon'].pack()
         
-        # Confidence Card
-        card2 = ttk.Frame(results_row, relief='ridge', borderwidth=1, padding=10)
-        card2.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=5)
-        ttk.Label(card2, text="💪 Confidence", font=get_font('small'), foreground=COLORS['text_muted']).pack()
-        self.pred_results['confidence'] = ttk.Label(card2, text="--", font=get_font('subheading'))
+        # Center: Probability Distribution
+        prob_frame = ttk.Frame(signal_content)
+        prob_frame.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=20)
+        
+        ttk.Label(prob_frame, text="Probability Distribution", font=get_font('body'), 
+                  foreground=COLORS['text_secondary']).pack(anchor=tk.W)
+        
+        # UP probability bar
+        up_row = ttk.Frame(prob_frame)
+        up_row.pack(fill=tk.X, pady=3)
+        ttk.Label(up_row, text="📈 UP  ", font=get_font('small'), foreground=COLORS['gain'], width=8).pack(side=tk.LEFT)
+        self.pred_results['prob_up_bar'] = ttk.Progressbar(up_row, length=200, mode='determinate', 
+                                                           style='success.Horizontal.TProgressbar')
+        self.pred_results['prob_up_bar'].pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+        self.pred_results['prob_up'] = ttk.Label(up_row, text="0%", font=get_font('small'), 
+                                                 foreground=COLORS['gain'], width=6)
+        self.pred_results['prob_up'].pack(side=tk.RIGHT)
+        
+        # FLAT probability bar
+        flat_row = ttk.Frame(prob_frame)
+        flat_row.pack(fill=tk.X, pady=3)
+        ttk.Label(flat_row, text="↔️ FLAT", font=get_font('small'), foreground=COLORS['warning'], width=8).pack(side=tk.LEFT)
+        self.pred_results['prob_flat_bar'] = ttk.Progressbar(flat_row, length=200, mode='determinate',
+                                                              style='warning.Horizontal.TProgressbar')
+        self.pred_results['prob_flat_bar'].pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+        self.pred_results['prob_flat'] = ttk.Label(flat_row, text="0%", font=get_font('small'),
+                                                   foreground=COLORS['warning'], width=6)
+        self.pred_results['prob_flat'].pack(side=tk.RIGHT)
+        
+        # DOWN probability bar
+        down_row = ttk.Frame(prob_frame)
+        down_row.pack(fill=tk.X, pady=3)
+        ttk.Label(down_row, text="📉 DOWN", font=get_font('small'), foreground=COLORS['loss'], width=8).pack(side=tk.LEFT)
+        self.pred_results['prob_down_bar'] = ttk.Progressbar(down_row, length=200, mode='determinate',
+                                                              style='danger.Horizontal.TProgressbar')
+        self.pred_results['prob_down_bar'].pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+        self.pred_results['prob_down'] = ttk.Label(down_row, text="0%", font=get_font('small'),
+                                                   foreground=COLORS['loss'], width=6)
+        self.pred_results['prob_down'].pack(side=tk.RIGHT)
+        
+        # Right: Signal Strength Gauge
+        gauge_frame = ttk.Frame(signal_content)
+        gauge_frame.pack(side=tk.RIGHT, padx=20)
+        
+        ttk.Label(gauge_frame, text="Signal Strength", font=get_font('small'), 
+                  foreground=COLORS['text_muted']).pack()
+        self.pred_results['confidence'] = ttk.Label(gauge_frame, text="--", font=('Helvetica', 36, 'bold'),
+                                                    foreground=COLORS['primary'])
         self.pred_results['confidence'].pack()
+        self.pred_results['confidence_label'] = ttk.Label(gauge_frame, text="", font=get_font('small'),
+                                                          foreground=COLORS['text_muted'])
+        self.pred_results['confidence_label'].pack()
         
-        # Expected Return Card
-        card3 = ttk.Frame(results_row, relief='ridge', borderwidth=1, padding=10)
-        card3.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=5)
-        ttk.Label(card3, text="📈 Expected Return", font=get_font('small'), foreground=COLORS['text_muted']).pack()
-        self.pred_results['return'] = ttk.Label(card3, text="--", font=get_font('subheading'))
-        self.pred_results['return'].pack()
+        # ========== PRICE PREDICTION ==========
+        price_frame = ttk.LabelFrame(content, text="💰 Price Forecast")
+        price_frame.pack(fill=tk.X, padx=10, pady=5)
         
-        # Predicted Price Card
-        card4 = ttk.Frame(results_row, relief='ridge', borderwidth=1, padding=10)
-        card4.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=5)
-        ttk.Label(card4, text="💰 Predicted Price", font=get_font('small'), foreground=COLORS['text_muted']).pack()
-        self.pred_results['price'] = ttk.Label(card4, text="--", font=get_font('subheading'))
+        price_row = ttk.Frame(price_frame)
+        price_row.pack(fill=tk.X, padx=10, pady=10)
+        
+        # Current Price
+        curr_card = ttk.Frame(price_row, relief='ridge', borderwidth=1, padding=15)
+        curr_card.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=5)
+        ttk.Label(curr_card, text="Current Price", font=get_font('small'), foreground=COLORS['text_muted']).pack()
+        self.pred_results['current_price'] = ttk.Label(curr_card, text="₦--", font=get_font('heading'))
+        self.pred_results['current_price'].pack()
+        
+        # Arrow
+        arrow_frame = ttk.Frame(price_row, padding=10)
+        arrow_frame.pack(side=tk.LEFT)
+        self.pred_results['price_arrow'] = ttk.Label(arrow_frame, text="➡️", font=('Helvetica', 24))
+        self.pred_results['price_arrow'].pack()
+        
+        # Predicted Price
+        pred_card = ttk.Frame(price_row, relief='ridge', borderwidth=1, padding=15)
+        pred_card.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=5)
+        ttk.Label(pred_card, text="Predicted Price", font=get_font('small'), foreground=COLORS['text_muted']).pack()
+        self.pred_results['price'] = ttk.Label(pred_card, text="₦--", font=get_font('heading'))
         self.pred_results['price'].pack()
         
-        # Model Accuracy Card
-        card5 = ttk.Frame(results_row, relief='ridge', borderwidth=1, padding=10)
-        card5.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=5)
-        ttk.Label(card5, text="🎯 Model Accuracy", font=get_font('small'), foreground=COLORS['text_muted']).pack()
-        self.pred_results['accuracy'] = ttk.Label(card5, text="--", font=get_font('subheading'))
+        # Expected Return
+        ret_card = ttk.Frame(price_row, relief='ridge', borderwidth=1, padding=15)
+        ret_card.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=5)
+        ttk.Label(ret_card, text="Expected Return", font=get_font('small'), foreground=COLORS['text_muted']).pack()
+        self.pred_results['return'] = ttk.Label(ret_card, text="--", font=get_font('heading'))
+        self.pred_results['return'].pack()
+        
+        # Model Accuracy
+        acc_card = ttk.Frame(price_row, relief='ridge', borderwidth=1, padding=15)
+        acc_card.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=5)
+        ttk.Label(acc_card, text="Model Accuracy", font=get_font('small'), foreground=COLORS['text_muted']).pack()
+        self.pred_results['accuracy'] = ttk.Label(acc_card, text="--", font=get_font('heading'))
         self.pred_results['accuracy'].pack()
         
-        # ========== FEATURE IMPORTANCE ==========
-        features_frame = ttk.LabelFrame(main, text="📊 Top Feature Importance")
+        # ========== TRADE RECOMMENDATION ==========
+        trade_frame = ttk.LabelFrame(content, text="📈 Trade Recommendation")
+        trade_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        trade_content = ttk.Frame(trade_frame)
+        trade_content.pack(fill=tk.X, padx=15, pady=15)
+        
+        # Recommendation label
+        self.pred_results['recommendation'] = ttk.Label(
+            trade_content, text="Select a stock to get ML prediction",
+            font=get_font('subheading'), foreground=COLORS['text_secondary']
+        )
+        self.pred_results['recommendation'].pack(anchor=tk.W)
+        
+        # Recommendation details
+        self.pred_results['rec_details'] = ttk.Label(
+            trade_content, text="",
+            font=get_font('body'), foreground=COLORS['text_muted'], wraplength=800
+        )
+        self.pred_results['rec_details'].pack(anchor=tk.W, pady=(5, 0))
+        
+        # ========== TOP FEATURES ==========
+        features_outer = ttk.LabelFrame(content, text="🔬 Top Contributing Factors")
+        features_outer.pack(fill=tk.X, padx=10, pady=5)
+        
+        self.feature_bars_frame = ttk.Frame(features_outer)
+        self.feature_bars_frame.pack(fill=tk.X, padx=10, pady=10)
+        
+        # Pre-create 5 feature bar rows
+        self.feature_bars = []
+        for i in range(5):
+            row = ttk.Frame(self.feature_bars_frame)
+            row.pack(fill=tk.X, pady=3)
+            
+            name_lbl = ttk.Label(row, text=f"Feature {i+1}", font=get_font('small'), width=25, anchor=tk.W)
+            name_lbl.pack(side=tk.LEFT)
+            
+            bar = ttk.Progressbar(row, length=150, mode='determinate')
+            bar.pack(side=tk.LEFT, padx=10)
+            
+            val_lbl = ttk.Label(row, text="0.00", font=get_font('small'), foreground=COLORS['text_muted'], width=10)
+            val_lbl.pack(side=tk.LEFT)
+            
+            imp_lbl = ttk.Label(row, text="0%", font=get_font('small'), foreground=COLORS['primary'], width=6)
+            imp_lbl.pack(side=tk.RIGHT)
+            
+            self.feature_bars.append({'name': name_lbl, 'bar': bar, 'value': val_lbl, 'importance': imp_lbl})
+        
+        # ========== MODEL INFO ==========
+        info_frame = ttk.LabelFrame(content, text="ℹ️ Model Information")
+        info_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        info_row = ttk.Frame(info_frame)
+        info_row.pack(fill=tk.X, padx=10, pady=10)
+        
+        info_items = [
+            ('model_type', '🧠 Model', 'XGBoost'),
+            ('features_count', '📊 Features', '77'),
+            ('thresholds', '📏 Thresholds', '±1%'),
+            ('last_trained', '🕐 Last Trained', '--'),
+            ('prediction_time', '⏱️ Prediction', '--')
+        ]
+        
+        for key, label, default in info_items:
+            card = ttk.Frame(info_row, relief='ridge', borderwidth=1, padding=8)
+            card.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=3)
+            ttk.Label(card, text=label, font=get_font('small'), foreground=COLORS['text_muted']).pack()
+            self.pred_results[key] = ttk.Label(card, text=default, font=get_font('small'))
+            self.pred_results[key].pack()
+        
+        # ========== FULL FEATURE IMPORTANCE (Expandable) ==========
+        features_frame = ttk.LabelFrame(content, text="📊 All Feature Importance")
         features_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
         
         # Treeview for features
-        cols = ('Feature', 'Importance')
-        self.features_tree = ttk.Treeview(features_frame, columns=cols, show='headings', height=10)
+        cols = ('Rank', 'Feature', 'Importance', 'Current Value')
+        self.features_tree = ttk.Treeview(features_frame, columns=cols, show='headings', height=8)
         
+        widths = {'Rank': 50, 'Feature': 200, 'Importance': 100, 'Current Value': 120}
         for col in cols:
             self.features_tree.heading(col, text=col)
-            self.features_tree.column(col, width=200 if col == 'Feature' else 100)
+            self.features_tree.column(col, width=widths.get(col, 100))
         
-        scrollbar = ttk.Scrollbar(features_frame, orient=tk.VERTICAL, command=self.features_tree.yview)
-        self.features_tree.configure(yscrollcommand=scrollbar.set)
+        scrollbar2 = ttk.Scrollbar(features_frame, orient=tk.VERTICAL, command=self.features_tree.yview)
+        self.features_tree.configure(yscrollcommand=scrollbar2.set)
         
         self.features_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        scrollbar2.pack(side=tk.RIGHT, fill=tk.Y)
         
         # ========== STATUS ==========
-        status_frame = ttk.Frame(main)
+        status_frame = ttk.Frame(content)
         status_frame.pack(fill=tk.X, padx=10, pady=5)
         
-        self.pred_status = ttk.Label(status_frame, text="Select a symbol and click Predict",
+        self.pred_status = ttk.Label(status_frame, text="🔮 Select a symbol and click Predict to get ML forecast",
                                      font=get_font('small'), foreground=COLORS['text_muted'])
         self.pred_status.pack(side=tk.LEFT)
     
@@ -518,43 +682,126 @@ class MLIntelligenceTab:
         threading.Thread(target=predict, daemon=True).start()
     
     def _display_prediction(self, result: Dict):
-        """Display prediction results."""
+        """Display prediction results in enhanced UI."""
         logger.info(f"Displaying prediction result: {result}")
         
         if not result.get('success'):
             error_msg = result.get('error', 'Unknown')
             logger.error(f"Prediction not successful: {error_msg}")
-            self.pred_status.config(text=f"Prediction failed: {error_msg}")
+            self.pred_status.config(text=f"❌ Prediction failed: {error_msg}")
             return
         
         try:
-            # Direction
+            symbol = result.get('symbol', '')
+            
+            # ========== DIRECTION ==========
             direction = result.get('direction', '--')
             dir_color = COLORS['gain'] if direction == 'UP' else COLORS['loss'] if direction == 'DOWN' else COLORS['warning']
+            dir_icon = "📈" if direction == 'UP' else "📉" if direction == 'DOWN' else "↔️"
+            
             self.pred_results['direction'].config(text=direction, foreground=dir_color)
+            self.pred_results['direction_icon'].config(text=dir_icon)
             
-            # Confidence
+            # ========== PROBABILITY DISTRIBUTION ==========
+            probs = result.get('probabilities', {})
+            prob_up = probs.get('up', 0) * 100
+            prob_flat = probs.get('flat', 0) * 100
+            prob_down = probs.get('down', 0) * 100
+            
+            self.pred_results['prob_up_bar']['value'] = prob_up
+            self.pred_results['prob_up'].config(text=f"{prob_up:.1f}%")
+            
+            self.pred_results['prob_flat_bar']['value'] = prob_flat
+            self.pred_results['prob_flat'].config(text=f"{prob_flat:.1f}%")
+            
+            self.pred_results['prob_down_bar']['value'] = prob_down
+            self.pred_results['prob_down'].config(text=f"{prob_down:.1f}%")
+            
+            # ========== SIGNAL STRENGTH ==========
             conf = result.get('confidence', 0)
-            self.pred_results['confidence'].config(text=f"{conf:.1f}%")
+            conf_color = COLORS['gain'] if conf > 60 else COLORS['warning'] if conf > 40 else COLORS['loss']
+            conf_label = "STRONG" if conf > 70 else "MODERATE" if conf > 50 else "WEAK"
             
-            # Expected return
-            ret = result.get('expected_return', 0)
-            ret_color = COLORS['gain'] if ret > 0 else COLORS['loss'] if ret < 0 else COLORS['text_primary']
-            self.pred_results['return'].config(text=f"{ret:+.2f}%", foreground=ret_color)
+            self.pred_results['confidence'].config(text=f"{conf:.1f}%", foreground=conf_color)
+            self.pred_results['confidence_label'].config(text=conf_label)
             
-            # Predicted price
+            # ========== PRICE FORECAST ==========
+            current_price = result.get('current_price', 0)
             pred_price = result.get('predicted_price', 0)
-            self.pred_results['price'].config(text=f"₦{pred_price:,.2f}")
+            expected_ret = result.get('expected_return', 0)
+            
+            self.pred_results['current_price'].config(text=f"₦{current_price:,.2f}")
+            self.pred_results['price'].config(text=f"₦{pred_price:,.2f}", foreground=dir_color)
+            
+            # Price arrow
+            arrow = "📈" if expected_ret > 0 else "📉" if expected_ret < 0 else "➡️"
+            self.pred_results['price_arrow'].config(text=arrow)
+            
+            # Return
+            ret_color = COLORS['gain'] if expected_ret > 0 else COLORS['loss'] if expected_ret < 0 else COLORS['warning']
+            self.pred_results['return'].config(text=f"{expected_ret:+.2f}%", foreground=ret_color)
             
             # Model accuracy
             acc = result.get('model_accuracy', 0)
-            self.pred_results['accuracy'].config(text=f"{acc:.1f}%")
+            acc_color = COLORS['gain'] if acc > 60 else COLORS['warning'] if acc > 45 else COLORS['loss']
+            self.pred_results['accuracy'].config(text=f"{acc:.1f}%", foreground=acc_color)
             
-            # Feature importance
-            importance = self.ml_engine.get_feature_importance(result.get('symbol', ''))
-            self._display_feature_importance(importance)
+            # ========== TRADE RECOMMENDATION ==========
+            if direction == 'UP' and conf > 60:
+                rec_text = f"🟢 BULLISH - Consider BUYING {symbol}"
+                rec_details = f"Model predicts {expected_ret:+.2f}% upside with {conf:.1f}% confidence. Price target: ₦{pred_price:,.2f}"
+                rec_color = COLORS['gain']
+            elif direction == 'DOWN' and conf > 60:
+                rec_text = f"🔴 BEARISH - Consider SELLING {symbol}"
+                rec_details = f"Model predicts {abs(expected_ret):.2f}% downside with {conf:.1f}% confidence. Potential risk: ₦{pred_price:,.2f}"
+                rec_color = COLORS['loss']
+            elif conf < 40:
+                rec_text = f"⚪ LOW CONFIDENCE - Wait for clearer signal"
+                rec_details = f"Model confidence is only {conf:.1f}%. Consider waiting for a stronger signal before trading."
+                rec_color = COLORS['text_muted']
+            else:
+                rec_text = f"🟡 NEUTRAL - {symbol} expected to trade sideways"
+                rec_details = f"Model expects minimal price movement ({expected_ret:+.2f}%). Consider theta strategies or wait."
+                rec_color = COLORS['warning']
             
-            self.pred_status.config(text=f"Prediction complete at {datetime.now().strftime('%H:%M:%S')}")
+            self.pred_results['recommendation'].config(text=rec_text, foreground=rec_color)
+            self.pred_results['rec_details'].config(text=rec_details)
+            
+            # ========== TOP FEATURES (Visual bars) ==========
+            top_features = result.get('top_features', [])
+            max_importance = max([f.get('importance', 0) for f in top_features], default=1)
+            
+            for i, bar_row in enumerate(self.feature_bars):
+                if i < len(top_features):
+                    feat = top_features[i]
+                    name = feat.get('name', '').replace('_', ' ').title()
+                    value = feat.get('value', 0)
+                    importance = feat.get('importance', 0)
+                    
+                    bar_row['name'].config(text=name[:25])
+                    bar_row['bar']['value'] = (importance / max_importance * 100) if max_importance > 0 else 0
+                    bar_row['value'].config(text=f"{value:.2f}")
+                    bar_row['importance'].config(text=f"{importance*100:.1f}%")
+                else:
+                    bar_row['name'].config(text="--")
+                    bar_row['bar']['value'] = 0
+                    bar_row['value'].config(text="--")
+                    bar_row['importance'].config(text="--")
+            
+            # ========== MODEL INFO ==========
+            pred_time = result.get('prediction_time', '')
+            if pred_time:
+                try:
+                    pred_dt = datetime.fromisoformat(pred_time)
+                    self.pred_results['prediction_time'].config(text=pred_dt.strftime('%H:%M:%S'))
+                except:
+                    self.pred_results['prediction_time'].config(text='--')
+            
+            # ========== FEATURE IMPORTANCE TABLE ==========
+            importance = self.ml_engine.get_feature_importance(symbol)
+            self._display_feature_importance(importance, result.get('top_features', []))
+            
+            self.pred_status.config(text=f"✅ {symbol} prediction complete at {datetime.now().strftime('%H:%M:%S')}")
             logger.info("Prediction display complete")
             
         except Exception as e:
@@ -563,17 +810,30 @@ class MLIntelligenceTab:
             traceback.print_exc()
             self.pred_status.config(text=f"Display error: {e}")
     
-    def _display_feature_importance(self, importance: Dict[str, float]):
-        """Display feature importance in tree."""
+    def _display_feature_importance(self, importance: Dict[str, float], top_features: List[Dict] = None):
+        """Display feature importance in tree with extended info."""
         # Clear existing
         for item in self.features_tree.get_children():
             self.features_tree.delete(item)
         
-        # Sort by importance
-        sorted_features = sorted(importance.items(), key=lambda x: x[1], reverse=True)[:15]
+        # Create value lookup from top_features
+        value_lookup = {}
+        if top_features:
+            for f in top_features:
+                value_lookup[f.get('name', '')] = f.get('value', 0)
         
-        for feature, imp in sorted_features:
-            self.features_tree.insert('', 'end', values=(feature, f"{imp:.4f}"))
+        # Sort by importance
+        sorted_features = sorted(importance.items(), key=lambda x: x[1], reverse=True)[:20]
+        
+        for rank, (feature, imp) in enumerate(sorted_features, 1):
+            value = value_lookup.get(feature, '--')
+            value_str = f"{value:.2f}" if isinstance(value, (int, float)) else str(value)
+            self.features_tree.insert('', 'end', values=(
+                f"#{rank}",
+                feature.replace('_', ' ').title(),
+                f"{imp*100:.2f}%",
+                value_str
+            ))
     
     def _train_model(self):
         """Train model for selected symbol."""
