@@ -191,11 +191,26 @@ class PathwaySynthesizer:
         
         try:
             if self.ml_engine and self.ml_engine.predictor:
-                prediction = self.ml_engine.predictor.predict(symbol)
-                if prediction:
-                    signals['direction'] = prediction.get('predicted_direction', 0)
-                    signals['confidence'] = prediction.get('confidence', 0.5)
-                    signals['prediction'] = prediction
+                # Get OHLCV data for prediction
+                import pandas as pd
+                result = self.db.conn.execute("""
+                    SELECT datetime, open, high, low, close, volume
+                    FROM intraday_ohlcv
+                    WHERE symbol = ?
+                    ORDER BY datetime DESC
+                    LIMIT 100
+                """, [symbol]).fetchall()
+                
+                if result and len(result) >= 20:
+                    df = pd.DataFrame(result, columns=['datetime', 'open', 'high', 'low', 'close', 'volume'])
+                    df = df.sort_values('datetime').reset_index(drop=True)
+                    
+                    prediction = self.ml_engine.predictor.predict(df, symbol)
+                    if prediction and prediction.get('success'):
+                        # direction_code is -1, 0, or 1
+                        signals['direction'] = prediction.get('direction_code', 0)
+                        signals['confidence'] = prediction.get('confidence', 50) / 100
+                        signals['prediction'] = prediction
         except Exception as e:
             logger.warning(f"ML signal error for {symbol}: {e}")
         
