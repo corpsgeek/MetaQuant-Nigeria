@@ -1015,6 +1015,13 @@ class PCAAnalysisTab:
         # Exposure table
         self._update_exposure_table()
         
+        # Update symbol dropdown for Stock Analysis tab
+        if hasattr(pca, '_symbols') and pca._symbols:
+            symbols = sorted(pca._symbols)
+            self.symbol_combo['values'] = symbols
+            if symbols and not self.symbol_var.get():
+                self.symbol_combo.current(0)
+        
         # Update chart
         if MATPLOTLIB_AVAILABLE:
             self._update_chart()
