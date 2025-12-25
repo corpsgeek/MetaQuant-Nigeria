@@ -5,6 +5,16 @@ from pathlib import Path
 from dataclasses import dataclass
 from typing import Optional
 
+# Load .env file
+try:
+    from dotenv import load_dotenv
+    env_path = Path(__file__).parent / '.env'
+    if not env_path.exists():
+        env_path = Path(__file__).parent / '.ENV'  # Try uppercase
+    load_dotenv(env_path)
+except ImportError:
+    pass  # dotenv not installed, rely on system env vars
+
 
 @dataclass
 class Config:
