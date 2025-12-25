@@ -268,12 +268,14 @@ class PathwaySynthesizer:
             if result and result[0]:
                 sector = result[0]
                 
-                # Get sector performance from fundamentals
+                # Get sector performance from fundamentals using symbol
                 sector_stocks = self.db.conn.execute("""
                     SELECT fs.change_percent
                     FROM fundamental_snapshots fs
-                    JOIN stocks s ON fs.stock_id = s.id
-                    WHERE s.sector = ? AND fs.snapshot_date = (
+                    WHERE fs.symbol IN (
+                        SELECT symbol FROM stocks WHERE sector = ?
+                    )
+                    AND fs.snapshot_date = (
                         SELECT MAX(snapshot_date) FROM fundamental_snapshots
                     )
                 """, [sector]).fetchall()
@@ -281,7 +283,7 @@ class PathwaySynthesizer:
                 if sector_stocks:
                     changes = [s[0] for s in sector_stocks if s[0] is not None]
                     if changes:
-                        signals['sector_momentum'] = np.clip(np.mean(changes) / 5, -1, 1)
+                        signals['sector_momentum'] = float(np.clip(np.mean(changes) / 5, -1, 1))
                 
         except Exception as e:
             logger.warning(f"Sector signal error for {symbol}: {e}")
@@ -299,11 +301,12 @@ class PathwaySynthesizer:
         }
         
         try:
+            # Get fundamental data using symbol directly
             result = self.db.conn.execute("""
                 SELECT fs.pe_ratio, fs.eps, fs.dividend_yield, fs.market_cap,
                        s.sector
                 FROM fundamental_snapshots fs
-                JOIN stocks s ON fs.stock_id = s.id
+                JOIN stocks s ON fs.symbol = s.symbol
                 WHERE s.symbol = ?
                 ORDER BY fs.snapshot_date DESC LIMIT 1
             """, [symbol]).fetchone()
@@ -317,14 +320,14 @@ class PathwaySynthesizer:
                     sector_pe = self.db.conn.execute("""
                         SELECT AVG(fs.pe_ratio)
                         FROM fundamental_snapshots fs
-                        JOIN stocks s ON fs.stock_id = s.id
+                        JOIN stocks s ON fs.symbol = s.symbol
                         WHERE s.sector = ? AND fs.pe_ratio > 0
                         AND fs.snapshot_date = (SELECT MAX(snapshot_date) FROM fundamental_snapshots)
                     """, [sector]).fetchone()
                     
                     if sector_pe and sector_pe[0]:
                         # Positive if undervalued vs sector
-                        signals['pe_signal'] = np.clip((sector_pe[0] - pe) / sector_pe[0], -1, 1)
+                        signals['pe_signal'] = float(np.clip((sector_pe[0] - pe) / sector_pe[0], -1, 1))
                 
                 # EPS signal
                 if eps:
@@ -335,7 +338,7 @@ class PathwaySynthesizer:
                     signals['dividend_signal'] = min(div_yield / 10, 1)
                 
                 # Combined value score
-                signals['value_score'] = (
+                signals['value_score'] = float(
                     signals['pe_signal'] * 0.5 +
                     signals['eps_momentum'] * 0.3 +
                     signals['dividend_signal'] * 0.2
@@ -356,12 +359,12 @@ class PathwaySynthesizer:
         }
         
         try:
-            # Get recent disclosures for this symbol
+            # Get recent disclosures for this symbol (DuckDB date syntax)
             result = self.db.conn.execute("""
                 SELECT impact_score, created_at
                 FROM corporate_disclosures
                 WHERE company_symbol = ?
-                AND created_at >= datetime('now', '-30 days')
+                AND created_at >= CURRENT_DATE - INTERVAL '30 days'
                 ORDER BY created_at DESC
             """, [symbol]).fetchall()
             
@@ -369,9 +372,9 @@ class PathwaySynthesizer:
                 signals['disclosure_count'] = len(result)
                 impact_scores = [r[0] for r in result if r[0] is not None]
                 if impact_scores:
-                    signals['avg_impact_score'] = np.mean(impact_scores)
+                    signals['avg_impact_score'] = float(np.mean(impact_scores))
                     # Normalize to -1 to 1 (impact scores are typically -2 to +2)
-                    signals['recent_impact'] = np.clip(signals['avg_impact_score'] / 2, -1, 1)
+                    signals['recent_impact'] = float(np.clip(signals['avg_impact_score'] / 2, -1, 1))
                     
         except Exception as e:
             logger.warning(f"Disclosure signal error for {symbol}: {e}")
@@ -405,8 +408,8 @@ class PathwaySynthesizer:
                 gains = np.where(deltas > 0, deltas, 0)
                 losses = np.where(deltas < 0, -deltas, 0)
                 
-                avg_gain = np.mean(gains[-14:])
-                avg_loss = np.mean(losses[-14:])
+                avg_gain = float(np.mean(gains[-14:]))
+                avg_loss = float(np.mean(losses[-14:]))
                 
                 if avg_loss > 0:
                     rs = avg_gain / avg_loss
@@ -428,17 +431,17 @@ class PathwaySynthesizer:
                 
                 # Simple trend signal (SMA crossover)
                 if len(closes) >= 20:
-                    sma_10 = np.mean(closes[-10:])
-                    sma_20 = np.mean(closes[-20:])
-                    signals['trend_signal'] = np.clip((sma_10 - sma_20) / sma_20 * 20, -1, 1)
+                    sma_10 = float(np.mean(closes[-10:]))
+                    sma_20 = float(np.mean(closes[-20:]))
+                    signals['trend_signal'] = float(np.clip((sma_10 - sma_20) / sma_20 * 20, -1, 1))
                 
-                # MACD signal
+                # MACD signal - simplified to avoid scalar issues
                 if len(closes) >= 26:
                     ema_12 = self._ema(closes, 12)
                     ema_26 = self._ema(closes, 26)
-                    macd = ema_12 - ema_26
-                    signal_line = self._ema(macd[-9:], 9) if len(macd) >= 9 else macd[-1]
-                    signals['macd_signal'] = np.clip((macd[-1] - signal_line) / abs(signal_line) if signal_line != 0 else 0, -1, 1)
+                    macd_val = ema_12 - ema_26
+                    # Simple signal based on MACD vs zero
+                    signals['macd_signal'] = float(np.clip(macd_val / (abs(ema_26) * 0.02 + 0.001), -1, 1))
                     
         except Exception as e:
             logger.warning(f"Technical signal error for {symbol}: {e}")
@@ -446,14 +449,14 @@ class PathwaySynthesizer:
         return signals
     
     def _ema(self, data: np.ndarray, period: int) -> float:
-        """Calculate Exponential Moving Average."""
+        """Calculate Exponential Moving Average - returns latest value."""
         if len(data) < period:
-            return np.mean(data)
+            return float(np.mean(data))
         
         multiplier = 2 / (period + 1)
-        ema = data[0]
+        ema = float(data[0])
         for price in data[1:]:
-            ema = (price - ema) * multiplier + ema
+            ema = (float(price) - ema) * multiplier + ema
         return ema
     
     def _generate_horizon_prediction(
