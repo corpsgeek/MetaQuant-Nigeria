@@ -70,20 +70,20 @@ class MetaQuantDaemon:
             name='Market Open Alert'
         )
         
-        # Intraday scan (every 15 min from 10:15 to 14:00)
+        # Market updates (every 30 min from 10:30 to 13:30)
         self.scheduler.add_job(
-            self.jobs.intraday_scan,
-            CronTrigger(minute='15,30,45,0', hour='10-13', timezone=NGX_TZ),
-            id='intraday_scan',
-            name='Intraday Flow Scan'
+            self.jobs.market_open,  # Same as market_open for updates
+            CronTrigger(minute='30', hour='10-13', timezone=NGX_TZ),
+            id='market_update_30',
+            name='Market Update (30min)'
         )
         
-        # Midday synthesis (12:00 WAT)
+        # Midday synthesis (hourly at 11:00, 12:00, 13:00)
         self.scheduler.add_job(
             self.jobs.midday_synthesis,
-            CronTrigger(hour=12, minute=0, timezone=NGX_TZ),
+            CronTrigger(minute=0, hour='11-13', timezone=NGX_TZ),
             id='midday_synthesis',
-            name='Midday Pathway Synthesis'
+            name='Midday Synthesis (Hourly)'
         )
         
         # Pre-close positioning (14:00 WAT)
