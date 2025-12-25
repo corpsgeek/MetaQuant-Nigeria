@@ -5,13 +5,19 @@ Handles connection management, schema migrations, and core database operations.
 
 import os
 import duckdb
+import threading
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 
 
 class DatabaseManager:
-    """Manages DuckDB database connections and operations."""
+    """Manages DuckDB database connections and operations.
+    
+    Thread-safe implementation using a lock for all database operations.
+    DuckDB doesn't support true concurrent connections to the same file,
+    so we use a single connection with lock-based synchronization.
+    """
     
     def __init__(self, db_path: Optional[str] = None):
         """
@@ -29,19 +35,52 @@ class DatabaseManager:
         
         self.db_path = db_path
         self._conn: Optional[duckdb.DuckDBPyConnection] = None
+        self._lock = threading.RLock()  # Reentrant lock for nested calls
     
     @property
     def conn(self) -> duckdb.DuckDBPyConnection:
-        """Get or create database connection."""
-        if self._conn is None:
-            self._conn = duckdb.connect(self.db_path)
-        return self._conn
+        """Get or create database connection (thread-safe)."""
+        with self._lock:
+            if self._conn is None:
+                self._conn = duckdb.connect(self.db_path)
+            return self._conn
+    
+    def execute(self, query: str, params: list = None):
+        """Execute a query with thread-safe locking."""
+        with self._lock:
+            if params:
+                return self.conn.execute(query, params)
+            return self.conn.execute(query)
+    
+    def fetchone(self, query: str, params: list = None):
+        """Execute and fetch one result with thread-safe locking."""
+        with self._lock:
+            if params:
+                result = self.conn.execute(query, params)
+            else:
+                result = self.conn.execute(query)
+            return result.fetchone()
+    
+    def fetchall(self, query: str, params: list = None):
+        """Execute and fetch all results with thread-safe locking."""
+        with self._lock:
+            if params:
+                result = self.conn.execute(query, params)
+            else:
+                result = self.conn.execute(query)
+            return result.fetchall()
+    
+    def commit(self):
+        """Commit transaction with thread-safe locking."""
+        with self._lock:
+            self.conn.commit()
     
     def close(self):
         """Close the database connection."""
-        if self._conn is not None:
-            self._conn.close()
-            self._conn = None
+        with self._lock:
+            if self._conn is not None:
+                self._conn.close()
+                self._conn = None
     
     def initialize(self):
         """Initialize the database schema."""

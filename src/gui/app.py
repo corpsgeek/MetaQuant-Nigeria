@@ -107,8 +107,8 @@ class MetaQuantApp:
         self._bind_events()
         
         # Start background data sync (every 5 minutes)
-        # TEMPORARILY DISABLED - causing segfaults with DuckDB
-        # self._start_background_sync()
+        # Now thread-safe with RLock in DatabaseManager
+        self._start_background_sync()
     
     def _setup_ui(self):
         """Setup the main UI layout."""
