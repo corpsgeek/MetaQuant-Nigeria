@@ -35,6 +35,9 @@ class RiskDashboardTab:
         main = ttk.Frame(self.frame)
         main.pack(fill=tk.BOTH, expand=True, padx=15, pady=10)
         
+        # Ensure custom holdings table exists
+        self._init_custom_holdings_table()
+        
         # Header
         header = ttk.Frame(main)
         header.pack(fill=tk.X, pady=(0, 10))
@@ -42,7 +45,20 @@ class RiskDashboardTab:
         ttk.Label(header, text="⚠️ Risk Dashboard",
                  font=get_font('heading'), foreground=COLORS['primary']).pack(side=tk.LEFT)
         
+        # Right side buttons
         ttk.Button(header, text="🔄 Refresh", command=self._refresh_all).pack(side=tk.RIGHT)
+        ttk.Button(header, text="➕ Add Holding", command=self._add_holding_dialog).pack(side=tk.RIGHT, padx=5)
+        
+        # Portfolio source selector
+        source_frame = ttk.Frame(header)
+        source_frame.pack(side=tk.RIGHT, padx=20)
+        
+        ttk.Label(source_frame, text="Portfolio:").pack(side=tk.LEFT)
+        self.portfolio_source_var = tk.StringVar(value="CUSTOM")
+        ttk.Radiobutton(source_frame, text="📋 Custom", variable=self.portfolio_source_var,
+                       value="CUSTOM", command=self._refresh_all).pack(side=tk.LEFT, padx=5)
+        ttk.Radiobutton(source_frame, text="📝 Paper Trades", variable=self.portfolio_source_var,
+                       value="PAPER", command=self._refresh_all).pack(side=tk.LEFT, padx=5)
         
         # === HERO RISK METRICS ===
         self._create_hero_metrics(main)
@@ -222,9 +238,14 @@ class RiskDashboardTab:
             logger.error(f"Failed to calculate risk metrics: {e}")
     
     def _get_positions(self) -> List[Dict]:
-        """Get current portfolio positions."""
+        """Get current portfolio positions based on selected source."""
+        # Check portfolio source
+        source = getattr(self, 'portfolio_source_var', None)
+        if source and source.get() == "CUSTOM":
+            return self._get_custom_positions()
+        
+        # Default to paper trades
         try:
-            # paper_trades stores symbol directly, not stock_id
             result = self.db.conn.execute("""
                 SELECT s.symbol, s.name, s.sector, s.last_price, t.quantity, t.entry_price
                 FROM paper_trades t
@@ -383,3 +404,143 @@ class RiskDashboardTab:
         except Exception as e:
             logger.error(f"Failed to generate alerts: {e}")
             self.alerts_list.insert(tk.END, f"❌ Error: {e}")
+    
+    # ==================== CUSTOM PORTFOLIO METHODS ====================
+    
+    def _init_custom_holdings_table(self):
+        """Create custom holdings table if not exists."""
+        try:
+            self.db.conn.execute("""
+                CREATE TABLE IF NOT EXISTS custom_holdings (
+                    id INTEGER PRIMARY KEY,
+                    symbol TEXT NOT NULL,
+                    quantity INTEGER NOT NULL,
+                    entry_price FLOAT NOT NULL,
+                    entry_date DATE DEFAULT CURRENT_DATE,
+                    notes TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            self.db.conn.commit()
+        except Exception as e:
+            logger.error(f"Failed to create custom_holdings table: {e}")
+    
+    def _add_holding_dialog(self):
+        """Open dialog to add custom holding."""
+        from tkinter import simpledialog
+        
+        # Get stocks
+        try:
+            result = self.db.conn.execute(
+                "SELECT symbol, name, last_price FROM stocks WHERE is_active = TRUE ORDER BY symbol"
+            ).fetchall()
+            stocks = {f"{r[0]} - {r[1][:25]}": (r[0], float(r[2]) if r[2] else 0) for r in result}
+        except:
+            stocks = {}
+        
+        if not stocks:
+            from tkinter import messagebox
+            messagebox.showwarning("Add Holding", "No stocks available")
+            return
+        
+        # Create dialog
+        dialog = tk.Toplevel(self.parent)
+        dialog.title("Add Portfolio Holding")
+        dialog.geometry("400x280")
+        dialog.transient(self.parent)
+        dialog.grab_set()
+        
+        ttk.Label(dialog, text="Select Stock:").pack(pady=10)
+        stock_var = tk.StringVar()
+        stock_combo = ttk.Combobox(dialog, textvariable=stock_var,
+                                   values=list(stocks.keys()), width=45, state='readonly')
+        stock_combo.pack(pady=5)
+        
+        # Current price display
+        price_label = ttk.Label(dialog, text="Current Price: --", font=get_font('small'))
+        price_label.pack(pady=5)
+        
+        def update_price(event=None):
+            selected = stock_var.get()
+            if selected in stocks:
+                price = stocks[selected][1]
+                price_label.config(text=f"Current Price: ₦{price:,.2f}")
+        
+        stock_combo.bind("<<ComboboxSelected>>", update_price)
+        
+        ttk.Label(dialog, text="Quantity:").pack(pady=5)
+        qty_var = tk.StringVar()
+        ttk.Entry(dialog, textvariable=qty_var, width=20).pack()
+        
+        ttk.Label(dialog, text="Entry Price (₦):").pack(pady=5)
+        entry_price_var = tk.StringVar()
+        ttk.Entry(dialog, textvariable=entry_price_var, width=20).pack()
+        
+        def add():
+            from tkinter import messagebox
+            selected = stock_var.get()
+            if not selected:
+                messagebox.showwarning("Add Holding", "Please select a stock")
+                return
+            
+            try:
+                symbol = stocks[selected][0]
+                qty = int(qty_var.get())
+                entry_price = float(entry_price_var.get())
+                
+                if qty <= 0 or entry_price <= 0:
+                    messagebox.showwarning("Add Holding", "Quantity and price must be positive")
+                    return
+                
+                self.db.conn.execute("""
+                    INSERT INTO custom_holdings (symbol, quantity, entry_price)
+                    VALUES (?, ?, ?)
+                """, [symbol, qty, entry_price])
+                self.db.conn.commit()
+                
+                dialog.destroy()
+                self.portfolio_source_var.set("CUSTOM")
+                self._refresh_all()
+                messagebox.showinfo("Success", f"Added {qty} shares of {symbol} at ₦{entry_price:,.2f}")
+                
+            except ValueError:
+                messagebox.showerror("Error", "Invalid quantity or price")
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to add holding: {e}")
+        
+        ttk.Button(dialog, text="Add Holding", command=add).pack(pady=20)
+    
+    def _get_custom_positions(self) -> List[Dict]:
+        """Get custom portfolio positions."""
+        try:
+            result = self.db.conn.execute("""
+                SELECT h.symbol, s.name, s.sector, s.last_price, h.quantity, h.entry_price
+                FROM custom_holdings h
+                JOIN stocks s ON h.symbol = s.symbol
+            """).fetchall()
+            
+            positions = []
+            for symbol, name, sector, price, qty, entry in result:
+                price = float(price) if price else 0.0
+                qty = int(qty) if qty else 0
+                entry = float(entry) if entry else 0.0
+                
+                value = price * qty
+                cost = entry * qty
+                return_pct = ((price - entry) / entry) * 100 if entry > 0 else 0
+                
+                positions.append({
+                    'symbol': symbol,
+                    'name': name,
+                    'sector': sector or 'Unknown',
+                    'price': price,
+                    'quantity': qty,
+                    'value': value,
+                    'cost': cost,
+                    'return_pct': return_pct
+                })
+            
+            return positions
+        except Exception as e:
+            logger.error(f"Failed to get custom positions: {e}")
+            return []
