@@ -252,8 +252,11 @@ class MLIntelligenceTab:
     def _scan_all_predictions(self):
         """Scan all stocks for ML predictions."""
         if not self.ml_engine:
+            logger.warning("ML engine not available for scanning")
+            self.overview_cards['total'].config(text="No ML Engine")
             return
         
+        logger.info("Starting ML scan of all stocks...")
         self.overview_cards['total'].config(text="Scanning...")
         
         def scan():
@@ -262,6 +265,8 @@ class MLIntelligenceTab:
                 stocks = self.db.conn.execute(
                     "SELECT symbol, name, sector, last_price FROM stocks WHERE is_active = TRUE"
                 ).fetchall()
+                
+                logger.info(f"Scanning {len(stocks)} stocks for ML predictions")
                 
                 predictions = []
                 buy_count = sell_count = hold_count = 0
@@ -290,11 +295,13 @@ class MLIntelligenceTab:
                                 'signal': signal,
                                 'score': pred.get('predicted_change', 0),
                                 'confidence': pred.get('confidence', 0),
-                                'price': price or 0,
-                                'target': price * (1 + pred.get('predicted_change', 0) / 100) if price else 0
+                                'price': float(price) if price else 0,
+                                'target': float(price) * (1 + pred.get('predicted_change', 0) / 100) if price else 0
                             })
-                    except:
-                        pass
+                    except Exception as e:
+                        logger.debug(f"Prediction failed for {symbol}: {e}")
+                
+                logger.info(f"ML scan complete: {len(predictions)} predictions, BUY={buy_count}, SELL={sell_count}, HOLD={hold_count}")
                 
                 # Sort by score
                 predictions.sort(key=lambda x: x['score'], reverse=True)
@@ -2059,14 +2066,17 @@ class MLIntelligenceTab:
     
     def _scan_patterns(self):
         """Scan all stocks for chart patterns."""
+        logger.info("Starting pattern scan...")
         self.pattern_cards['total'].config(text="Scanning...")
         
         def scan():
             try:
                 from src.ml.pattern_recognition import PatternRecognitionEngine
                 engine = PatternRecognitionEngine(self.db)
+                logger.info("Pattern engine initialized, scanning stocks...")
                 patterns = engine.scan_all_stocks(min_days=30)
                 
+                logger.info(f"Pattern scan complete: found {len(patterns)} patterns")
                 self.all_patterns = patterns
                 
                 # Count by bias
@@ -2080,7 +2090,8 @@ class MLIntelligenceTab:
                 ))
                 
             except Exception as e:
-                logger.error(f"Failed to scan patterns: {e}")
+                import traceback
+                logger.error(f"Failed to scan patterns: {e}\n{traceback.format_exc()}")
                 self.frame.after(0, lambda: self.pattern_cards['total'].config(text="Error"))
         
         import threading
