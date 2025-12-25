@@ -149,8 +149,18 @@ class WatchlistTab:
         self.items_tree.tag_configure('loss', foreground=COLORS['loss'])
         self.items_tree.tag_configure('alert_triggered', background='#2d1b1b')
         
-        # Bind click for action column
+        # Bind click for action column and double-click for analysis
         self.items_tree.bind('<Button-1>', self._on_item_click)
+        self.items_tree.bind('<Double-1>', self._on_item_double_click)
+    
+    def _on_item_double_click(self, event):
+        """Open stock analysis modal on double-click."""
+        selection = self.items_tree.selection()
+        if selection:
+            item = self.items_tree.item(selection[0])
+            symbol = item['values'][0]  # Symbol is column 0
+            from src.gui.components.stock_analysis_modal import show_stock_analysis
+            show_stock_analysis(self.parent, self.db, symbol)
     
     # ==================== WATCHLIST MANAGEMENT ====================
     

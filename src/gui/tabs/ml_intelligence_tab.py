@@ -227,10 +227,22 @@ class MLIntelligenceTab:
         self.overview_tree.tag_configure('sell', foreground=COLORS['loss'])
         self.overview_tree.tag_configure('hold', foreground=COLORS['warning'])
         
+        # Double-click to open analysis modal
+        self.overview_tree.bind('<Double-1>', self._on_overview_double_click)
+        
         # Store all predictions for filtering
         self.all_predictions = []
         self.overview_sort_column = 'score'
         self.overview_sort_reverse = True
+    
+    def _on_overview_double_click(self, event):
+        """Open stock analysis modal on double-click."""
+        selection = self.overview_tree.selection()
+        if selection:
+            item = self.overview_tree.item(selection[0])
+            symbol = item['values'][1]  # Symbol is in column 1
+            from src.gui.components.stock_analysis_modal import show_stock_analysis
+            show_stock_analysis(self.parent, self.db, symbol, self.ml_engine)
     
     def _scan_all_predictions(self):
         """Scan all stocks for ML predictions."""

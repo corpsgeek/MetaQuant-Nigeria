@@ -712,13 +712,13 @@ class ScreenerTab:
         self._populate_results(self.current_results)
     
     def _on_stock_double_click(self, event):
-        """Handle double-click on stock."""
+        """Handle double-click on stock - open analysis modal."""
         selection = self.results_tree.selection()
         if selection:
             item = self.results_tree.item(selection[0])
             symbol = item['values'][0]
-            logger.info(f"Selected stock: {symbol}")
-            # TODO: Open stock detail modal
+            logger.info(f"Opening analysis for: {symbol}")
+            self._open_stock_analysis(symbol)
     
     def _on_click(self, event):
         """Handle click - check if on action column."""
@@ -730,13 +730,16 @@ class ScreenerTab:
                 if item:
                     values = self.results_tree.item(item, 'values')
                     symbol = values[0]
-                    self._analyze_stock(symbol)
+                    self._open_stock_analysis(symbol)
     
     def _analyze_stock(self, symbol: str):
-        """Open stock analysis."""
-        logger.info(f"Analyzing: {symbol}")
-        # TODO: Open analysis tab/modal
-        messagebox.showinfo("Analysis", f"Opening analysis for {symbol}...")
+        """Open stock analysis (alias for backward compatibility)."""
+        self._open_stock_analysis(symbol)
+    
+    def _open_stock_analysis(self, symbol: str):
+        """Open stock analysis modal."""
+        from src.gui.components.stock_analysis_modal import show_stock_analysis
+        show_stock_analysis(self.parent, self.db, symbol, self.ml_engine)
     
     def _export_results(self):
         """Export results to CSV."""
