@@ -215,26 +215,31 @@ class PCAAnalysisTab:
             self.variance_bars[factor] = (bar, pct_lbl)
     
     def _create_factor_returns_panel(self, parent):
-        """Create factor returns display."""
-        ret_frame = ttk.LabelFrame(parent, text="📉 Factor Returns (20-day)")
+        """Create factor returns display with multiple time periods."""
+        ret_frame = ttk.LabelFrame(parent, text="📉 Factor Returns")
         ret_frame.pack(fill=tk.X, pady=5)
         
         inner = ttk.Frame(ret_frame)
         inner.pack(fill=tk.X, padx=10, pady=10)
         
-        self.factor_return_labels = {}
         factors = ['Market', 'Size', 'Value', 'Momentum', 'Volatility']
+        periods = [('1D', 1), ('1W', 5), ('1M', 20)]
         
-        # Horizontal layout
-        for i, factor in enumerate(factors):
-            frame = ttk.Frame(inner)
-            frame.pack(side=tk.LEFT, padx=10)
+        # Header row
+        ttk.Label(inner, text="Factor", width=10, font=('Helvetica', 8, 'bold')).grid(row=0, column=0)
+        for i, (period_name, _) in enumerate(periods):
+            ttk.Label(inner, text=period_name, width=8, font=('Helvetica', 8, 'bold')).grid(row=0, column=i+1)
+        
+        # Factor rows
+        self.factor_return_labels = {}
+        for row, factor in enumerate(factors, 1):
+            ttk.Label(inner, text=factor, width=10, font=('Helvetica', 9)).grid(row=row, column=0, sticky='w')
             
-            ttk.Label(frame, text=factor, font=('Helvetica', 8)).pack()
-            ret_lbl = ttk.Label(frame, text="0.0%", font=('Helvetica', 11, 'bold'))
-            ret_lbl.pack()
-            
-            self.factor_return_labels[factor] = ret_lbl
+            self.factor_return_labels[factor] = {}
+            for col, (period_name, _) in enumerate(periods, 1):
+                lbl = ttk.Label(inner, text="-", width=8, font=('Helvetica', 9, 'bold'))
+                lbl.grid(row=row, column=col)
+                self.factor_return_labels[factor][period_name] = lbl
     
     def _create_exposure_panel(self, parent):
         """Create stock-factor exposure panel."""
@@ -336,23 +341,40 @@ class PCAAnalysisTab:
         ax.set_facecolor('#1a1a2e')
         
         # Plot cumulative returns for each factor
-        colors = ['#00d26a', '#17a2b8', '#ffc107', '#ff6b6b', '#7c3aed']
+        colors = ['#00ff88', '#00bfff', '#ffdd00', '#ff6688', '#aa77ff']
         factors = ['Market', 'Size', 'Value', 'Momentum', 'Volatility']
         
         recent = factor_returns.tail(window)
+        
+        # Normalize factor returns for better visibility
+        # Use z-score normalization so all lines are comparable
         for i, factor in enumerate(factors):
             if factor in recent.columns:
-                cumulative = (1 + recent[factor]).cumprod() - 1
-                ax.plot(range(len(cumulative)), cumulative * 100, 
-                       label=factor, color=colors[i], linewidth=2)
+                # Calculate cumulative returns (scaled)
+                cumulative = (1 + recent[factor]).cumprod()
+                # Normalize to start at 100
+                normalized = (cumulative / cumulative.iloc[0]) * 100 - 100
+                
+                ax.plot(range(len(normalized)), normalized, 
+                       label=f"{factor}", color=colors[i], linewidth=2.5,
+                       marker='o' if window <= 20 else None, markersize=3)
         
-        ax.axhline(y=0, color='white', linestyle='--', alpha=0.3)
-        ax.set_xlabel('Days', color='white')
-        ax.set_ylabel('Cumulative Return (%)', color='white')
-        ax.set_title(f'Factor Performance ({window}-day)', color='white', fontsize=12)
-        ax.legend(loc='upper left', facecolor='#2d2d4e', labelcolor='white')
-        ax.tick_params(colors='white')
-        ax.grid(True, alpha=0.2)
+        ax.axhline(y=0, color='white', linestyle='--', alpha=0.5, linewidth=1)
+        ax.set_xlabel('Days', color='white', fontsize=10)
+        ax.set_ylabel('Normalized Return (%)', color='white', fontsize=10)
+        ax.set_title(f'Factor Performance ({window}-day Trend)', color='white', fontsize=12, fontweight='bold')
+        
+        # Better legend
+        legend = ax.legend(loc='upper left', facecolor='#2d2d4e', 
+                           labelcolor='white', fontsize=9, framealpha=0.9)
+        legend.get_frame().set_edgecolor('white')
+        
+        ax.tick_params(colors='white', labelsize=9)
+        ax.grid(True, alpha=0.25, color='white', linestyle=':')
+        
+        # Add spines styling
+        for spine in ax.spines.values():
+            spine.set_color('#555555')
         
         self._figure.tight_layout()
         self._canvas.draw()
@@ -777,14 +799,21 @@ class PCAAnalysisTab:
             bar['value'] = min(pct * 5, 100)  # Scale for visibility
             lbl.config(text=f"{pct:.1f}%")
         
-        # Factor returns
+        # Factor returns - multiple periods
         factor_returns = pca.get_factor_returns()
-        if not factor_returns.empty and len(factor_returns) >= 20:
-            recent = factor_returns.tail(20).mean() * 100
-            for factor, lbl in self.factor_return_labels.items():
-                ret = recent.get(factor, 0)
-                color = COLORS['gain'] if ret > 0 else COLORS['loss']
-                lbl.config(text=f"{ret:+.1f}%", foreground=color)
+        if not factor_returns.empty:
+            periods = [('1D', 1), ('1W', 5), ('1M', 20)]
+            factors = ['Market', 'Size', 'Value', 'Momentum', 'Volatility']
+            
+            for factor in factors:
+                if factor in self.factor_return_labels and factor in factor_returns.columns:
+                    for period_name, days in periods:
+                        if len(factor_returns) >= days:
+                            ret = factor_returns[factor].tail(days).sum() * 100  # Cumulative
+                            if period_name in self.factor_return_labels[factor]:
+                                lbl = self.factor_return_labels[factor][period_name]
+                                color = COLORS['gain'] if ret > 0 else COLORS['loss']
+                                lbl.config(text=f"{ret:+.1f}%", foreground=color)
         
         # Exposure table
         self._update_exposure_table()
