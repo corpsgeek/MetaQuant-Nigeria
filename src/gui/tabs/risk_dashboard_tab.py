@@ -518,9 +518,10 @@ class RiskDashboardTab:
                     messagebox.showwarning("Add Holding", "Quantity and price must be positive")
                     return
                 
+                # Explicitly use nextval for ID to avoid NOT NULL constraint
                 self.db.conn.execute("""
-                    INSERT INTO custom_holdings (symbol, quantity, entry_price)
-                    VALUES (?, ?, ?)
+                    INSERT INTO custom_holdings (id, symbol, quantity, entry_price)
+                    VALUES (nextval('seq_custom_holdings'), ?, ?, ?)
                 """, [symbol, qty, entry_price])
                 self.db.conn.commit()
                 
