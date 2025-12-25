@@ -226,7 +226,7 @@ class RiskDashboardTab:
         try:
             result = self.db.conn.execute("""
                 SELECT s.symbol, s.name, s.sector, s.last_price, t.quantity, t.entry_price
-                FROM trades t
+                FROM paper_trades t
                 JOIN stocks s ON t.stock_id = s.id
                 WHERE t.status = 'OPEN'
             """).fetchall()
