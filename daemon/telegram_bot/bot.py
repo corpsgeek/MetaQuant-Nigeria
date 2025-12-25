@@ -34,6 +34,7 @@ class TelegramBot:
         self.app.add_handler(CommandHandler("summary", self.cmd_summary))
         self.app.add_handler(CommandHandler("top5", self.cmd_top5))
         self.app.add_handler(CommandHandler("status", self.cmd_status))
+        self.app.add_handler(CommandHandler("test", self.cmd_test))  # Test all jobs
         
         # Start polling
         await self.app.initialize()
@@ -166,3 +167,41 @@ Watchlist: {len(self.config.default_watchlist)} symbols
 Status: ✅ Running
         """
         await update.message.reply_html(status.strip())
+    
+    async def cmd_test(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /test command - Run all scheduled jobs for testing."""
+        await update.message.reply_text("🧪 Running ALL scheduled jobs for testing...")
+        
+        from scheduler.jobs import ScheduledJobs
+        jobs = ScheduledJobs(self.config, self)
+        
+        try:
+            await update.message.reply_text("1️⃣ Running overnight processing...")
+            await jobs.overnight_processing()
+            
+            await update.message.reply_text("2️⃣ Running pre-market briefing...")
+            await jobs.pre_market_brief()
+            
+            await update.message.reply_text("3️⃣ Running market open...")
+            await jobs.market_open()
+            
+            await update.message.reply_text("4️⃣ Running intraday scan...")
+            await jobs.intraday_scan()
+            
+            await update.message.reply_text("5️⃣ Running midday synthesis...")
+            await jobs.midday_synthesis()
+            
+            await update.message.reply_text("6️⃣ Running pre-close positioning...")
+            await jobs.pre_close()
+            
+            await update.message.reply_text("7️⃣ Running market close...")
+            await jobs.market_close()
+            
+            await update.message.reply_text("8️⃣ Running evening digest...")
+            await jobs.evening_digest()
+            
+            await update.message.reply_text("✅ All 8 jobs completed successfully!")
+            
+        except Exception as e:
+            await update.message.reply_text(f"❌ Test failed: {e}")
+
