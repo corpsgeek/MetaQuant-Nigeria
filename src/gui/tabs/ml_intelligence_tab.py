@@ -281,9 +281,25 @@ class MLIntelligenceTab:
                 
                 for symbol, name, sector, price in stocks:
                     try:
-                        result = self.ml_engine.predict(symbol)
-                        if result and 'prediction' in result:
-                            pred = result['prediction']
+                        # Get OHLCV data for this symbol
+                        ohlcv = self.db.conn.execute("""
+                            SELECT datetime, open, high, low, close, volume
+                            FROM intraday_ohlcv
+                            WHERE symbol = ?
+                            ORDER BY datetime DESC
+                            LIMIT 100
+                        """, [symbol]).fetchall()
+                        
+                        if len(ohlcv) < 20:
+                            continue  # Not enough data
+                        
+                        import pandas as pd
+                        df = pd.DataFrame(ohlcv, columns=['datetime', 'open', 'high', 'low', 'close', 'volume'])
+                        df = df.sort_values('datetime')  # Ascending order for prediction
+                        
+                        result = self.ml_engine.predict_price(df, symbol)
+                        if result and result.get('success'):
+                            pred = result.get('prediction', {})
                             direction = pred.get('direction', 'HOLD')
                             
                             if direction == 'UP':
