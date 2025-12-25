@@ -58,16 +58,23 @@ class ScheduledJobs:
             return []
     
     async def _ai_synthesis(self, context: str, prompt_type: str = "market") -> str:
-        """Generate AI synthesis commentary."""
+        """Generate AI synthesis commentary using InsightEngine."""
         if not self.insight_engine:
             return "⚠️ AI synthesis unavailable (GROQ_API_KEY not set)"
         try:
+            # Use correct InsightEngine methods
             if prompt_type == "market_open":
-                result = self.insight_engine.analyze_market_overview({'summary': context})
+                result = self.insight_engine.get_market_outlook({'summary': context})
             elif prompt_type == "midday":
-                result = self.insight_engine.analyze_flow_data({'summary': context})
+                result = self.insight_engine.generate(
+                    f"Provide a concise midday market synthesis: {context}",
+                    system_prompt="You are a Nigerian stock market analyst. Be brief and actionable."
+                )
             elif prompt_type == "pre_close":
-                result = self.insight_engine.analyze_market_overview({'summary': context, 'phase': 'pre_close'})
+                result = self.insight_engine.generate(
+                    f"Provide pre-close trading recommendations: {context}",
+                    system_prompt="You are a Nigerian stock market analyst. Focus on closing actions."
+                )
             else:
                 result = self.insight_engine.generate(context[:2000])
             return result if result else "AI analysis in progress..."
@@ -110,7 +117,7 @@ class ScheduledJobs:
         # 2. ML MODEL TRAINING
         try:
             from src.ml.xgb_predictor import XGBPredictor
-            predictor = XGBPredictor(db=self.db)
+            predictor = XGBPredictor()  # No db arg needed
             train_result = predictor.train() if hasattr(predictor, 'train') else {}
             accuracy = train_result.get('accuracy', 0.65)
             ml_results.append(f"🤖 XGBoost: Trained ({accuracy:.1%} accuracy)")
@@ -121,8 +128,9 @@ class ScheduledJobs:
         # 3. PCA FACTOR UPDATE
         try:
             from src.ml.pca_factor_engine import PCAFactorEngine
-            pca = PCAFactorEngine(self.db)
-            pca.update_factors()
+            pca = PCAFactorEngine(db=self.db)  # Pass as keyword arg
+            if hasattr(pca, 'update_factors'):
+                pca.update_factors()
             regime = pca.detect_regime() if hasattr(pca, 'detect_regime') else {}
             regime_name = regime.get('regime', 'Unknown')
             ml_results.append(f"📊 PCA: {regime_name} regime detected")
@@ -431,15 +439,17 @@ Next update in 30 min 📊
             
             # 2. PCA FACTOR OVERVIEW
             try:
-                pca = PCAFactorEngine(self.db)
+                from src.ml.pca_factor_engine import PCAFactorEngine
+                pca = PCAFactorEngine(db=self.db)
                 factor_returns = pca.get_factor_returns() if hasattr(pca, 'get_factor_returns') else {}
                 regime = pca.detect_regime() if hasattr(pca, 'detect_regime') else {}
                 regime_name = regime.get('regime', 'Unknown')
                 
                 factor_lines = []
-                for factor, ret in factor_returns.items() if factor_returns else []:
-                    sign = '+' if ret > 0 else ''
-                    factor_lines.append(f"• {factor}: {sign}{ret:.2f}%")
+                if factor_returns and isinstance(factor_returns, dict):
+                    for factor, ret in factor_returns.items():
+                        sign = '+' if ret > 0 else ''
+                        factor_lines.append(f"• {factor}: {sign}{ret:.2f}%")
             except Exception as e:
                 logger.error(f"PCA error: {e}")
                 regime_name = "Unknown"
