@@ -619,13 +619,25 @@ class PathwaySynthesizer:
             """, [symbol]).fetchall()
             
             if result and len(result) >= 20:
-                closes = np.array([r[0] for r in result])
-                returns = np.diff(closes) / closes[:-1]
-                daily_vol = np.std(returns)
+                closes = np.array([float(r[0]) for r in result if r[0] and r[0] > 0])
                 
-                # Scale to horizon (rough approximation)
-                horizon_vol = daily_vol * np.sqrt(horizon_days)
-                return min(horizon_vol, 0.30)  # Cap at 30%
+                if len(closes) >= 10:
+                    # Safe returns calculation - avoid division by zero
+                    returns = []
+                    for i in range(1, len(closes)):
+                        if closes[i-1] > 0:
+                            ret = (closes[i] - closes[i-1]) / closes[i-1]
+                            if not np.isnan(ret) and not np.isinf(ret):
+                                returns.append(ret)
+                    
+                    if returns:
+                        daily_vol = float(np.std(returns))
+                        if np.isnan(daily_vol) or daily_vol <= 0:
+                            return 0.05
+                        
+                        # Scale to horizon (rough approximation)
+                        horizon_vol = daily_vol * np.sqrt(horizon_days)
+                        return min(float(horizon_vol), 0.30)  # Cap at 30%
                 
         except Exception as e:
             logger.warning(f"Volatility error for {symbol}: {e}")
