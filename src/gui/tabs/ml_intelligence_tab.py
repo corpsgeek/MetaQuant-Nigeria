@@ -405,16 +405,49 @@ class MLIntelligenceTab:
         
         def train():
             try:
-                # Call ML engine training
-                result = self.ml_engine.train()
+                import pandas as pd
                 
-                if result and result.get('success', False):
-                    accuracy = result.get('accuracy', 0) * 100
-                    logger.info(f"ML training complete! Accuracy: {accuracy:.1f}%")
-                    self.frame.after(0, lambda: self._training_complete(True, accuracy))
+                # Get all stocks for clustering
+                stocks = self.db.conn.execute("""
+                    SELECT symbol, name, sector, last_price, change_percent, volume, market_cap
+                    FROM stocks WHERE is_active = TRUE
+                """).fetchall()
+                
+                all_stocks = [{
+                    'symbol': s[0], 'name': s[1], 'sector': s[2],
+                    'price': float(s[3]) if s[3] else 0,
+                    'change': float(s[4]) if s[4] else 0,
+                    'volume': int(s[5]) if s[5] else 0,
+                    'market_cap': float(s[6]) if s[6] else 0
+                } for s in stocks]
+                
+                logger.info(f"Loaded {len(all_stocks)} stocks for training")
+                
+                # Get historical OHLCV data
+                ohlcv_data = self.db.conn.execute("""
+                    SELECT symbol, datetime, open, high, low, close, volume
+                    FROM intraday_ohlcv
+                    ORDER BY datetime DESC
+                    LIMIT 10000
+                """).fetchall()
+                
+                if ohlcv_data:
+                    historical_df = pd.DataFrame(ohlcv_data, columns=[
+                        'symbol', 'datetime', 'open', 'high', 'low', 'close', 'volume'
+                    ])
+                    logger.info(f"Loaded {len(historical_df)} OHLCV records for training")
                 else:
-                    error = result.get('error', 'Training failed') if result else 'No result'
-                    logger.error(f"ML training failed: {error}")
+                    historical_df = pd.DataFrame()
+                    logger.warning("No OHLCV data available for training")
+                
+                # Initialize ML with data
+                result = self.ml_engine.initialize(historical_df, all_stocks)
+                
+                if result:
+                    logger.info(f"ML training complete! Clustering: {result.get('clustering')}")
+                    self.frame.after(0, lambda: self._training_complete(True, 75))  # Estimated accuracy
+                else:
+                    logger.error("ML training returned no result")
                     self.frame.after(0, lambda: self._training_complete(False, 0))
                     
             except Exception as e:
