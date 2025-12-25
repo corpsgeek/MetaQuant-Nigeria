@@ -299,8 +299,8 @@ class MLIntelligenceTab:
                         
                         result = self.ml_engine.predict_price(df, symbol)
                         if result and result.get('success'):
-                            pred = result.get('prediction', {})
-                            direction = pred.get('direction', 'HOLD')
+                            # Result fields are at top level, not nested in 'prediction'
+                            direction = result.get('direction', 'FLAT')
                             
                             if direction == 'UP':
                                 signal = 'BUY'
@@ -317,10 +317,10 @@ class MLIntelligenceTab:
                                 'name': name or '',
                                 'sector': sector or 'Unknown',
                                 'signal': signal,
-                                'score': pred.get('predicted_change', 0),
-                                'confidence': pred.get('confidence', 0),
+                                'score': result.get('expected_return', 0),
+                                'confidence': result.get('confidence', 0),
                                 'price': float(price) if price else 0,
-                                'target': float(price) * (1 + pred.get('predicted_change', 0) / 100) if price else 0
+                                'target': result.get('predicted_price', float(price) if price else 0)
                             })
                     except Exception as e:
                         logger.debug(f"Prediction failed for {symbol}: {e}")
