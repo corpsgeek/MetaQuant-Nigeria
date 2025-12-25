@@ -178,7 +178,7 @@ class WatchlistTab:
             result = self.db.conn.execute("SELECT COUNT(*) FROM watchlists").fetchone()
             if result[0] == 0:
                 self.db.conn.execute(
-                    "INSERT INTO watchlists (id, name, description) VALUES (nextval('seq_watchlists'), 'My Watchlist', 'Default watchlist')"
+                    "INSERT INTO watchlists (id, name) VALUES (nextval('seq_watchlists'), 'My Watchlist')"
                 )
                 self.db.conn.commit()
                 self._load_watchlists()
