@@ -96,7 +96,7 @@ class PathwaySynthesizer:
         if self._ml_engine is None:
             try:
                 from src.ml import MLEngine
-                self._ml_engine = MLEngine(self.db)
+                self._ml_engine = MLEngine(db=self.db)  # Pass db as keyword arg
             except Exception as e:
                 logger.warning(f"ML Engine not available: {e}")
         return self._ml_engine
