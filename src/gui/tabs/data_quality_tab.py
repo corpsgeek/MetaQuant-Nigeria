@@ -213,8 +213,13 @@ class DataQualityTab:
                         WHERE symbol = ?
                     """, [symbol]).fetchone()
                     
-                    ohlcv_count = result[0] or 0
-                    last_update = result[1] if result[1] else None
+                    # Handle case where result is None
+                    if result is None:
+                        ohlcv_count = 0
+                        last_update = None
+                    else:
+                        ohlcv_count = result[0] or 0
+                        last_update = result[1] if result[1] else None
                     
                     # Calculate staleness
                     if last_update:
