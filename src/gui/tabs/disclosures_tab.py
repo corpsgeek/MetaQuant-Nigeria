@@ -432,10 +432,11 @@ class DisclosuresTab:
                 ])
                 
             except Exception as e:
-                logger.error(f"Analysis failed: {e}")
-                self.frame.after(0, lambda: [
-                    self.status_var.set(f"Analysis failed: {e}"),
-                    messagebox.showerror("Error", f"Analysis failed: {e}")
+                error_msg = str(e)
+                logger.error(f"Analysis failed: {error_msg}")
+                self.frame.after(0, lambda msg=error_msg: [
+                    self.status_var.set(f"Analysis failed: {msg}"),
+                    messagebox.showerror("Error", f"Analysis failed: {msg}")
                 ])
         
         threading.Thread(target=analyze, daemon=True).start()
