@@ -132,11 +132,16 @@ class InsightEngine:
             traceback.print_exc()
             return None
     
-    def generate(self, prompt: str, system_prompt: str = "") -> str:
+    def generate(self, prompt: str, system_prompt: str = "", context: Optional[Dict[str, Any]] = None) -> str:
         """
-        Generate AI response with fallback.
+        Generate AI response with fallback chain.
         
-        Tries Ollama first, falls back to Groq if unavailable.
+        Tries: Ollama -> Groq -> Template-based fallback
+        
+        Args:
+            prompt: The prompt to send
+            system_prompt: Optional system prompt
+            context: Optional data context for template fallback
         """
         # Try Ollama first
         result = self._generate_ollama(prompt, system_prompt)
@@ -148,7 +153,164 @@ class InsightEngine:
         if result:
             return result
         
+        # Final fallback: Template-based insights
+        if context:
+            result = self._generate_template(context)
+            if result:
+                return result
+        
         return "AI insights are currently unavailable. Please ensure Ollama is running or configure a Groq API key."
+    
+    def _generate_template(self, context: Dict[str, Any]) -> Optional[str]:
+        """Generate template-based insights when AI is unavailable."""
+        try:
+            context_type = context.get('type', 'unknown')
+            
+            if context_type == 'stock':
+                return self._template_stock_analysis(context)
+            elif context_type == 'portfolio':
+                return self._template_portfolio_analysis(context)
+            elif context_type == 'market':
+                return self._template_market_outlook(context)
+            else:
+                return None
+        except Exception as e:
+            logger.error(f"Template generation failed: {e}")
+            return None
+    
+    def _template_stock_analysis(self, data: Dict[str, Any]) -> str:
+        """Generate template-based stock analysis."""
+        symbol = data.get('symbol', 'Stock')
+        name = data.get('name', 'Company')
+        price = data.get('last_price', 0)
+        change = data.get('change_percent', 0)
+        pe = data.get('pe_ratio')
+        div_yield = data.get('dividend_yield')
+        volume = data.get('volume', 0)
+        
+        # Determine sentiment
+        if change >= 3:
+            momentum = "**Strong bullish momentum** with significant gains today."
+        elif change >= 1:
+            momentum = "**Moderate bullish momentum** with positive price action."
+        elif change >= -1:
+            momentum = "**Neutral momentum** - price trading sideways."
+        elif change >= -3:
+            momentum = "**Moderate bearish pressure** with some selling."
+        else:
+            momentum = "**Strong bearish pressure** - significant selling today."
+        
+        # Valuation insight
+        if pe and pe > 0:
+            if pe < 5:
+                valuation = f"At P/E of {pe:.1f}, the stock appears **deeply undervalued** relative to earnings."
+            elif pe < 10:
+                valuation = f"P/E of {pe:.1f} suggests **reasonable value** for a Nigerian equity."
+            elif pe < 20:
+                valuation = f"P/E of {pe:.1f} indicates **fair valuation** - inline with growth stocks."
+            else:
+                valuation = f"P/E of {pe:.1f} is **elevated** - priced for high growth expectations."
+        else:
+            valuation = "Valuation metrics not available for assessment."
+        
+        # Dividend insight
+        if div_yield and div_yield > 0:
+            if div_yield >= 5:
+                income = f"Dividend yield of {div_yield:.1f}% is **excellent for income investors**."
+            elif div_yield >= 3:
+                income = f"Dividend yield of {div_yield:.1f}% provides **solid income component**."
+            else:
+                income = f"Dividend yield of {div_yield:.1f}% offers **modest income**."
+        else:
+            income = "No dividend yield data available."
+        
+        # Volume insight
+        avg_vol = data.get('avg_volume', volume)
+        if volume > avg_vol * 1.5:
+            vol_insight = "Trading on **above-average volume** - increased interest."
+        elif volume < avg_vol * 0.5:
+            vol_insight = "Trading on **below-average volume** - limited activity."
+        else:
+            vol_insight = "Volume at **normal levels**."
+        
+        # Construct response
+        return f"""📊 **{symbol} Analysis** (Template-Based)
+
+**{name}**
+
+📈 **Momentum**: {momentum}
+
+💰 **Valuation**: {valuation}
+
+💵 **Income**: {income}
+
+📊 **Volume**: {vol_insight}
+
+⚠️ *Note: This is a rule-based analysis. For detailed AI insights, configure Ollama or Groq API.*"""
+    
+    def _template_portfolio_analysis(self, data: Dict[str, Any]) -> str:
+        """Generate template-based portfolio analysis."""
+        total_value = data.get('total_value', 0)
+        return_pct = data.get('return_percent', 0)
+        positions = data.get('position_count', 0)
+        
+        # Health assessment
+        if return_pct >= 10:
+            health = "🟢 **Excellent** - Portfolio significantly outperforming."
+        elif return_pct >= 0:
+            health = "🟡 **Good** - Portfolio is profitable."
+        elif return_pct >= -10:
+            health = "🟠 **Fair** - Some positions underwater."
+        else:
+            health = "🔴 **Needs Attention** - Significant losses."
+        
+        # Diversification
+        if positions < 3:
+            divers = "⚠️ **Low diversification** - Consider adding positions."
+        elif positions <= 10:
+            divers = "✅ **Good diversification** - Balanced number of positions."
+        else:
+            divers = "⚠️ **Many positions** - Consider consolidating."
+        
+        return f"""📋 **Portfolio Health Check** (Template-Based)
+
+💰 **Total Value**: ₦{total_value:,.0f}
+📈 **Return**: {return_pct:+.1f}%
+📊 **Positions**: {positions}
+
+**Health**: {health}
+**Diversification**: {divers}
+
+⚠️ *For detailed AI recommendations, configure Ollama or Groq API.*"""
+    
+    def _template_market_outlook(self, data: Dict[str, Any]) -> str:
+        """Generate template-based market outlook."""
+        advancers = data.get('advancers', 0)
+        decliners = data.get('decliners', 0)
+        asi_change = data.get('asi_change', 0)
+        
+        # Market breadth
+        total = advancers + decliners
+        if total > 0:
+            breadth = advancers / total
+            if breadth >= 0.6:
+                sentiment = "🟢 **Bullish** - Broad market participation to the upside."
+            elif breadth >= 0.4:
+                sentiment = "🟡 **Neutral** - Mixed market action."
+            else:
+                sentiment = "🔴 **Bearish** - Selling pressure across the market."
+        else:
+            sentiment = "⚪ **Insufficient data** for market breadth."
+        
+        return f"""📈 **Market Outlook** (Template-Based)
+
+📊 **ASI Change**: {asi_change:+.2f}%
+🟢 **Advancers**: {advancers}
+🔴 **Decliners**: {decliners}
+
+**Sentiment**: {sentiment}
+
+⚠️ *For detailed AI market analysis, configure Ollama or Groq API.*"""
     
     def analyze_stock(self, stock_data: Dict[str, Any]) -> str:
         """
@@ -189,7 +351,9 @@ Provide:
 4. Fair value estimate if possible
 5. Recommendation (Buy/Hold/Sell)"""
 
-        return self.generate(prompt, system_prompt)
+        # Pass context for template fallback
+        context = {**stock_data, 'type': 'stock'}
+        return self.generate(prompt, system_prompt, context=context)
     
     def analyze_portfolio(self, portfolio_summary: Dict[str, Any]) -> str:
         """
@@ -249,7 +413,9 @@ Provide:
 4. Top 3 recommendations for improvement
 5. Positions to consider trimming or adding to"""
 
-        return self.generate(prompt, system_prompt)
+        # Pass context for template fallback
+        context = {**portfolio_summary, 'type': 'portfolio'}
+        return self.generate(prompt, system_prompt, context=context)
     
     def get_market_outlook(self, market_data: Dict[str, Any]) -> str:
         """Generate market outlook based on overall market data."""
@@ -273,7 +439,9 @@ Provide:
 3. Near-term outlook
 4. Sector to watch"""
 
-        return self.generate(prompt, system_prompt)
+        # Pass context for template fallback
+        context = {**market_data, 'type': 'market'}
+        return self.generate(prompt, system_prompt, context=context)
     
     def compare_stocks(self, stocks: List[Dict[str, Any]]) -> str:
         """Compare multiple stocks and provide recommendation."""
