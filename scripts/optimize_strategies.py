@@ -136,9 +136,6 @@ def optimize_single_stock(symbol: str, df: pd.DataFrame, BacktestEngine, db, ml_
                 except Exception as e:
                     logger.debug(f"Backtest failed: {e}")
     
-    if best_result is None:
-        return None
-    
     # Calculate thresholds based on momentum
     close = df['close'].astype(float)
     mom_20 = (close.iloc[-1] - close.iloc[-20]) / close.iloc[-20] if len(close) >= 20 else 0
@@ -147,6 +144,10 @@ def optimize_single_stock(symbol: str, df: pd.DataFrame, BacktestEngine, db, ml_
         buy_threshold = max(0.15, min(0.35, 0.3 - mom_20 * 0.5))
     else:
         buy_threshold = max(0.25, min(0.45, 0.3 - mom_20 * 0.3))
+    
+    # If backtest didn't find enough trades, use statistical fallback
+    if best_result is None:
+        return calculate_statistical_strategy(symbol, df, buy_threshold)
     
     return {
         'symbol': symbol,
@@ -160,6 +161,52 @@ def optimize_single_stock(symbol: str, df: pd.DataFrame, BacktestEngine, db, ml_
         'win_rate': best_result['win_rate'],
         'sharpe': best_result['sharpe'],
         'trades': best_result['trades']
+    }
+
+
+def calculate_statistical_strategy(symbol: str, df: pd.DataFrame, buy_threshold: float) -> dict:
+    """
+    Calculate strategy parameters using statistical analysis when backtest fails.
+    Uses volatility and price behavior to set reasonable parameters.
+    """
+    close = df['close'].astype(float)
+    
+    # Calculate volatility-based stop-loss
+    daily_returns = close.pct_change().dropna()
+    volatility = daily_returns.std()
+    
+    # Stop-loss: based on 2.5x daily volatility, capped between 3-10%
+    stop_loss = max(0.03, min(0.10, volatility * 2.5))
+    
+    # Calculate typical price swings for take-profit
+    high = df['high'].astype(float) if 'high' in df.columns else close
+    low = df['low'].astype(float) if 'low' in df.columns else close
+    
+    # Average true range / price ratio
+    atr_ratio = ((high - low) / close).mean()
+    
+    # Max drawup from recent lows (potential gain)
+    rolling_min = close.rolling(20).min()
+    max_gain = ((close - rolling_min) / rolling_min).max()
+    
+    # Take-profit: based on ATR and max observed gains, capped between 8-25%
+    take_profit = max(0.08, min(0.25, atr_ratio * 15 + max_gain * 0.3))
+    
+    # Momentum
+    mom_20 = (close.iloc[-1] - close.iloc[-20]) / close.iloc[-20] if len(close) >= 20 else 0
+    
+    return {
+        'symbol': symbol,
+        'stop_loss': round(stop_loss, 3),
+        'take_profit': round(take_profit, 3),
+        'buy_threshold': round(buy_threshold, 3),
+        'sell_threshold': round(-buy_threshold * 0.8, 3),
+        'avg_hold_days': 10,
+        'min_hold_days': 3,
+        'return': round(float(mom_20 * 100), 2),  # 20-day momentum as proxy
+        'win_rate': 50,  # Unknown
+        'sharpe': 0,
+        'trades': 0  # Indicates statistical method used
     }
 
 
