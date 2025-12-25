@@ -482,14 +482,24 @@ class PathwaySynthesizer:
         # Calculate weighted signal score (-1 to 1)
         signal_score = self._calculate_weighted_signal(signals)
         
+        # Handle NaN signal score
+        if np.isnan(signal_score):
+            signal_score = 0
+        
         # Get historical volatility
         volatility = self._get_volatility(symbol, horizon_days)
+        
+        # Handle NaN volatility
+        if np.isnan(volatility) or volatility <= 0:
+            volatility = 0.05  # Default 5%
         
         # Base expected return (signal * volatility scaling)
         base_return = signal_score * volatility * (horizon_days / 5)  # Scale by days
         
-        # Clamp reasonable bounds
-        base_return = np.clip(base_return, -0.30, 0.30)
+        # Handle NaN and clamp reasonable bounds
+        if np.isnan(base_return):
+            base_return = 0
+        base_return = float(np.clip(base_return, -0.30, 0.30))
         
         expected_price = current_price * (1 + base_return)
         
@@ -505,44 +515,54 @@ class PathwaySynthesizer:
         # Probabilities based on signal strength
         if signal_score > 0.2:
             bull_prob = 0.35 + signal_score * 0.2
-            bear_prob = 0.15 - signal_score * 0.1
+            bear_prob = max(0.05, 0.15 - signal_score * 0.1)
         elif signal_score < -0.2:
-            bull_prob = 0.15 - abs(signal_score) * 0.1
+            bull_prob = max(0.05, 0.15 - abs(signal_score) * 0.1)
             bear_prob = 0.35 + abs(signal_score) * 0.2
         else:
             bull_prob = 0.25
             bear_prob = 0.25
         
-        base_prob = 1 - bull_prob - bear_prob
+        base_prob = max(0.1, 1 - bull_prob - bear_prob)
         
-        # Ensure probabilities sum to 1
+        # Ensure probabilities sum to 1 and are valid
         total = bull_prob + base_prob + bear_prob
-        bull_prob /= total
-        base_prob /= total
-        bear_prob /= total
+        if total <= 0 or np.isnan(total):
+            bull_prob = base_prob = bear_prob = 1/3
+            total = 1
+        
+        bull_prob = bull_prob / total
+        base_prob = base_prob / total
+        bear_prob = bear_prob / total
+        
+        # Ensure all values are valid floats
+        def safe_round(val, decimals=2):
+            if np.isnan(val) or np.isinf(val):
+                return 0.0
+            return round(float(val), decimals)
         
         return {
             'horizon_name': horizon_name,
             'horizon_days': horizon_days,
-            'current_price': current_price,
-            'expected_price': round(expected_price, 2),
-            'expected_return': round(base_return * 100, 2),
+            'current_price': safe_round(current_price),
+            'expected_price': safe_round(expected_price),
+            'expected_return': safe_round(base_return * 100),
             'bull': {
-                'price': round(bull_price, 2),
-                'return_pct': round(bull_return * 100, 2),
-                'probability': round(bull_prob * 100, 1)
+                'price': safe_round(bull_price),
+                'return_pct': safe_round(bull_return * 100),
+                'probability': safe_round(bull_prob * 100, 1)
             },
             'base': {
-                'price': round(expected_price, 2),
-                'return_pct': round(base_return * 100, 2),
-                'probability': round(base_prob * 100, 1)
+                'price': safe_round(expected_price),
+                'return_pct': safe_round(base_return * 100),
+                'probability': safe_round(base_prob * 100, 1)
             },
             'bear': {
-                'price': round(bear_price, 2),
-                'return_pct': round(bear_return * 100, 2),
-                'probability': round(bear_prob * 100, 1)
+                'price': safe_round(bear_price),
+                'return_pct': safe_round(bear_return * 100),
+                'probability': safe_round(bear_prob * 100, 1)
             },
-            'confidence': round(self._calculate_overall_confidence(signals) * 100, 1)
+            'confidence': safe_round(self._calculate_overall_confidence(signals) * 100, 1)
         }
     
     def _calculate_weighted_signal(self, signals: Dict) -> float:
