@@ -320,14 +320,15 @@ class ScreeningEngine:
     
     def run(self) -> List[Dict[str, Any]]:
         """Execute the screen and return matching stocks."""
-        # Build base query - only select from stocks table for now
-        # since fundamentals table may not be fully populated
+        # Build base query with LEFT JOIN to fundamentals
         query = """
             SELECT 
                 s.id, s.symbol, s.name, s.sector, s.subsector,
                 s.last_price, s.prev_close, s.change_percent, 
-                s.volume, s.market_cap, s.last_updated
+                s.volume, s.market_cap, s.last_updated,
+                f.pe_ratio, f.pb_ratio, f.eps, f.dividend_yield, f.roe
             FROM stocks s
+            LEFT JOIN fundamentals f ON s.id = f.stock_id
             WHERE s.is_active = TRUE
         """
         
