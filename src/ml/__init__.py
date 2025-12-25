@@ -9,11 +9,25 @@ from .anomaly_detector import AnomalyDetector
 from .stock_clusterer import StockClusterer
 from .pca_factor_engine import PCAFactorEngine
 
+# New deep learning and ensemble predictors
+try:
+    from .lstm_predictor import LSTMPredictor
+except ImportError:
+    LSTMPredictor = None
+
+try:
+    from .ensemble_predictor import EnsemblePredictor
+except ImportError:
+    EnsemblePredictor = None
+
 __all__ = [
     'MLEngine',
     'XGBPredictor', 
     'AnomalyDetector',
     'StockClusterer',
     'PCAFactorEngine',
+    'LSTMPredictor',
+    'EnsemblePredictor',
 ]
+
 

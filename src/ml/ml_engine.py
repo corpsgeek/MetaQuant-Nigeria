@@ -17,6 +17,13 @@ from .stock_clusterer import StockClusterer
 from .sector_rotation_predictor import SectorRotationPredictor
 from .pca_factor_engine import PCAFactorEngine
 
+# Optional deep learning imports
+try:
+    from .ensemble_predictor import EnsemblePredictor
+    ENSEMBLE_AVAILABLE = True
+except ImportError:
+    ENSEMBLE_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
 
 
@@ -53,6 +60,15 @@ class MLEngine:
         self.anomaly_detector = AnomalyDetector(model_dir=str(self.model_dir))
         self.clusterer = StockClusterer(model_dir=str(self.model_dir))
         self.sector_predictor = SectorRotationPredictor(db=db, model_dir=str(self.model_dir))
+        
+        # Ensemble predictor (optional, requires PyTorch)
+        self.ensemble: Optional['EnsemblePredictor'] = None
+        if ENSEMBLE_AVAILABLE:
+            try:
+                self.ensemble = EnsemblePredictor(model_dir=str(self.model_dir))
+                logger.info("Ensemble predictor initialized")
+            except Exception as e:
+                logger.warning(f"Could not initialize ensemble: {e}")
         self.pca_engine = PCAFactorEngine(n_components=5)
         
         # Status tracking
@@ -124,6 +140,17 @@ class MLEngine:
             result['from_cache'] = False
         
         return result
+    
+    def predict_ensemble(self, df: pd.DataFrame, symbol: str) -> Dict[str, Any]:
+        """
+        Predict using ensemble of XGBoost + LSTM + LightGBM.
+        Falls back to XGBoost if ensemble not available.
+        """
+        if self.ensemble:
+            return self.ensemble.predict(df, symbol)
+        else:
+            # Fallback to XGBoost only
+            return self.predict_price(df, symbol)
     
     def train_predictor(self, df: pd.DataFrame, symbol: str) -> Dict[str, Any]:
         """
