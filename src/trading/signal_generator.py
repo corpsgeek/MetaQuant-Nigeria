@@ -3,6 +3,7 @@ Signal Generator - Generate daily trading signals based on optimized strategies.
 """
 
 import logging
+import numpy as np
 from typing import Dict, List, Any, Optional, Callable
 from datetime import datetime, timedelta
 from dataclasses import dataclass
@@ -210,20 +211,24 @@ class SignalGenerator:
         }
         
         try:
-            close = pd.to_numeric(df['close'], errors='coerce').astype(float)
+            # Reset index if DatetimeIndex to avoid rmul errors
+            if isinstance(df.index, pd.DatetimeIndex):
+                df = df.reset_index(drop=True)
+            
+            close = pd.to_numeric(df['close'], errors='coerce').astype(float).values
             
             # ===== MOMENTUM (25%) =====
             raw_momentum = 0.0
             if len(close) >= 20:
-                mom_5 = (close.iloc[-1] - close.iloc[-5]) / close.iloc[-5] if close.iloc[-5] > 0 else 0
-                mom_20 = (close.iloc[-1] - close.iloc[-20]) / close.iloc[-20] if close.iloc[-20] > 0 else 0
+                mom_5 = (close[-1] - close[-5]) / close[-5] if close[-5] > 0 else 0
+                mom_20 = (close[-1] - close[-20]) / close[-20] if close[-20] > 0 else 0
                 raw_momentum = (float(mom_5) + float(mom_20)) / 2
                 scores['momentum'] = max(-1, min(1, raw_momentum * 5))
             
             # ===== TREND (5%) =====
             if len(close) >= 50:
-                ma_20 = close.tail(20).mean()
-                ma_50 = close.tail(50).mean()
+                ma_20 = float(np.mean(close[-20:]))
+                ma_50 = float(np.mean(close[-50:]))
                 scores['trend'] = 1.0 if ma_20 > ma_50 else -1.0
             
             # ===== ML PREDICTION (20%) =====
@@ -266,7 +271,9 @@ class SignalGenerator:
                 scores['fundamental'] = fund_score
             
             if scores['fundamental'] == 0 and len(close) >= 20:
-                volatility = close.pct_change().tail(20).std()
+                # Calculate volatility using numpy for array
+                returns = np.diff(close[-21:]) / close[-21:-1]
+                volatility = float(np.std(returns))
                 scores['fundamental'] = max(-0.2, min(0.2, 0.1 - volatility * 5))
             
             # ===== COMPOSITE SCORE =====
