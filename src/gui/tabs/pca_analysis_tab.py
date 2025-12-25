@@ -694,73 +694,289 @@ class PCAAnalysisTab:
         self.ai_text.insert('1.0', '\n'.join(recommendations))
         self.ai_text.config(state=tk.DISABLED)
     
-    # ==================== STOCK ANALYSIS TAB (ENHANCED) ====================
+    # ==================== STOCK ANALYSIS TAB (REDESIGNED) ====================
     
     def _create_stock_tab(self, parent):
-        """Create super enhanced stock analysis tab."""
-        # Main frame with padding
+        """Create redesigned stock analysis tab with 2-column layout."""
+        # Main container
         main = ttk.Frame(parent)
-        main.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
+        main.pack(fill=tk.BOTH, expand=True)
         
-        # Top: Symbol selector (compact)
-        self._create_stock_selector(main)
+        # Top bar: Stock selector + Quick stats
+        self._create_stock_header(main)
         
-        # Create 3x2 grid for analysis panels
-        grid = ttk.Frame(main)
-        grid.pack(fill=tk.BOTH, expand=True, pady=5)
+        # Main content: 2 columns using PanedWindow
+        pane = ttk.PanedWindow(main, orient=tk.HORIZONTAL)
+        pane.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
-        # Configure grid weights for equal distribution
-        for i in range(3):
-            grid.columnconfigure(i, weight=1, uniform='col')
+        # LEFT COLUMN (50%): Charts
+        left_col = ttk.Frame(pane)
+        pane.add(left_col, weight=50)
+        
+        # Factor Profile Chart (larger)
+        self._create_profile_chart(left_col)
+        
+        # Similar Stocks (below chart)
+        self._create_similar_panel(left_col)
+        
+        # RIGHT COLUMN (50%): Analytics Grid
+        right_col = ttk.Frame(pane)
+        pane.add(right_col, weight=50)
+        
+        # 2x2 Grid for analytics
+        analytics_grid = ttk.Frame(right_col)
+        analytics_grid.pack(fill=tk.BOTH, expand=True)
+        
         for i in range(2):
-            grid.rowconfigure(i, weight=1, uniform='row')
+            analytics_grid.columnconfigure(i, weight=1, uniform='acol')
+            analytics_grid.rowconfigure(i, weight=1, uniform='arow')
         
-        # Row 1: Factor Profile | Factor Bars | Similar Stocks
-        self._create_radar_panel(grid, 0, 0)
-        self._create_factor_bars_panel(grid, 0, 1)
-        self._create_similar_stocks_panel(grid, 0, 2)
+        # Grid panels
+        self._create_exposures_card(analytics_grid, 0, 0)
+        self._create_attribution_card(analytics_grid, 0, 1)
+        self._create_regime_card(analytics_grid, 1, 0)
+        self._create_risk_card(analytics_grid, 1, 1)
         
-        # Row 2: Attribution | Regime Sensitivity | Risk Decomposition
-        self._create_attribution_panel(grid, 1, 0)
-        self._create_stock_regime_panel(grid, 1, 1)
-        self._create_risk_panel(grid, 1, 2)
-        
-        # Bottom: AI Insight + What-If (full width)
-        self._create_ai_insight_panel(main)
+        # Bottom: AI Insight (full width)
+        self._create_insight_bar(main)
     
-    def _create_stock_selector(self, parent):
-        """Create stock selector row."""
-        sel_frame = ttk.Frame(parent)
-        sel_frame.pack(fill=tk.X, pady=(0, 10))
+    def _create_stock_header(self, parent):
+        """Create stock selector header with quick stats."""
+        header = ttk.Frame(parent)
+        header.pack(fill=tk.X, padx=10, pady=8)
         
-        ttk.Label(sel_frame, text="🔬 Stock:", font=('Helvetica', 11, 'bold')).pack(side=tk.LEFT)
+        # Left: Selector
+        sel = ttk.Frame(header)
+        sel.pack(side=tk.LEFT)
+        
+        ttk.Label(sel, text="🔬", font=('Helvetica', 16)).pack(side=tk.LEFT)
         
         self.symbol_var = tk.StringVar()
-        self.symbol_combo = ttk.Combobox(sel_frame, textvariable=self.symbol_var, width=12)
-        self.symbol_combo.pack(side=tk.LEFT, padx=5)
+        self.symbol_combo = ttk.Combobox(sel, textvariable=self.symbol_var, 
+                                          width=10, font=('Helvetica', 12))
+        self.symbol_combo.pack(side=tk.LEFT, padx=8)
         self.symbol_combo.bind('<<ComboboxSelected>>', self._on_symbol_change)
         
-        ttk.Button(sel_frame, text="🔍 Analyze", command=self._analyze_stock).pack(side=tk.LEFT, padx=5)
+        ttk.Button(sel, text="Analyze", command=self._analyze_stock, 
+                   style='Accent.TButton').pack(side=tk.LEFT, padx=5)
         
-        # Current stock info
-        self.stock_info_label = ttk.Label(sel_frame, text="", font=('Helvetica', 10))
-        self.stock_info_label.pack(side=tk.LEFT, padx=20)
+        # Right: Quick stats
+        stats = ttk.Frame(header)
+        stats.pack(side=tk.RIGHT)
+        
+        self.quick_stats = {}
+        for stat in ['Alignment', 'Alpha', 'Risk']:
+            frame = ttk.Frame(stats)
+            frame.pack(side=tk.LEFT, padx=15)
+            ttk.Label(frame, text=stat, font=('Helvetica', 8), 
+                     foreground='gray').pack(anchor='w')
+            lbl = ttk.Label(frame, text="-", font=('Helvetica', 14, 'bold'))
+            lbl.pack(anchor='w')
+            self.quick_stats[stat] = lbl
     
-    def _create_radar_panel(self, parent, row, col):
-        """Create factor profile bar chart panel (replaced radar to avoid segfault)."""
-        frame = ttk.LabelFrame(parent, text="📊 Factor Profile")
-        frame.grid(row=row, column=col, sticky='nsew', padx=3, pady=3)
+    def _create_profile_chart(self, parent):
+        """Create large factor profile chart."""
+        frame = ttk.LabelFrame(parent, text="📊 Factor Profile vs Market")
+        frame.pack(fill=tk.BOTH, expand=True, padx=3, pady=3)
         
         if MATPLOTLIB_AVAILABLE:
             from matplotlib.figure import Figure
             from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
             
-            # Use regular bar chart instead of polar (avoids macOS segfault)
-            self._radar_fig = Figure(figsize=(3, 2.5), dpi=80, facecolor='#1a1a2e')
+            self._radar_fig = Figure(figsize=(5, 4), dpi=90, facecolor='#1a1a2e')
             self._radar_canvas = FigureCanvasTkAgg(self._radar_fig, master=frame)
-            self._radar_canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+            self._radar_canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         else:
-            ttk.Label(frame, text="Matplotlib required").pack()
+            ttk.Label(frame, text="Matplotlib required").pack(pady=20)
+    
+    def _create_similar_panel(self, parent):
+        """Create similar stocks panel."""
+        frame = ttk.LabelFrame(parent, text="👥 Similar Factor Profiles")
+        frame.pack(fill=tk.X, padx=3, pady=3)
+        
+        inner = ttk.Frame(frame)
+        inner.pack(fill=tk.X, padx=8, pady=8)
+        
+        self.similar_stocks_list = tk.Listbox(inner, height=4, font=('Helvetica', 10),
+                                               bg='#2d2d4e', fg='white', 
+                                               selectbackground='#7c3aed')
+        self.similar_stocks_list.pack(fill=tk.X, expand=True)
+        self.similar_stocks_list.bind('<<ListboxSelect>>', self._on_similar_stock_click)
+        
+        ttk.Label(inner, text="Click to analyze", font=('Helvetica', 7), 
+                 foreground='gray').pack(anchor='e')
+    
+    def _create_exposures_card(self, parent, row, col):
+        """Create factor exposures card."""
+        frame = ttk.LabelFrame(parent, text="🎯 Exposures")
+        frame.grid(row=row, column=col, sticky='nsew', padx=3, pady=3)
+        
+        inner = ttk.Frame(frame)
+        inner.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
+        
+        self.stock_exposure_labels = {}
+        factors = ['Market', 'Size', 'Value', 'Momentum', 'Volatility']
+        
+        for factor in factors:
+            row_f = ttk.Frame(inner)
+            row_f.pack(fill=tk.X, pady=3)
+            
+            ttk.Label(row_f, text=factor, width=8, font=('Helvetica', 9)).pack(side=tk.LEFT)
+            bar = ttk.Progressbar(row_f, length=60, mode='determinate')
+            bar.pack(side=tk.LEFT, padx=5)
+            lbl = ttk.Label(row_f, text="-", width=6, font=('Helvetica', 10, 'bold'))
+            lbl.pack(side=tk.LEFT)
+            interp = ttk.Label(row_f, text="", font=('Helvetica', 8), foreground='gray')
+            interp.pack(side=tk.LEFT, padx=3)
+            
+            self.stock_exposure_labels[factor] = (bar, lbl, interp)
+        
+        # Alignment row
+        sep = ttk.Separator(inner, orient='horizontal')
+        sep.pack(fill=tk.X, pady=8)
+        
+        align_f = ttk.Frame(inner)
+        align_f.pack(fill=tk.X)
+        ttk.Label(align_f, text="Regime Alignment:", font=('Helvetica', 9, 'bold')).pack(side=tk.LEFT)
+        self.alignment_label = ttk.Label(align_f, text="-", font=('Helvetica', 12, 'bold'))
+        self.alignment_label.pack(side=tk.LEFT, padx=8)
+        self.alignment_interp = ttk.Label(align_f, text="", font=('Helvetica', 9))
+        self.alignment_interp.pack(side=tk.LEFT)
+    
+    def _create_attribution_card(self, parent, row, col):
+        """Create factor attribution card."""
+        frame = ttk.LabelFrame(parent, text="💰 1M Attribution")
+        frame.grid(row=row, column=col, sticky='nsew', padx=3, pady=3)
+        
+        inner = ttk.Frame(frame)
+        inner.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
+        
+        self.attribution_labels = {}
+        items = [('Total Return', 'Total'), ('├ Market', 'Market'), ('├ Size', 'Size'), 
+                 ('├ Value', 'Value'), ('├ Momentum', 'Momentum'), ('└ Alpha ⭐', 'Alpha')]
+        
+        for display, key in items:
+            row_f = ttk.Frame(inner)
+            row_f.pack(fill=tk.X, pady=2)
+            
+            font = ('Helvetica', 10, 'bold') if key in ['Total', 'Alpha'] else ('Helvetica', 9)
+            ttk.Label(row_f, text=display, font=font, width=14).pack(side=tk.LEFT)
+            lbl = ttk.Label(row_f, text="-", font=('Helvetica', 10, 'bold'), width=8)
+            lbl.pack(side=tk.LEFT)
+            self.attribution_labels[key] = lbl
+    
+    def _create_regime_card(self, parent, row, col):
+        """Create regime sensitivity card."""
+        frame = ttk.LabelFrame(parent, text="⚡ Regime Performance")
+        frame.grid(row=row, column=col, sticky='nsew', padx=3, pady=3)
+        
+        inner = ttk.Frame(frame)
+        inner.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
+        
+        self.regime_performance_labels = {}
+        regimes = [('🟢 Risk-On', 'Risk-On'), ('🔴 Risk-Off', 'Risk-Off'), ('⚡ Rotation', 'Rotation')]
+        
+        for display, key in regimes:
+            row_f = ttk.Frame(inner)
+            row_f.pack(fill=tk.X, pady=4)
+            
+            ttk.Label(row_f, text=display, font=('Helvetica', 10), width=12).pack(side=tk.LEFT)
+            ret_lbl = ttk.Label(row_f, text="-", font=('Helvetica', 11, 'bold'), width=7)
+            ret_lbl.pack(side=tk.LEFT)
+            win_lbl = ttk.Label(row_f, text="", font=('Helvetica', 9), foreground='gray')
+            win_lbl.pack(side=tk.LEFT, padx=5)
+            
+            self.regime_performance_labels[key] = (ret_lbl, win_lbl)
+        
+        # Best regime
+        sep = ttk.Separator(inner, orient='horizontal')
+        sep.pack(fill=tk.X, pady=8)
+        
+        best_f = ttk.Frame(inner)
+        best_f.pack(fill=tk.X)
+        ttk.Label(best_f, text="Best Environment:", font=('Helvetica', 9, 'bold')).pack(side=tk.LEFT)
+        self.best_regime_label = ttk.Label(best_f, text="-", font=('Helvetica', 11, 'bold'))
+        self.best_regime_label.pack(side=tk.LEFT, padx=8)
+    
+    def _create_risk_card(self, parent, row, col):
+        """Create enhanced risk decomposition card."""
+        frame = ttk.LabelFrame(parent, text="🎲 Risk Sources")
+        frame.grid(row=row, column=col, sticky='nsew', padx=3, pady=3)
+        
+        inner = ttk.Frame(frame)
+        inner.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
+        
+        self.risk_decomp_labels = {}
+        factor_colors = {'Market': '#ff6b6b', 'Size': '#4ecdc4', 'Value': '#45b7d1',
+                         'Momentum': '#f9ca24', 'Idiosyncratic': '#a29bfe'}
+        
+        for item in ['Market', 'Size', 'Value', 'Momentum', 'Idiosyncratic']:
+            row_f = ttk.Frame(inner)
+            row_f.pack(fill=tk.X, pady=2)
+            
+            color = factor_colors.get(item, 'white')
+            color_lbl = tk.Label(row_f, text="●", fg=color, bg='#1a1a2e', font=('Helvetica', 10))
+            color_lbl.pack(side=tk.LEFT)
+            
+            name = item[:4] if item != 'Idiosyncratic' else 'Idio'
+            ttk.Label(row_f, text=name, width=5, font=('Helvetica', 9)).pack(side=tk.LEFT)
+            
+            bar = ttk.Progressbar(row_f, length=50, mode='determinate')
+            bar.pack(side=tk.LEFT, padx=3)
+            
+            pct_lbl = ttk.Label(row_f, text="-", font=('Helvetica', 9, 'bold'), width=5)
+            pct_lbl.pack(side=tk.LEFT)
+            
+            cat_lbl = ttk.Label(row_f, text="", font=('Helvetica', 7), foreground='gray')
+            cat_lbl.pack(side=tk.LEFT, padx=2)
+            
+            self.risk_decomp_labels[item] = (bar, pct_lbl, cat_lbl, color_lbl)
+        
+        # Summary
+        sep = ttk.Separator(inner, orient='horizontal')
+        sep.pack(fill=tk.X, pady=5)
+        
+        self.risk_factor_total = ttk.Label(inner, text="Factor: -% | Idio: -%", 
+                                            font=('Helvetica', 9, 'bold'))
+        self.risk_factor_total.pack()
+    
+    def _create_insight_bar(self, parent):
+        """Create AI insight bar at bottom."""
+        frame = ttk.LabelFrame(parent, text="🤖 AI Analysis")
+        frame.pack(fill=tk.X, padx=5, pady=5)
+        
+        inner = ttk.Frame(frame)
+        inner.pack(fill=tk.X, padx=10, pady=10)
+        
+        # AI Text
+        self.stock_ai_text = ttk.Label(inner, text="Select a stock and click Analyze...",
+                                        font=('Helvetica', 10), wraplength=800)
+        self.stock_ai_text.pack(fill=tk.X)
+        
+        # What-If row
+        whatif = ttk.Frame(inner)
+        whatif.pack(fill=tk.X, pady=(8, 0))
+        
+        ttk.Label(whatif, text="🎛️ What-If Simulator:", font=('Helvetica', 9, 'bold')).pack(side=tk.LEFT)
+        ttk.Label(whatif, text="If Market moves", font=('Helvetica', 9)).pack(side=tk.LEFT, padx=(10, 0))
+        
+        self.whatif_var = tk.StringVar(value='5')
+        ttk.Entry(whatif, textvariable=self.whatif_var, width=4).pack(side=tk.LEFT, padx=3)
+        
+        ttk.Label(whatif, text="% →", font=('Helvetica', 9)).pack(side=tk.LEFT)
+        self.whatif_result = ttk.Label(whatif, text="Stock: -", font=('Helvetica', 10, 'bold'))
+        self.whatif_result.pack(side=tk.LEFT, padx=5)
+        
+        ttk.Button(whatif, text="Calculate", command=self._calculate_whatif).pack(side=tk.LEFT, padx=5)
+    
+    # Legacy methods kept for compatibility
+    def _create_stock_selector(self, parent):
+        """Legacy stock selector (kept for compatibility)."""
+        pass  # Now handled by _create_stock_header
+    
+    def _create_radar_panel(self, parent, row, col):
+        """Legacy radar panel (now _create_profile_chart)."""
+        pass  # Replaced by _create_profile_chart
     
     def _create_factor_bars_panel(self, parent, row, col):
         """Create factor exposure bar panel."""
@@ -1184,6 +1400,12 @@ class PCAAnalysisTab:
         interp = "✅ Aligned" if alignment > 0.2 else "⚠️ Misaligned" if alignment < -0.2 else "➖ Neutral"
         self.alignment_interp.config(text=interp)
         
+        # Update quick stats header if available
+        if hasattr(self, 'quick_stats'):
+            # Alignment
+            self.quick_stats['Alignment'].config(text=f"{alignment:+.2f}", 
+                foreground=COLORS['gain'] if alignment > 0 else COLORS['loss'])
+        
         # Update radar chart
         self._update_radar_chart(symbol, exposures)
         
@@ -1249,6 +1471,14 @@ class PCAAnalysisTab:
         
         # Update summary
         self.risk_factor_total.config(text=f"📊 Factor: {factor_total:.0f}% | 🎯 Idio: {idio_pct:.0f}%")
+        
+        # Update quick stats header with Alpha and Risk
+        if hasattr(self, 'quick_stats'):
+            alpha_val = attribution.get('Alpha', 0)
+            self.quick_stats['Alpha'].config(text=f"{alpha_val:+.1f}%", 
+                foreground=COLORS['gain'] if alpha_val > 0 else COLORS['loss'])
+            self.quick_stats['Risk'].config(text=f"{idio_pct:.0f}%",
+                foreground='#a29bfe')  # Purple for idiosyncratic
         
         # AI Insight
         self._generate_stock_ai_insight(symbol, exposures, alignment, attribution, regime_perf)
