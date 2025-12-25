@@ -223,21 +223,21 @@ class PCAAnalysisTab:
         inner.pack(fill=tk.X, padx=10, pady=10)
         
         factors = ['Market', 'Size', 'Value', 'Momentum', 'Volatility']
-        periods = [('1D', 1), ('1W', 5), ('1M', 20)]
+        periods = [('1D', 1), ('1W', 5), ('1M', 20), ('Ann.', 252)]  # Added Annualized
         
         # Header row
-        ttk.Label(inner, text="Factor", width=10, font=('Helvetica', 8, 'bold')).grid(row=0, column=0)
+        ttk.Label(inner, text="Factor", width=9, font=('Helvetica', 8, 'bold')).grid(row=0, column=0)
         for i, (period_name, _) in enumerate(periods):
-            ttk.Label(inner, text=period_name, width=8, font=('Helvetica', 8, 'bold')).grid(row=0, column=i+1)
+            ttk.Label(inner, text=period_name, width=7, font=('Helvetica', 8, 'bold')).grid(row=0, column=i+1)
         
         # Factor rows
         self.factor_return_labels = {}
         for row, factor in enumerate(factors, 1):
-            ttk.Label(inner, text=factor, width=10, font=('Helvetica', 9)).grid(row=row, column=0, sticky='w')
+            ttk.Label(inner, text=factor, width=9, font=('Helvetica', 9)).grid(row=row, column=0, sticky='w')
             
             self.factor_return_labels[factor] = {}
             for col, (period_name, _) in enumerate(periods, 1):
-                lbl = ttk.Label(inner, text="-", width=8, font=('Helvetica', 9, 'bold'))
+                lbl = ttk.Label(inner, text="-", width=7, font=('Helvetica', 9, 'bold'))
                 lbl.grid(row=row, column=col)
                 self.factor_return_labels[factor][period_name] = lbl
     
@@ -346,23 +346,28 @@ class PCAAnalysisTab:
         
         recent = factor_returns.tail(window)
         
-        # Normalize factor returns for better visibility
-        # Use z-score normalization so all lines are comparable
+        # Z-score normalize each factor so all are visible on same scale
+        # This shows relative movements, not absolute returns
         for i, factor in enumerate(factors):
             if factor in recent.columns:
-                # Calculate cumulative returns (scaled)
-                cumulative = (1 + recent[factor]).cumprod()
-                # Normalize to start at 100
-                normalized = (cumulative / cumulative.iloc[0]) * 100 - 100
+                series = recent[factor]
+                # Z-score normalization: (x - mean) / std
+                if series.std() > 0:
+                    z_scores = (series - series.mean()) / series.std()
+                else:
+                    z_scores = series * 0  # All zeros if no variance
                 
-                ax.plot(range(len(normalized)), normalized, 
+                # Cumulative z-score for trend visualization
+                cumulative_z = z_scores.cumsum()
+                
+                ax.plot(range(len(cumulative_z)), cumulative_z, 
                        label=f"{factor}", color=colors[i], linewidth=2.5,
-                       marker='o' if window <= 20 else None, markersize=3)
+                       marker='o' if window <= 20 else None, markersize=4)
         
         ax.axhline(y=0, color='white', linestyle='--', alpha=0.5, linewidth=1)
         ax.set_xlabel('Days', color='white', fontsize=10)
-        ax.set_ylabel('Normalized Return (%)', color='white', fontsize=10)
-        ax.set_title(f'Factor Performance ({window}-day Trend)', color='white', fontsize=12, fontweight='bold')
+        ax.set_ylabel('Z-Score (Cumulative)', color='white', fontsize=10)
+        ax.set_title(f'Factor Trend ({window}-day) - Normalized', color='white', fontsize=12, fontweight='bold')
         
         # Better legend
         legend = ax.legend(loc='upper left', facecolor='#2d2d4e', 
@@ -799,21 +804,31 @@ class PCAAnalysisTab:
             bar['value'] = min(pct * 5, 100)  # Scale for visibility
             lbl.config(text=f"{pct:.1f}%")
         
-        # Factor returns - multiple periods
+        # Factor returns - multiple periods including annualized
         factor_returns = pca.get_factor_returns()
         if not factor_returns.empty:
-            periods = [('1D', 1), ('1W', 5), ('1M', 20)]
+            periods = [('1D', 1), ('1W', 5), ('1M', 20), ('Ann.', 252)]
             factors = ['Market', 'Size', 'Value', 'Momentum', 'Volatility']
             
             for factor in factors:
                 if factor in self.factor_return_labels and factor in factor_returns.columns:
                     for period_name, days in periods:
-                        if len(factor_returns) >= days:
-                            ret = factor_returns[factor].tail(days).sum() * 100  # Cumulative
-                            if period_name in self.factor_return_labels[factor]:
-                                lbl = self.factor_return_labels[factor][period_name]
-                                color = COLORS['gain'] if ret > 0 else COLORS['loss']
-                                lbl.config(text=f"{ret:+.1f}%", foreground=color)
+                        if period_name in self.factor_return_labels[factor]:
+                            lbl = self.factor_return_labels[factor][period_name]
+                            
+                            if period_name == 'Ann.':
+                                # Annualized: mean daily return × 252
+                                mean_daily = factor_returns[factor].mean()
+                                ret = mean_daily * 252 * 100
+                            else:
+                                # Cumulative for period
+                                if len(factor_returns) >= days:
+                                    ret = factor_returns[factor].tail(days).sum() * 100
+                                else:
+                                    ret = 0
+                            
+                            color = COLORS['gain'] if ret > 0 else COLORS['loss']
+                            lbl.config(text=f"{ret:+.1f}%", foreground=color)
         
         # Exposure table
         self._update_exposure_table()
