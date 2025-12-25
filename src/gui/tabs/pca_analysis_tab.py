@@ -223,21 +223,22 @@ class PCAAnalysisTab:
         inner.pack(fill=tk.X, padx=10, pady=10)
         
         factors = ['Market', 'Size', 'Value', 'Momentum', 'Volatility']
-        periods = [('1D', 1), ('1W', 5), ('1M', 20), ('Ann.', 252)]  # Added Annualized
+        # 1D, 1W, 1M, YTD, Annualized
+        periods = [('1D', 1), ('1W', 5), ('1M', 20), ('YTD', -1), ('Ann.', 252)]
         
         # Header row
-        ttk.Label(inner, text="Factor", width=9, font=('Helvetica', 8, 'bold')).grid(row=0, column=0)
+        ttk.Label(inner, text="Factor", width=8, font=('Helvetica', 8, 'bold')).grid(row=0, column=0)
         for i, (period_name, _) in enumerate(periods):
-            ttk.Label(inner, text=period_name, width=7, font=('Helvetica', 8, 'bold')).grid(row=0, column=i+1)
+            ttk.Label(inner, text=period_name, width=6, font=('Helvetica', 8, 'bold')).grid(row=0, column=i+1)
         
         # Factor rows
         self.factor_return_labels = {}
         for row, factor in enumerate(factors, 1):
-            ttk.Label(inner, text=factor, width=9, font=('Helvetica', 9)).grid(row=row, column=0, sticky='w')
+            ttk.Label(inner, text=factor, width=8, font=('Helvetica', 9)).grid(row=row, column=0, sticky='w')
             
             self.factor_return_labels[factor] = {}
             for col, (period_name, _) in enumerate(periods, 1):
-                lbl = ttk.Label(inner, text="-", width=7, font=('Helvetica', 9, 'bold'))
+                lbl = ttk.Label(inner, text="-", width=6, font=('Helvetica', 9, 'bold'))
                 lbl.grid(row=row, column=col)
                 self.factor_return_labels[factor][period_name] = lbl
     
@@ -301,11 +302,12 @@ class PCAAnalysisTab:
         ctrl = ttk.Frame(parent)
         ctrl.pack(fill=tk.X, padx=10, pady=5)
         
-        ttk.Label(ctrl, text="Window:").pack(side=tk.LEFT)
-        self.chart_window_var = tk.StringVar(value='20')
-        for days in ['20', '60', '90']:
-            ttk.Radiobutton(ctrl, text=f"{days}d", variable=self.chart_window_var, 
-                           value=days, command=self._update_chart).pack(side=tk.LEFT, padx=5)
+        ttk.Label(ctrl, text="Period:").pack(side=tk.LEFT)
+        self.chart_window_var = tk.StringVar(value='5')
+        chart_options = [('1D', '1'), ('1W', '5'), ('1M', '20'), ('YTD', 'YTD')]
+        for label, value in chart_options:
+            ttk.Radiobutton(ctrl, text=label, variable=self.chart_window_var, 
+                           value=value, command=self._update_chart).pack(side=tk.LEFT, padx=5)
         
         ttk.Button(ctrl, text="📊 Update Chart", 
                    command=self._update_chart).pack(side=tk.RIGHT)
@@ -334,7 +336,19 @@ class PCAAnalysisTab:
         if factor_returns.empty:
             return
         
-        window = int(self.chart_window_var.get())
+        # Determine window size
+        window_val = self.chart_window_var.get()
+        if window_val == 'YTD':
+            # Calculate days from start of year
+            from datetime import datetime
+            today = datetime.now()
+            start_of_year = datetime(today.year, 1, 1)
+            window = (today - start_of_year).days
+            window = min(window, len(factor_returns))  # Cap at available data
+            period_label = 'YTD'
+        else:
+            window = int(window_val)
+            period_label = f'{window}-day'
         
         self._figure.clear()
         ax = self._figure.add_subplot(111)
@@ -361,7 +375,7 @@ class PCAAnalysisTab:
         ax.axhline(y=100, color='white', linestyle='--', alpha=0.5, linewidth=1)
         ax.set_xlabel('Days', color='white', fontsize=10)
         ax.set_ylabel('Indexed Value (Base=100)', color='white', fontsize=10)
-        ax.set_title(f'Factor Performance ({window}-day)', color='white', fontsize=12, fontweight='bold')
+        ax.set_title(f'Factor Performance ({period_label})', color='white', fontsize=12, fontweight='bold')
         
         # Better legend
         legend = ax.legend(loc='upper left', facecolor='#2d2d4e', 
@@ -805,10 +819,16 @@ class PCAAnalysisTab:
             bar['value'] = min(pct * 5, 100)  # Scale for visibility
             lbl.config(text=f"{pct:.1f}%")
         
-        # Factor returns - multiple periods including annualized
+        # Factor returns - multiple periods including YTD and annualized
         factor_returns = pca.get_factor_returns()
         if not factor_returns.empty:
-            periods = [('1D', 1), ('1W', 5), ('1M', 20), ('Ann.', 252)]
+            # Calculate YTD days
+            from datetime import datetime
+            today = datetime.now()
+            ytd_days = (today - datetime(today.year, 1, 1)).days
+            ytd_days = min(ytd_days, len(factor_returns))
+            
+            periods = [('1D', 1), ('1W', 5), ('1M', 20), ('YTD', ytd_days), ('Ann.', 252)]
             factors = ['Market', 'Size', 'Value', 'Momentum', 'Volatility']
             
             for factor in factors:
@@ -823,7 +843,7 @@ class PCAAnalysisTab:
                                 ret = mean_daily * 252 * 100
                             else:
                                 # Cumulative for period
-                                if len(factor_returns) >= days:
+                                if len(factor_returns) >= days and days > 0:
                                     ret = factor_returns[factor].tail(days).sum() * 100
                                 else:
                                     ret = 0
