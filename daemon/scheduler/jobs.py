@@ -101,7 +101,7 @@ class ScheduledJobs:
         
         # 4. Run screener
         try:
-            screener_hits = len(self.config.default_watchlist)
+            screener_hits = len(self.config.all_securities)
             results.append(f"🔍 Screener: {screener_hits} stocks tracked")
         except Exception as e:
             results.append("🔍 Screener: Ready")
@@ -140,7 +140,7 @@ class ScheduledJobs:
             
             # Gather full data for top signals
             signals = []
-            for symbol in self.config.default_watchlist[:8]:
+            for symbol in self.config.all_securities[:8]:
                 try:
                     result = await analyzer.synthesize(symbol)
                     if 'error' not in result:
@@ -190,7 +190,7 @@ class ScheduledJobs:
 {chr(10).join(signal_lines) if signal_lines else 'No data available'}
 
 <b>📊 TODAY'S FOCUS:</b>
-• Watchlist: {len(self.config.default_watchlist)} stocks
+• Watchlist: {len(self.config.all_securities)} stocks
 • Bull signals: {len([s for s in signals if s['return'] > 0])}
 • Bear signals: {len([s for s in signals if s['return'] < 0])}
 
@@ -216,7 +216,7 @@ Good morning! Use /pathway SYMBOL for details 🌅
             
             # Get opening prices and signals
             openers = []
-            for symbol in self.config.default_watchlist[:5]:
+            for symbol in self.config.all_securities[:5]:
                 try:
                     result = await analyzer.synthesize(symbol)
                     if 'error' not in result:
@@ -305,7 +305,7 @@ Use /summary for analysis.
             # Analyze ALL watchlist with full data
             all_data = []
             
-            for symbol in self.config.default_watchlist[:12]:
+            for symbol in self.config.all_securities[:12]:
                 try:
                     result = await analyzer.synthesize(symbol)
                     if 'error' not in result:
@@ -388,7 +388,7 @@ Use /pathway SYMBOL for full details 🔮
             bid_data = []
             offer_data = []
             
-            for symbol in self.config.default_watchlist[:12]:
+            for symbol in self.config.all_securities[:12]:
                 try:
                     result = await analyzer.synthesize(symbol)
                     if 'error' not in result:
@@ -483,7 +483,7 @@ Good session! See you at 16:00 📊
             # Get FULL data for all watchlist
             opportunities = []
             
-            for symbol in self.config.default_watchlist:
+            for symbol in self.config.all_securities:
                 try:
                     result = await analyzer.synthesize(symbol)
                     if 'error' not in result:
