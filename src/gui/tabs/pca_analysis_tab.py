@@ -132,159 +132,212 @@ class PCAAnalysisTab:
                                        foreground=COLORS['info'])
         self.status_label.pack(side=tk.LEFT, padx=20)
     
-    # ==================== OVERVIEW TAB ====================
+    # ==================== OVERVIEW TAB (REDESIGNED) ====================
     
     def _create_overview_tab(self, parent):
-        """Create overview tab with regime and factors."""
-        # Use PanedWindow for resizable columns
-        main_pane = ttk.PanedWindow(parent, orient=tk.HORIZONTAL)
-        main_pane.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        """Create redesigned overview dashboard."""
+        main = ttk.Frame(parent)
+        main.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
-        # Left column (40%) - Regime, Variance, Returns
-        left = ttk.Frame(main_pane)
-        main_pane.add(left, weight=40)
+        # TOP: Regime Hero Section
+        self._create_regime_hero(main)
         
-        # Right column (60%) - Exposure heatmap (larger)
-        right = ttk.Frame(main_pane)
-        main_pane.add(right, weight=60)
+        # MIDDLE: PanedWindow for metrics and heatmap
+        content = ttk.PanedWindow(main, orient=tk.HORIZONTAL)
+        content.pack(fill=tk.BOTH, expand=True, pady=5)
         
-        # Left: Regime + Variance + Returns
-        self._create_regime_panel(left)
-        self._create_variance_panel(left)
-        self._create_factor_returns_panel(left)
+        # Left column (35%): Factor Metrics
+        left = ttk.Frame(content)
+        content.add(left, weight=35)
         
-        # Right: Exposure heatmap (full height)
-        self._create_exposure_panel(right)
+        self._create_factor_signals_grid(left)
+        self._create_variance_section(left)
+        self._create_returns_table(left)
+        
+        # Right column (65%): Exposure Heatmap
+        right = ttk.Frame(content)
+        content.add(right, weight=65)
+        
+        self._create_heatmap_panel(right)
     
-    def _create_regime_panel(self, parent):
-        """Create market regime indicator panel."""
-        regime_frame = ttk.LabelFrame(parent, text="📊 Market Regime")
-        regime_frame.pack(fill=tk.X, pady=(0, 5))
+    def _create_regime_hero(self, parent):
+        """Create large regime indicator hero section."""
+        hero = ttk.Frame(parent)
+        hero.pack(fill=tk.X, pady=(0, 8))
         
-        inner = ttk.Frame(regime_frame)
+        # Card-style frame
+        card = ttk.LabelFrame(hero, text="")
+        card.pack(fill=tk.X)
+        
+        inner = ttk.Frame(card)
+        inner.pack(fill=tk.X, padx=15, pady=12)
+        
+        # Left: Regime name and icon
+        left = ttk.Frame(inner)
+        left.pack(side=tk.LEFT)
+        
+        ttk.Label(left, text="MARKET REGIME", font=('Helvetica', 9), 
+                 foreground='gray').pack(anchor='w')
+        
+        regime_row = ttk.Frame(left)
+        regime_row.pack(anchor='w')
+        
+        self.regime_label = ttk.Label(regime_row, text="Unknown", 
+                                       font=('Helvetica', 28, 'bold'))
+        self.regime_label.pack(side=tk.LEFT)
+        
+        self.regime_icon = ttk.Label(regime_row, text="", font=('Helvetica', 24))
+        self.regime_icon.pack(side=tk.LEFT, padx=10)
+        
+        self.confidence_label = ttk.Label(left, text="Confidence: -", 
+                                           font=('Helvetica', 10), foreground='gray')
+        self.confidence_label.pack(anchor='w')
+        
+        # Right: Key metrics
+        metrics = ttk.Frame(inner)
+        metrics.pack(side=tk.RIGHT)
+        
+        self.hero_metrics = {}
+        for metric in ['Market Return', 'Volatility']:
+            frame = ttk.Frame(metrics)
+            frame.pack(side=tk.LEFT, padx=20)
+            ttk.Label(frame, text=metric.upper(), font=('Helvetica', 8), 
+                     foreground='gray').pack()
+            lbl = ttk.Label(frame, text="-", font=('Helvetica', 18, 'bold'))
+            lbl.pack()
+            self.hero_metrics[metric] = lbl
+    
+    def _create_factor_signals_grid(self, parent):
+        """Create factor signals in a compact grid."""
+        frame = ttk.LabelFrame(parent, text="📡 Factor Signals")
+        frame.pack(fill=tk.X, pady=(0, 5))
+        
+        inner = ttk.Frame(frame)
         inner.pack(fill=tk.X, padx=10, pady=10)
-        
-        # Regime indicator - large display
-        regime_display = ttk.Frame(inner)
-        regime_display.pack(fill=tk.X)
-        
-        ttk.Label(regime_display, text="Current:", 
-                  font=('Helvetica', 10)).pack(side=tk.LEFT)
-        
-        self.regime_label = ttk.Label(regime_display, text="Unknown", 
-                                       font=('Helvetica', 18, 'bold'))
-        self.regime_label.pack(side=tk.LEFT, padx=10)
-        
-        self.confidence_label = ttk.Label(regime_display, text="", 
-                                           font=('Helvetica', 10))
-        self.confidence_label.pack(side=tk.LEFT, padx=5)
-        
-        # Factor signals in grid
-        signals_frame = ttk.Frame(regime_frame)
-        signals_frame.pack(fill=tk.X, padx=10, pady=(5, 10))
         
         self.factor_signal_labels = {}
         factors = ['Market', 'Size', 'Value', 'Momentum', 'Volatility']
         
+        # 5 columns
         for i, factor in enumerate(factors):
-            lbl = ttk.Label(signals_frame, text=f"{factor}: -", 
-                           font=('Helvetica', 9))
-            lbl.grid(row=0, column=i, padx=8)
+            col = ttk.Frame(inner)
+            col.pack(side=tk.LEFT, expand=True, fill=tk.X)
+            
+            ttk.Label(col, text=factor[:3], font=('Helvetica', 8), 
+                     foreground='gray').pack()
+            lbl = ttk.Label(col, text="•", font=('Helvetica', 16, 'bold'))
+            lbl.pack()
             self.factor_signal_labels[factor] = lbl
     
-    def _create_variance_panel(self, parent):
-        """Create variance explained panel."""
-        var_frame = ttk.LabelFrame(parent, text="📈 Variance Explained")
-        var_frame.pack(fill=tk.X, pady=5)
+    def _create_variance_section(self, parent):
+        """Create compact variance explained section."""
+        frame = ttk.LabelFrame(parent, text="� Variance Explained")
+        frame.pack(fill=tk.X, pady=5)
         
-        inner = ttk.Frame(var_frame)
-        inner.pack(fill=tk.X, padx=10, pady=10)
+        inner = ttk.Frame(frame)
+        inner.pack(fill=tk.X, padx=10, pady=8)
         
         self.variance_bars = {}
         factors = ['Market', 'Size', 'Value', 'Momentum', 'Volatility']
+        colors = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#f9ca24', '#a29bfe']
         
         for i, factor in enumerate(factors):
-            row_frame = ttk.Frame(inner)
-            row_frame.pack(fill=tk.X, pady=2)
+            row = ttk.Frame(inner)
+            row.pack(fill=tk.X, pady=2)
             
-            ttk.Label(row_frame, text=f"{factor}:", width=10,
-                     font=('Helvetica', 9)).pack(side=tk.LEFT)
+            # Color dot + name
+            color_lbl = tk.Label(row, text="●", fg=colors[i], bg='#1a1a2e', font=('Helvetica', 9))
+            color_lbl.pack(side=tk.LEFT)
+            ttk.Label(row, text=factor[:4], width=5, font=('Helvetica', 9)).pack(side=tk.LEFT)
             
-            bar = ttk.Progressbar(row_frame, length=150, mode='determinate')
-            bar.pack(side=tk.LEFT, padx=5)
+            # Bar
+            bar = ttk.Progressbar(row, length=100, mode='determinate')
+            bar.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
             
-            pct_lbl = ttk.Label(row_frame, text="0.0%", width=6,
-                               font=('Helvetica', 9, 'bold'))
+            # Percentage
+            pct_lbl = ttk.Label(row, text="0%", width=5, font=('Helvetica', 9, 'bold'))
             pct_lbl.pack(side=tk.LEFT)
             
             self.variance_bars[factor] = (bar, pct_lbl)
-    
-    def _create_factor_returns_panel(self, parent):
-        """Create factor returns display with multiple time periods."""
-        ret_frame = ttk.LabelFrame(parent, text="📉 Factor Returns")
-        ret_frame.pack(fill=tk.X, pady=5)
         
-        inner = ttk.Frame(ret_frame)
-        inner.pack(fill=tk.X, padx=10, pady=10)
+        # Total
+        total_frame = ttk.Frame(inner)
+        total_frame.pack(fill=tk.X, pady=(5, 0))
+        ttk.Separator(total_frame, orient='horizontal').pack(fill=tk.X, pady=3)
+        self.total_variance = ttk.Label(total_frame, text="Total: -%", 
+                                         font=('Helvetica', 9, 'bold'))
+        self.total_variance.pack(anchor='e')
+    
+    def _create_returns_table(self, parent):
+        """Create compact factor returns table."""
+        frame = ttk.LabelFrame(parent, text="� Factor Returns")
+        frame.pack(fill=tk.BOTH, expand=True, pady=5)
+        
+        inner = ttk.Frame(frame)
+        inner.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
         
         factors = ['Market', 'Size', 'Value', 'Momentum', 'Volatility']
-        # 1D, 1W, 1M, YTD, Annualized
         periods = [('1D', 1), ('1W', 5), ('1M', 20), ('YTD', -1), ('Ann.', 252)]
         
-        # Header row
-        ttk.Label(inner, text="Factor", width=8, font=('Helvetica', 8, 'bold')).grid(row=0, column=0)
-        for i, (period_name, _) in enumerate(periods):
-            ttk.Label(inner, text=period_name, width=6, font=('Helvetica', 8, 'bold')).grid(row=0, column=i+1)
+        # Header
+        ttk.Label(inner, text="", width=7).grid(row=0, column=0)
+        for i, (period, _) in enumerate(periods):
+            ttk.Label(inner, text=period, width=5, font=('Helvetica', 8, 'bold')).grid(row=0, column=i+1)
         
         # Factor rows
         self.factor_return_labels = {}
         for row, factor in enumerate(factors, 1):
-            ttk.Label(inner, text=factor, width=8, font=('Helvetica', 9)).grid(row=row, column=0, sticky='w')
+            ttk.Label(inner, text=factor[:4], width=7, font=('Helvetica', 9)).grid(row=row, column=0, sticky='w')
             
             self.factor_return_labels[factor] = {}
-            for col, (period_name, _) in enumerate(periods, 1):
-                lbl = ttk.Label(inner, text="-", width=6, font=('Helvetica', 9, 'bold'))
+            for col, (period, _) in enumerate(periods, 1):
+                lbl = ttk.Label(inner, text="-", width=5, font=('Helvetica', 9, 'bold'))
                 lbl.grid(row=row, column=col)
-                self.factor_return_labels[factor][period_name] = lbl
+                self.factor_return_labels[factor][period] = lbl
     
-    def _create_exposure_panel(self, parent):
-        """Create stock-factor exposure panel."""
-        exp_frame = ttk.LabelFrame(parent, text="🎯 Factor Exposure Heatmap")
-        exp_frame.pack(fill=tk.BOTH, expand=True)
+    def _create_heatmap_panel(self, parent):
+        """Create enhanced exposure heatmap panel."""
+        frame = ttk.LabelFrame(parent, text="🎯 Stock Factor Exposures")
+        frame.pack(fill=tk.BOTH, expand=True)
         
-        # Sort controls
-        sort_frame = ttk.Frame(exp_frame)
-        sort_frame.pack(fill=tk.X, padx=5, pady=5)
+        # Controls bar
+        ctrl = ttk.Frame(frame)
+        ctrl.pack(fill=tk.X, padx=8, pady=5)
         
-        ttk.Label(sort_frame, text="Sort by:").pack(side=tk.LEFT)
+        ttk.Label(ctrl, text="Sort:", font=('Helvetica', 9)).pack(side=tk.LEFT)
         self.sort_var = tk.StringVar(value='Market')
-        sort_combo = ttk.Combobox(sort_frame, textvariable=self.sort_var,
+        sort_combo = ttk.Combobox(ctrl, textvariable=self.sort_var,
                                    values=['Market', 'Size', 'Value', 'Momentum', 'Volatility'],
                                    width=10, state='readonly')
         sort_combo.pack(side=tk.LEFT, padx=5)
         sort_combo.bind('<<ComboboxSelected>>', lambda e: self._update_exposure_table())
         
-        # Treeview
-        columns = ('Symbol', 'Market', 'Size', 'Value', 'Mom', 'Vol')
-        self.exposure_tree = ttk.Treeview(exp_frame, columns=columns, 
-                                           show='headings', height=12)
+        self.exposure_count = ttk.Label(ctrl, text="", font=('Helvetica', 8), foreground='gray')
+        self.exposure_count.pack(side=tk.RIGHT)
         
-        col_widths = {'Symbol': 65, 'Market': 55, 'Size': 55, 
-                      'Value': 55, 'Mom': 55, 'Vol': 55}
+        # Treeview with styling
+        tree_frame = ttk.Frame(frame)
+        tree_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=(0, 5))
+        
+        columns = ('Symbol', 'Market', 'Size', 'Value', 'Mom', 'Vol')
+        self.exposure_tree = ttk.Treeview(tree_frame, columns=columns, 
+                                           show='headings', height=15)
+        
+        col_widths = {'Symbol': 70, 'Market': 60, 'Size': 60, 
+                      'Value': 60, 'Mom': 60, 'Vol': 60}
         
         for col in columns:
             self.exposure_tree.heading(col, text=col,
                 command=lambda c=col: self._sort_exposure_by(c))
-            self.exposure_tree.column(col, width=col_widths.get(col, 55))
+            self.exposure_tree.column(col, width=col_widths.get(col, 60), anchor='center')
         
-        scrollbar = ttk.Scrollbar(exp_frame, orient=tk.VERTICAL,
+        scrollbar = ttk.Scrollbar(tree_frame, orient=tk.VERTICAL,
                                    command=self.exposure_tree.yview)
         self.exposure_tree.configure(yscrollcommand=scrollbar.set)
         
         self.exposure_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         
-        # Bind selection
         self.exposure_tree.bind('<<TreeviewSelect>>', self._on_stock_select)
         
         # Color tags
@@ -293,6 +346,19 @@ class PCAAnalysisTab:
         self.exposure_tree.tag_configure('neutral', foreground='#aaaaaa')
         self.exposure_tree.tag_configure('weak_neg', foreground='#ffaa88')
         self.exposure_tree.tag_configure('strong_neg', foreground='#ff6666')
+    
+    # Legacy methods for backwards compatibility
+    def _create_regime_panel(self, parent):
+        pass  # Now _create_regime_hero
+    
+    def _create_variance_panel(self, parent):
+        pass  # Now _create_variance_section
+    
+    def _create_factor_returns_panel(self, parent):
+        pass  # Now _create_returns_table
+    
+    def _create_exposure_panel(self, parent):
+        pass  # Now _create_heatmap_panel
     
     # ==================== CHARTS TAB ====================
     
@@ -1225,31 +1291,57 @@ class PCAAnalysisTab:
         if not pca._is_fitted:
             return
         
-        # Update regime
+        # Update regime hero section
         regime_info = pca.get_market_regime()
         regime = regime_info.get('regime', 'Unknown')
         
         colors = {'Risk-On': COLORS['gain'], 'Risk-Off': COLORS['loss'], 'Rotation': COLORS['warning']}
-        icons = {'Risk-On': '🟢', 'Risk-Off': '🔴', 'Rotation': '⚡'}
+        icons = {'Risk-On': '🟢', 'Risk-Off': '🔴', 'Rotation': '⚡', 'Unknown': '❓'}
         
         self.regime_label.config(
-            text=f"{regime} {icons.get(regime, '')}",
+            text=regime,
             foreground=colors.get(regime, 'white')
         )
-        self.confidence_label.config(text=f"({regime_info.get('confidence', 0):.0%})")
         
-        # Factor signals
+        # Update regime icon if exists
+        if hasattr(self, 'regime_icon'):
+            self.regime_icon.config(text=icons.get(regime, '❓'))
+        
+        self.confidence_label.config(text=f"Confidence: {regime_info.get('confidence', 0):.0%}")
+        
+        # Update hero metrics if exist
+        if hasattr(self, 'hero_metrics'):
+            mkt_ret = regime_info.get('market_return', 0)
+            volatility = regime_info.get('volatility', 0)
+            
+            self.hero_metrics['Market Return'].config(
+                text=f"{mkt_ret:+.1f}%",
+                foreground=COLORS['gain'] if mkt_ret > 0 else COLORS['loss']
+            )
+            self.hero_metrics['Volatility'].config(
+                text=f"{volatility:.1f}%",
+                foreground='#f9ca24' if volatility > 3 else COLORS['info']
+            )
+        
+        # Factor signals (new compact format)
         for factor, lbl in self.factor_signal_labels.items():
             signal = regime_info.get('factor_signals', {}).get(factor, 'Neutral')
             color = COLORS['gain'] if signal == 'Bullish' else COLORS['loss'] if signal == 'Bearish' else 'gray'
-            lbl.config(text=f"{factor}: {signal}", foreground=color)
+            icon = '▲' if signal == 'Bullish' else '▼' if signal == 'Bearish' else '•'
+            lbl.config(text=icon, foreground=color)
         
-        # Variance
+        # Variance with total
         variance = pca.get_variance_explained()
+        total = 0
         for factor, (bar, lbl) in self.variance_bars.items():
             pct = variance.get(factor, 0) * 100
             bar['value'] = min(pct * 5, 100)  # Scale for visibility
             lbl.config(text=f"{pct:.1f}%")
+            total += pct
+        
+        # Update total variance if exists
+        if hasattr(self, 'total_variance'):
+            self.total_variance.config(text=f"Total: {total:.1f}%")
         
         # Factor returns - multiple periods including YTD and annualized
         factor_returns = pca.get_factor_returns()
