@@ -393,7 +393,6 @@ class DatabaseManager:
             "CREATE INDEX IF NOT EXISTS idx_stocks_sector ON stocks(sector)",
             "CREATE INDEX IF NOT EXISTS idx_daily_prices_stock_date ON daily_prices(stock_id, date)",
             "CREATE INDEX IF NOT EXISTS idx_orderbook_stock_time ON orderbook_snapshots(stock_id, timestamp)",
-            "CREATE INDEX IF NOT EXISTS idx_disclosures_stock ON corporate_disclosures(stock_id)",
             "CREATE INDEX IF NOT EXISTS idx_positions_portfolio ON positions(portfolio_id)",
             "CREATE INDEX IF NOT EXISTS idx_transactions_portfolio ON transactions(portfolio_id)",
             "CREATE INDEX IF NOT EXISTS idx_watchlist_items ON watchlist_items(watchlist_id)",
