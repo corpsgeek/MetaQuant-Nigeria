@@ -106,7 +106,7 @@ class PathwaySynthesizer:
         Generate comprehensive price pathway synthesis.
         
         Args:
-            symbol: Stock symbol to analyze
+            symbol: Stock symbol
             
         Returns:
             Dict with predictions, probabilities, and signal breakdown
@@ -115,11 +115,15 @@ class PathwaySynthesizer:
         
         # Get current price
         current_price = self._get_current_price(symbol)
-        if not current_price:
-            return {'error': 'Could not get current price'}
+        logger.info(f"Current price for {symbol}: {current_price}")
+        
+        if not current_price or current_price <= 0:
+            logger.warning(f"Invalid current price for {symbol}: {current_price}")
+            return {'error': f'Could not get valid current price for {symbol}'}
         
         # Gather all signals
         signals = self._gather_all_signals(symbol)
+        logger.info(f"Signals for {symbol}: ML={signals.get('ml', {}).get('direction')}, Flow={signals.get('flow', {}).get('delta_direction')}")
         
         # Generate predictions for each horizon
         predictions = {}
