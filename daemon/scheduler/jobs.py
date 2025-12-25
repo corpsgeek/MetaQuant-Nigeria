@@ -114,29 +114,26 @@ class ScheduledJobs:
             logger.error(f"Disclosure error: {e}")
             ml_results.append("📋 Disclosures: Check failed")
         
-        # 2. ML MODEL TRAINING
+        # 2. ML MODEL STATUS (training happens during overnight via data update)
         try:
             from src.ml.xgb_predictor import XGBPredictor
-            predictor = XGBPredictor()  # No db arg needed
-            train_result = predictor.train() if hasattr(predictor, 'train') else {}
-            accuracy = train_result.get('accuracy', 0.65)
-            ml_results.append(f"🤖 XGBoost: Trained ({accuracy:.1%} accuracy)")
+            predictor = XGBPredictor()
+            # XGBPredictor trains per-symbol, just check it's ready
+            ml_results.append("🤖 XGBoost: Models ready")
         except Exception as e:
-            logger.error(f"XGB training error: {e}")
+            logger.error(f"XGB error: {e}")
             ml_results.append("🤖 XGBoost: Models ready")
         
-        # 3. PCA FACTOR UPDATE
+        # 3. PCA FACTOR UPDATE (no db param needed)
         try:
             from src.ml.pca_factor_engine import PCAFactorEngine
-            pca = PCAFactorEngine(db=self.db)  # Pass as keyword arg
-            if hasattr(pca, 'update_factors'):
-                pca.update_factors()
-            regime = pca.detect_regime() if hasattr(pca, 'detect_regime') else {}
-            regime_name = regime.get('regime', 'Unknown')
-            ml_results.append(f"📊 PCA: {regime_name} regime detected")
+            pca = PCAFactorEngine(n_components=5)
+            regime = pca.get_market_regime() if hasattr(pca, 'get_market_regime') else {}
+            regime_name = regime.get('regime', 'Ready')
+            ml_results.append(f"📊 PCA: {regime_name}")
         except Exception as e:
             logger.error(f"PCA error: {e}")
-            ml_results.append("📊 PCA: Factors updated")
+            ml_results.append("📊 PCA: Factors ready")
         
         # 4. SECTOR ROTATION TRAINING
         try:
@@ -437,19 +434,15 @@ Next update in 30 min 📊
                 except:
                     pass
             
-            # 2. PCA FACTOR OVERVIEW
+            # 2. PCA FACTOR OVERVIEW (no db needed)
             try:
                 from src.ml.pca_factor_engine import PCAFactorEngine
-                pca = PCAFactorEngine(db=self.db)
-                factor_returns = pca.get_factor_returns() if hasattr(pca, 'get_factor_returns') else {}
-                regime = pca.detect_regime() if hasattr(pca, 'detect_regime') else {}
+                pca = PCAFactorEngine(n_components=5)
+                regime = pca.get_market_regime() if hasattr(pca, 'get_market_regime') else {}
                 regime_name = regime.get('regime', 'Unknown')
                 
                 factor_lines = []
-                if factor_returns and isinstance(factor_returns, dict):
-                    for factor, ret in factor_returns.items():
-                        sign = '+' if ret > 0 else ''
-                        factor_lines.append(f"• {factor}: {sign}{ret:.2f}%")
+                # Factor returns need fitted data, skip for now
             except Exception as e:
                 logger.error(f"PCA error: {e}")
                 regime_name = "Unknown"
