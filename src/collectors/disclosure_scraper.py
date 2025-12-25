@@ -79,24 +79,33 @@ class DisclosureScraper:
         
         try:
             logger.info(f"Fetching disclosures from NGX (limit={limit})...")
+            
+            # Try Selenium first for JavaScript-rendered content
+            disclosures = self._fetch_with_selenium(limit)
+            if disclosures:
+                return disclosures
+            
+            # Fallback to requests (may not work if JS-rendered)
             response = self.session.get(NGX_DISCLOSURES_URL, timeout=30)
             response.raise_for_status()
             
             soup = BeautifulSoup(response.text, 'html.parser')
             
-            # Find the disclosures table
-            table = soup.find('table', {'id': 'company-disclosure-table'})
+            # Look for the correct table ID
+            table = soup.find('table', {'id': 'latestdiclosuresLanding'})
             if not table:
-                # Try alternative selectors
+                table = soup.find('table', {'id': 'company-disclosure-table'})
+            if not table:
                 table = soup.find('table', {'class': 'dataTable'})
             
             if not table:
-                logger.warning("Could not find disclosures table on page")
-                # Try to parse from page content using alternative method
+                logger.warning("Could not find disclosures table on page - may need Selenium")
                 return self._parse_disclosures_alternative(soup, limit)
             
             # Parse table rows
-            tbody = table.find('tbody')
+            tbody = table.find('tbody', {'id': 'landing_corp_disclosure'})
+            if not tbody:
+                tbody = table.find('tbody')
             rows = tbody.find_all('tr') if tbody else table.find_all('tr')[1:]
             
             for row in rows[:limit]:
@@ -116,6 +125,77 @@ class DisclosureScraper:
             logger.error(f"Error parsing disclosures: {e}")
         
         return disclosures
+    
+    def _fetch_with_selenium(self, limit: int) -> List[Dict]:
+        """Fetch disclosures using Selenium for JavaScript-rendered content."""
+        try:
+            from selenium import webdriver
+            from selenium.webdriver.common.by import By
+            from selenium.webdriver.support.ui import WebDriverWait
+            from selenium.webdriver.support import expected_conditions as EC
+            from selenium.webdriver.chrome.options import Options
+            
+            options = Options()
+            options.add_argument('--headless')
+            options.add_argument('--no-sandbox')
+            options.add_argument('--disable-dev-shm-usage')
+            
+            driver = webdriver.Chrome(options=options)
+            driver.get(NGX_DISCLOSURES_URL)
+            
+            # Wait for table to load
+            WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.ID, "latestdiclosuresLanding"))
+            )
+            time.sleep(2)  # Extra wait for data
+            
+            disclosures = []
+            rows = driver.find_elements(By.CSS_SELECTOR, "#landing_corp_disclosure tr")
+            
+            for row in rows[:limit]:
+                try:
+                    cells = row.find_elements(By.TAG_NAME, "td")
+                    if len(cells) < 3:
+                        continue
+                    
+                    # Company
+                    company_link = cells[0].find_element(By.TAG_NAME, "a") if cells[0].find_elements(By.TAG_NAME, "a") else None
+                    company_name = cells[0].text.strip()
+                    company_symbol = None
+                    if company_link:
+                        href = company_link.get_attribute('href')
+                        match = re.search(r'symbol=(\w+)', href)
+                        if match:
+                            company_symbol = match.group(1)
+                    
+                    # Title and PDF
+                    title_link = cells[1].find_element(By.TAG_NAME, "a") if cells[1].find_elements(By.TAG_NAME, "a") else None
+                    title = cells[1].text.strip()
+                    pdf_url = title_link.get_attribute('href') if title_link else ''
+                    
+                    # Date
+                    date_submitted = cells[2].text.strip()
+                    
+                    disclosures.append({
+                        'company_symbol': company_symbol,
+                        'company_name': company_name,
+                        'title': title,
+                        'date_submitted': date_submitted,
+                        'pdf_url': pdf_url
+                    })
+                except Exception as e:
+                    continue
+            
+            driver.quit()
+            logger.info(f"Fetched {len(disclosures)} disclosures via Selenium")
+            return disclosures
+            
+        except ImportError:
+            logger.info("Selenium not available, using requests fallback")
+            return []
+        except Exception as e:
+            logger.warning(f"Selenium fetch failed: {e}")
+            return []
     
     def _parse_table_row(self, row) -> Optional[Dict]:
         """Parse a single table row into disclosure dict."""
