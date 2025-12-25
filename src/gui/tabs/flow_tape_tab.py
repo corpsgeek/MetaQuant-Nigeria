@@ -23,6 +23,13 @@ try:
 except ImportError:
     INSIGHT_ENGINE_AVAILABLE = False
 
+# Try to import Pathway Synthesizer
+try:
+    from src.ml.pathway_synthesizer import PathwaySynthesizer
+    PATHWAY_AVAILABLE = True
+except ImportError:
+    PATHWAY_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
 
 
@@ -105,6 +112,11 @@ class FlowTapeTab:
         self.synthesis_tab = ttk.Frame(self.sub_notebook)
         self.sub_notebook.add(self.synthesis_tab, text="🤖 AI Synthesis")
         self._create_synthesis_tab_content()
+        
+        # Tab 7: Pathway Predictions (Pandora Black Box)
+        self.pathway_tab = ttk.Frame(self.sub_notebook)
+        self.sub_notebook.add(self.pathway_tab, text="🔮 Pathway")
+        self._create_pathway_tab_content()
         
         # Note: Fundamentals moved to standalone tab
     
@@ -1699,8 +1711,410 @@ class FlowTapeTab:
         self.synthesis_status['update'].pack(side=tk.RIGHT)
     
     # =========================================================================
+    # PATHWAY PREDICTIONS TAB (PANDORA BLACK BOX)
+    # =========================================================================
+    
+    def _create_pathway_tab_content(self):
+        """Create Pandora Black Box - Price Pathway Predictions sub-tab."""
+        # Initialize pathway synthesizer
+        self.pathway_synth = None
+        if PATHWAY_AVAILABLE:
+            try:
+                self.pathway_synth = PathwaySynthesizer(self.db)
+                logger.info("PathwaySynthesizer initialized")
+            except Exception as e:
+                logger.warning(f"Failed to initialize PathwaySynthesizer: {e}")
+        
+        # Main scrollable frame
+        canvas = tk.Canvas(self.pathway_tab, bg=COLORS['bg_dark'], highlightthickness=0)
+        scrollbar = ttk.Scrollbar(self.pathway_tab, orient="vertical", command=canvas.yview)
+        scrollable = ttk.Frame(canvas)
+        
+        scrollable.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas_win = canvas.create_window((0, 0), window=scrollable, anchor="nw")
+        canvas.bind("<Configure>", lambda e: canvas.itemconfig(canvas_win, width=e.width))
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        main = scrollable
+        
+        # ========== HEADER ==========
+        header = ttk.Frame(main)
+        header.pack(fill=tk.X, padx=15, pady=10)
+        
+        ttk.Label(header, text="🔮 Pandora Black Box - Price Pathway Predictions",
+                  font=get_font('subheading'), foreground=COLORS['primary']).pack(side=tk.LEFT)
+        
+        self.pathway_symbol_label = ttk.Label(header, text="Select a symbol", 
+                                              font=get_font('body'), foreground=COLORS['text_secondary'])
+        self.pathway_symbol_label.pack(side=tk.LEFT, padx=20)
+        
+        ttk.Button(header, text="🔄 Refresh Pathway", 
+                   command=self._refresh_pathway).pack(side=tk.RIGHT)
+        
+        # ========== ROW 1: HORIZON PREDICTION CARDS ==========
+        horizons_frame = ttk.LabelFrame(main, text="🎯 Multi-Horizon Price Pathways")
+        horizons_frame.pack(fill=tk.X, padx=15, pady=8)
+        
+        horizons_row = ttk.Frame(horizons_frame)
+        horizons_row.pack(fill=tk.X, padx=10, pady=10)
+        
+        for i in range(4):
+            horizons_row.columnconfigure(i, weight=1)
+        
+        self.pathway_cards = {}
+        horizon_items = [
+            ('2D', '2 Days'),
+            ('3D', '3 Days'),
+            ('1W', '1 Week'),
+            ('1M', '1 Month')
+        ]
+        
+        for i, (key, label) in enumerate(horizon_items):
+            card = ttk.Frame(horizons_row, relief='ridge', borderwidth=2)
+            card.grid(row=0, column=i, padx=5, pady=5, sticky='nsew')
+            
+            # Header
+            ttk.Label(card, text=f"📊 {label}", font=get_font('body'),
+                      foreground=COLORS['primary']).pack(anchor='center', pady=(8, 5))
+            
+            # Expected price
+            price_label = ttk.Label(card, text="₦--", font=get_font('heading'))
+            price_label.pack(anchor='center')
+            
+            # Return %
+            return_label = ttk.Label(card, text="+0.0%", font=get_font('body'))
+            return_label.pack(anchor='center')
+            
+            ttk.Separator(card, orient='horizontal').pack(fill=tk.X, padx=10, pady=5)
+            
+            # Scenarios frame
+            scenarios_frame = ttk.Frame(card)
+            scenarios_frame.pack(fill=tk.X, padx=10)
+            
+            # Bull
+            bull_row = ttk.Frame(scenarios_frame)
+            bull_row.pack(fill=tk.X, pady=2)
+            ttk.Label(bull_row, text="🐂", font=get_font('small')).pack(side=tk.LEFT)
+            bull_price = ttk.Label(bull_row, text="₦--", font=get_font('small'), foreground=COLORS['gain'])
+            bull_price.pack(side=tk.LEFT, padx=5)
+            bull_prob = ttk.Label(bull_row, text="(--%)  ", font=get_font('tiny'), foreground=COLORS['text_muted'])
+            bull_prob.pack(side=tk.RIGHT)
+            
+            # Base
+            base_row = ttk.Frame(scenarios_frame)
+            base_row.pack(fill=tk.X, pady=2)
+            ttk.Label(base_row, text="➡️", font=get_font('small')).pack(side=tk.LEFT)
+            base_price = ttk.Label(base_row, text="₦--", font=get_font('small'))
+            base_price.pack(side=tk.LEFT, padx=5)
+            base_prob = ttk.Label(base_row, text="(--%)  ", font=get_font('tiny'), foreground=COLORS['text_muted'])
+            base_prob.pack(side=tk.RIGHT)
+            
+            # Bear
+            bear_row = ttk.Frame(scenarios_frame)
+            bear_row.pack(fill=tk.X, pady=2)
+            ttk.Label(bear_row, text="🐻", font=get_font('small')).pack(side=tk.LEFT)
+            bear_price = ttk.Label(bear_row, text="₦--", font=get_font('small'), foreground=COLORS['loss'])
+            bear_price.pack(side=tk.LEFT, padx=5)
+            bear_prob = ttk.Label(bear_row, text="(--%)  ", font=get_font('tiny'), foreground=COLORS['text_muted'])
+            bear_prob.pack(side=tk.RIGHT)
+            
+            # Confidence
+            conf_label = ttk.Label(card, text="Confidence: --%", font=get_font('tiny'), 
+                                   foreground=COLORS['text_muted'])
+            conf_label.pack(anchor='center', pady=(5, 8))
+            
+            self.pathway_cards[key] = {
+                'price': price_label,
+                'return': return_label,
+                'bull_price': bull_price,
+                'bull_prob': bull_prob,
+                'base_price': base_price,
+                'base_prob': base_prob,
+                'bear_price': bear_price,
+                'bear_prob': bear_prob,
+                'confidence': conf_label
+            }
+        
+        # ========== ROW 2: BID/OFFER PROBABILITY ==========
+        bidoffer_frame = ttk.LabelFrame(main, text="📈 Session Close Probability")
+        bidoffer_frame.pack(fill=tk.X, padx=15, pady=8)
+        
+        bo_row = ttk.Frame(bidoffer_frame)
+        bo_row.pack(fill=tk.X, padx=20, pady=15)
+        
+        self.bidoffer_labels = {}
+        
+        # Full Bid
+        bid_frame = ttk.Frame(bo_row)
+        bid_frame.pack(side=tk.LEFT, expand=True, fill=tk.X)
+        ttk.Label(bid_frame, text="📗 Full Bid", font=get_font('body'), 
+                  foreground=COLORS['gain']).pack()
+        self.bidoffer_labels['bid'] = ttk.Label(bid_frame, text="--%", 
+                                                 font=get_font('heading'), foreground=COLORS['gain'])
+        self.bidoffer_labels['bid'].pack()
+        
+        # Canvas for gauge
+        self.bidoffer_canvas = tk.Canvas(bo_row, width=400, height=40, 
+                                          bg=COLORS['bg_dark'], highlightthickness=0)
+        self.bidoffer_canvas.pack(side=tk.LEFT, expand=True, padx=20)
+        
+        # Mixed
+        mixed_frame = ttk.Frame(bo_row)
+        mixed_frame.pack(side=tk.LEFT, expand=True, fill=tk.X)
+        ttk.Label(mixed_frame, text="⚖️ Mixed", font=get_font('body')).pack()
+        self.bidoffer_labels['mixed'] = ttk.Label(mixed_frame, text="--%", font=get_font('heading'))
+        self.bidoffer_labels['mixed'].pack()
+        
+        # Full Offer
+        offer_frame = ttk.Frame(bo_row)
+        offer_frame.pack(side=tk.LEFT, expand=True, fill=tk.X)
+        ttk.Label(offer_frame, text="📕 Full Offer", font=get_font('body'),
+                  foreground=COLORS['loss']).pack()
+        self.bidoffer_labels['offer'] = ttk.Label(offer_frame, text="--%", 
+                                                   font=get_font('heading'), foreground=COLORS['loss'])
+        self.bidoffer_labels['offer'].pack()
+        
+        # ========== ROW 3: SIGNAL BREAKDOWN ==========
+        signals_frame = ttk.LabelFrame(main, text="🔍 Signal Contribution")
+        signals_frame.pack(fill=tk.X, padx=15, pady=8)
+        
+        signals_row = ttk.Frame(signals_frame)
+        signals_row.pack(fill=tk.X, padx=10, pady=10)
+        
+        for i in range(6):
+            signals_row.columnconfigure(i, weight=1)
+        
+        self.signal_cards = {}
+        signal_items = [
+            ('ml', '🤖 ML Ensemble', 'ml_ensemble'),
+            ('flow', '📊 Flow Delta', 'flow_delta'),
+            ('sector', '🔄 Sector', 'sector_momentum'),
+            ('fund', '💰 Fundamentals', 'fundamentals'),
+            ('tech', '📈 Technicals', 'technicals'),
+            ('disc', '📋 Disclosures', 'disclosures')
+        ]
+        
+        for i, (key, label, weight_key) in enumerate(signal_items):
+            card = ttk.Frame(signals_row, relief='groove', borderwidth=1)
+            card.grid(row=0, column=i, padx=3, pady=3, sticky='nsew')
+            
+            ttk.Label(card, text=label, font=get_font('small'),
+                      foreground=COLORS['text_muted']).pack(anchor='center', pady=(5, 2))
+            
+            # Signal direction
+            signal_label = ttk.Label(card, text="--", font=get_font('body'))
+            signal_label.pack(anchor='center')
+            
+            # Contribution bar (simple canvas)
+            bar_canvas = tk.Canvas(card, width=80, height=12, 
+                                   bg=COLORS['bg_secondary'], highlightthickness=0)
+            bar_canvas.pack(pady=(2, 5))
+            
+            self.signal_cards[key] = {
+                'signal': signal_label,
+                'bar': bar_canvas
+            }
+        
+        # ========== ROW 4: AI NARRATIVE ==========
+        narrative_frame = ttk.LabelFrame(main, text="💬 AI Narrative")
+        narrative_frame.pack(fill=tk.X, padx=15, pady=8)
+        
+        self.pathway_narrative = tk.Text(narrative_frame, height=4, wrap=tk.WORD,
+                                          bg=COLORS['bg_secondary'], fg=COLORS['text_primary'],
+                                          font=get_font('body'), relief='flat')
+        self.pathway_narrative.pack(fill=tk.X, padx=10, pady=10)
+        self.pathway_narrative.insert('1.0', "Select a symbol and click Refresh to generate pathway predictions...")
+        self.pathway_narrative.config(state='disabled')
+        
+        # ========== STATUS BAR ==========
+        status_frame = ttk.Frame(main)
+        status_frame.pack(fill=tk.X, padx=15, pady=10)
+        
+        self.pathway_status = ttk.Label(status_frame, text="⏳ Waiting for symbol selection...",
+                                         font=get_font('small'), foreground=COLORS['text_muted'])
+        self.pathway_status.pack(side=tk.LEFT)
+        
+        self.pathway_timestamp = ttk.Label(status_frame, text="",
+                                            font=get_font('small'), foreground=COLORS['text_muted'])
+        self.pathway_timestamp.pack(side=tk.RIGHT)
+    
+    def _refresh_pathway(self):
+        """Refresh pathway predictions for current symbol."""
+        if not self.current_symbol:
+            self.pathway_status.configure(text="⚠️ Select a symbol first")
+            return
+        
+        if not self.pathway_synth:
+            self.pathway_status.configure(text="⚠️ Pathway synthesizer not available")
+            return
+        
+        self.pathway_status.configure(text=f"🔄 Generating pathway for {self.current_symbol}...")
+        self.pathway_symbol_label.configure(text=self.current_symbol)
+        
+        import threading
+        def generate():
+            try:
+                result = self.pathway_synth.synthesize(self.current_symbol)
+                self.frame.after(0, lambda: self._display_pathway(result))
+            except Exception as e:
+                logger.error(f"Pathway generation failed: {e}")
+                self.frame.after(0, lambda: self.pathway_status.configure(
+                    text=f"❌ Error: {str(e)[:50]}"))
+        
+        threading.Thread(target=generate, daemon=True).start()
+    
+    def _display_pathway(self, result: Dict):
+        """Display pathway prediction results."""
+        if 'error' in result:
+            self.pathway_status.configure(text=f"⚠️ {result['error']}")
+            return
+        
+        # Update horizon cards
+        predictions = result.get('predictions', {})
+        for horizon, data in predictions.items():
+            if horizon in self.pathway_cards:
+                card = self.pathway_cards[horizon]
+                
+                # Price and return
+                exp_price = data.get('expected_price', 0)
+                exp_ret = data.get('expected_return', 0)
+                card['price'].configure(text=f"₦{exp_price:,.2f}")
+                
+                ret_color = COLORS['gain'] if exp_ret >= 0 else COLORS['loss']
+                card['return'].configure(text=f"{'+' if exp_ret >= 0 else ''}{exp_ret}%", foreground=ret_color)
+                
+                # Bull scenario
+                bull = data.get('bull', {})
+                card['bull_price'].configure(text=f"₦{bull.get('price', 0):,.2f}")
+                card['bull_prob'].configure(text=f"({bull.get('probability', 0)}%)")
+                
+                # Base scenario
+                base = data.get('base', {})
+                card['base_price'].configure(text=f"₦{base.get('price', 0):,.2f}")
+                card['base_prob'].configure(text=f"({base.get('probability', 0)}%)")
+                
+                # Bear scenario
+                bear = data.get('bear', {})
+                card['bear_price'].configure(text=f"₦{bear.get('price', 0):,.2f}")
+                card['bear_prob'].configure(text=f"({bear.get('probability', 0)}%)")
+                
+                # Confidence
+                conf = data.get('confidence', 50)
+                card['confidence'].configure(text=f"Confidence: {conf}%")
+        
+        # Update bid/offer gauge
+        bidoffer = result.get('bid_offer', {})
+        bid_pct = bidoffer.get('full_bid', 33)
+        mixed_pct = bidoffer.get('mixed', 34)
+        offer_pct = bidoffer.get('full_offer', 33)
+        
+        self.bidoffer_labels['bid'].configure(text=f"{bid_pct}%")
+        self.bidoffer_labels['mixed'].configure(text=f"{mixed_pct}%")
+        self.bidoffer_labels['offer'].configure(text=f"{offer_pct}%")
+        
+        # Draw gauge
+        self._draw_bidoffer_gauge(bid_pct, mixed_pct, offer_pct)
+        
+        # Update signal cards
+        signals = result.get('signals', {})
+        self._update_signal_cards(signals)
+        
+        # Update narrative
+        narrative = result.get('narrative', '')
+        self.pathway_narrative.config(state='normal')
+        self.pathway_narrative.delete('1.0', tk.END)
+        self.pathway_narrative.insert('1.0', narrative)
+        self.pathway_narrative.config(state='disabled')
+        
+        # Update status
+        self.pathway_status.configure(text=f"✅ Pathway generated for {self.current_symbol}")
+        self.pathway_timestamp.configure(text=f"Updated: {datetime.now().strftime('%H:%M:%S')}")
+    
+    def _draw_bidoffer_gauge(self, bid_pct: float, mixed_pct: float, offer_pct: float):
+        """Draw the bid/offer probability gauge."""
+        canvas = self.bidoffer_canvas
+        canvas.delete('all')
+        
+        w = 400
+        h = 30
+        y = 5
+        
+        # Normalize
+        total = bid_pct + mixed_pct + offer_pct
+        if total > 0:
+            bid_w = (bid_pct / total) * w
+            mixed_w = (mixed_pct / total) * w
+            offer_w = (offer_pct / total) * w
+        else:
+            bid_w = mixed_w = offer_w = w / 3
+        
+        # Draw bars
+        x = 0
+        canvas.create_rectangle(x, y, x + bid_w, y + h, fill='#27ae60', outline='')
+        x += bid_w
+        canvas.create_rectangle(x, y, x + mixed_w, y + h, fill='#7f8c8d', outline='')
+        x += mixed_w
+        canvas.create_rectangle(x, y, x + offer_w, y + h, fill='#e74c3c', outline='')
+    
+    def _update_signal_cards(self, signals: Dict):
+        """Update signal contribution cards."""
+        mapping = {
+            'ml': 'ml',
+            'flow': 'flow',
+            'sector': 'sector',
+            'fund': 'fundamental',
+            'tech': 'technical',
+            'disc': 'disclosure'
+        }
+        
+        for card_key, signal_key in mapping.items():
+            if card_key in self.signal_cards:
+                signal_data = signals.get(signal_key, {})
+                card = self.signal_cards[card_key]
+                
+                # Get primary signal value
+                if card_key == 'ml':
+                    val = signal_data.get('direction', 0)
+                elif card_key == 'flow':
+                    val = signal_data.get('delta_direction', 0)
+                elif card_key == 'sector':
+                    val = signal_data.get('sector_momentum', 0)
+                elif card_key == 'fund':
+                    val = signal_data.get('value_score', 0)
+                elif card_key == 'tech':
+                    val = (signal_data.get('rsi_signal', 0) + signal_data.get('trend_signal', 0)) / 2
+                else:
+                    val = signal_data.get('recent_impact', 0)
+                
+                # Display
+                if val > 0.2:
+                    display = "📈 Bullish"
+                    color = COLORS['gain']
+                elif val < -0.2:
+                    display = "📉 Bearish"
+                    color = COLORS['loss']
+                else:
+                    display = "➡️ Neutral"
+                    color = COLORS['text_muted']
+                
+                card['signal'].configure(text=display, foreground=color)
+                
+                # Draw bar
+                bar = card['bar']
+                bar.delete('all')
+                bar_val = (val + 1) / 2 * 80  # Scale -1 to 1 → 0 to 80
+                if val > 0:
+                    bar.create_rectangle(40, 2, 40 + bar_val/2, 10, fill=COLORS['gain'], outline='')
+                else:
+                    bar.create_rectangle(40 + bar_val/2, 2, 40, 10, fill=COLORS['loss'], outline='')
+    
+    # =========================================================================
     # FUNDAMENTALS TAB
     # =========================================================================
+
     
     def _create_fundamentals_tab_content(self):
         """Create Fundamentals sub-tab with key financial metrics."""
