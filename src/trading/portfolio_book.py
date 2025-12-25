@@ -120,12 +120,19 @@ class PortfolioBookManager:
             # Get current price
             current_price = self._get_current_price(trade['symbol'])
             if current_price is None:
-                current_price = trade['entry_price']  # Fallback
+                current_price = float(trade['entry_price'])  # Fallback
+            else:
+                current_price = float(current_price)
+            
+            # Explicitly cast to prevent DatetimeArray errors
+            quantity = int(trade['quantity'])
+            entry_price = float(trade['entry_price'])
+            position_value = float(trade['position_value'])
             
             # Calculate current values
-            current_value = trade['quantity'] * current_price
-            unrealized_pnl = current_value - trade['position_value']
-            unrealized_pnl_pct = (current_price - trade['entry_price']) / trade['entry_price'] * 100
+            current_value = quantity * current_price
+            unrealized_pnl = current_value - position_value
+            unrealized_pnl_pct = (current_price - entry_price) / entry_price * 100 if entry_price > 0 else 0
             
             # Calculate days held
             try:
@@ -135,21 +142,21 @@ class PortfolioBookManager:
                 days_held = 0
             
             positions.append(OpenPosition(
-                trade_id=trade['id'],
+                trade_id=int(trade['id']),
                 symbol=trade['symbol'],
-                entry_date=trade['entry_date'],
-                entry_price=trade['entry_price'],
-                quantity=trade['quantity'],
-                position_value=trade['position_value'],
+                entry_date=str(trade['entry_date']),
+                entry_price=entry_price,
+                quantity=quantity,
+                position_value=position_value,
                 current_price=current_price,
                 current_value=current_value,
                 unrealized_pnl=unrealized_pnl,
                 unrealized_pnl_pct=unrealized_pnl_pct,
-                stop_loss=trade['stop_loss_price'],
-                take_profit=trade['take_profit_price'],
+                stop_loss=float(trade['stop_loss_price']) if trade.get('stop_loss_price') else 0.0,
+                take_profit=float(trade['take_profit_price']) if trade.get('take_profit_price') else 0.0,
                 days_held=days_held,
-                entry_score=trade.get('entry_score', 0),
-                entry_attribution=trade.get('entry_attribution', {})
+                entry_score=float(trade.get('entry_score', 0) or 0),
+                entry_attribution=trade.get('entry_attribution', {}) or {}
             ))
         
         return positions
