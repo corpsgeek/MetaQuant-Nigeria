@@ -376,11 +376,12 @@ class DataQualityTab:
                 fetched = 0
                 for i, symbol in enumerate(missing_stocks):
                     try:
-                        result = collector.fetch_ohlcv(symbol, interval='1d', limit=500)
-                        if result:
+                        # Use backfill_symbol which fetches daily data
+                        result = collector.backfill_symbol(symbol, intervals=['1d'], n_bars=500)
+                        if result and result.get('1d', 0) > 0:
                             fetched += 1
-                        self.parent.after(0, lambda s=symbol, i=i: 
-                            self.status_var.set(f"Fetching {s}... ({i+1}/{count})"))
+                        self.parent.after(0, lambda s=symbol, idx=i: 
+                            self.status_var.set(f"Fetching {s}... ({idx+1}/{count})"))
                     except Exception as e:
                         logger.warning(f"Failed to fetch {symbol}: {e}")
                 
