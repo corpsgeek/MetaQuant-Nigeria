@@ -153,19 +153,54 @@ class PCAFactorEngine:
     
     def get_factor_returns(self) -> pd.DataFrame:
         """
-        Get historical returns of each factor.
+        Get historical returns of each factor as ACTUAL PERCENTAGES.
+        
+        Factor return = weighted average of stock returns using factor loadings.
         
         Returns:
-            DataFrame with dates as index, factors as columns
+            DataFrame with dates as index, factors as columns (values are decimal returns)
         """
         if not self._is_fitted or self._returns_matrix is None:
             return pd.DataFrame()
         
-        return pd.DataFrame(
-            self._factor_returns,
-            index=self._returns_matrix.index,
+        # Calculate actual factor returns by projecting stock returns onto factor loadings
+        # factor_return_t = sum(stock_return_t * loading_stock) / sum(abs(loadings))
+        
+        factor_returns_list = []
+        dates = self._returns_matrix.index
+        
+        for i in range(self.n_components):
+            loadings = self._factor_loadings[:, i]  # loadings for this factor
+            
+            # Normalize loadings to get portfolio weights
+            pos_loadings = np.maximum(loadings, 0)
+            neg_loadings = np.maximum(-loadings, 0)
+            
+            # Long stocks with positive loadings, short stocks with negative loadings
+            if pos_loadings.sum() > 0 and neg_loadings.sum() > 0:
+                pos_weights = pos_loadings / pos_loadings.sum()
+                neg_weights = neg_loadings / neg_loadings.sum()
+                
+                # Factor return = long portfolio - short portfolio
+                factor_returns = (
+                    (self._returns_matrix.values @ pos_weights) - 
+                    (self._returns_matrix.values @ neg_weights)
+                )
+            else:
+                # Just use signed loadings as weights
+                weights = loadings / np.abs(loadings).sum() if np.abs(loadings).sum() > 0 else loadings
+                factor_returns = self._returns_matrix.values @ weights
+            
+            factor_returns_list.append(factor_returns)
+        
+        # Combine into DataFrame
+        factor_returns_df = pd.DataFrame(
+            np.column_stack(factor_returns_list),
+            index=dates,
             columns=self.FACTOR_NAMES[:self.n_components]
         )
+        
+        return factor_returns_df
     
     def get_variance_explained(self) -> Dict[str, float]:
         """Get variance explained by each factor."""
