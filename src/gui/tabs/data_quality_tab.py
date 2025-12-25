@@ -219,7 +219,13 @@ class DataQualityTab:
                     # Calculate staleness
                     if last_update:
                         try:
-                            last_dt = datetime.fromisoformat(last_update.replace('Z', '+00:00').replace('+00:00', ''))
+                            # Handle both datetime objects and strings
+                            if isinstance(last_update, datetime):
+                                last_dt = last_update
+                            elif isinstance(last_update, str):
+                                last_dt = datetime.fromisoformat(last_update.replace('Z', '+00:00').replace('+00:00', ''))
+                            else:
+                                last_dt = datetime.now()
                             days_stale = (now - last_dt).days
                         except:
                             days_stale = 999
@@ -240,12 +246,23 @@ class DataQualityTab:
                         status = 'good'
                         status_icon = '✅ Good'
                     
+                    # Format last_update for display
+                    if last_update:
+                        if isinstance(last_update, datetime):
+                            last_update_str = last_update.strftime('%Y-%m-%d')
+                        elif isinstance(last_update, str):
+                            last_update_str = last_update[:10]
+                        else:
+                            last_update_str = str(last_update)[:10]
+                    else:
+                        last_update_str = 'Never'
+                    
                     self.data_stats.append({
                         'symbol': symbol,
                         'name': name or '',
                         'sector': sector or 'Unknown',
                         'ohlcv_count': ohlcv_count,
-                        'last_update': last_update[:10] if last_update else 'Never',
+                        'last_update': last_update_str,
                         'days_stale': days_stale if days_stale < 999 else 'N/A',
                         'status': status,
                         'status_icon': status_icon
@@ -255,8 +272,9 @@ class DataQualityTab:
                 self.parent.after(0, self._update_ui)
                 
             except Exception as e:
-                logger.error(f"Error loading data quality: {e}")
-                self.parent.after(0, lambda: self.status_var.set(f"Error: {e}"))
+                error_msg = str(e)
+                logger.error(f"Error loading data quality: {error_msg}")
+                self.parent.after(0, lambda msg=error_msg: self.status_var.set(f"Error: {msg}"))
         
         threading.Thread(target=load, daemon=True).start()
     
