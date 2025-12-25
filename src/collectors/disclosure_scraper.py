@@ -32,19 +32,39 @@ class DisclosureScraper:
     
     def _init_table(self):
         """Initialize database table for disclosures."""
-        # Check if table has correct schema by checking columns
+        # Always recreate table - simpler approach to ensure correct schema
+        # Check if we can insert without ID (indicates DEFAULT is working)
+        needs_recreate = False
         try:
-            result = self.db.conn.execute("""
-                SELECT company_symbol FROM corporate_disclosures LIMIT 1
-            """).fetchone()
+            # Check if table exists and test if ID auto-generates
+            self.db.conn.execute("""
+                SELECT id FROM corporate_disclosures LIMIT 1
+            """)
+            # Table exists - try a test insert to see if sequence works
+            # (We'll check by attempting to get the column default)
+            try:
+                result = self.db.conn.execute("""
+                    SELECT column_default FROM information_schema.columns 
+                    WHERE table_name = 'corporate_disclosures' AND column_name = 'id'
+                """).fetchone()
+                # If no default or wrong default, recreate
+                if not result or not result[0] or 'nextval' not in str(result[0]):
+                    needs_recreate = True
+                    logger.info("Table exists but ID column has wrong default - recreating")
+            except:
+                # Can't check schema - force recreate to be safe
+                needs_recreate = True
         except:
-            # Column doesn't exist - drop and recreate with correct schema
-            logger.info("Recreating corporate_disclosures table with correct schema...")
+            # Table doesn't exist
+            needs_recreate = True
+        
+        if needs_recreate:
+            logger.info("Dropping and recreating corporate_disclosures table...")
             try:
                 self.db.conn.execute("DROP TABLE IF EXISTS corporate_disclosures")
                 self.db.conn.execute("DROP SEQUENCE IF EXISTS disclosure_id_seq")
-            except:
-                pass
+            except Exception as e:
+                logger.warning(f"Drop failed: {e}")
         
         # Create sequence for auto-increment ID
         try:
