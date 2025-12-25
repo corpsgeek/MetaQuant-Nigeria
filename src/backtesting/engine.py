@@ -504,13 +504,17 @@ class BacktestEngine:
             return {'composite_score': 0, 'signal': 'HOLD', 'component_scores': scores}
         
         try:
-            # Convert to float
-            close = pd.to_numeric(df['close'], errors='coerce').astype(float)
+            # Reset DatetimeIndex to avoid rmul errors
+            if isinstance(df.index, pd.DatetimeIndex):
+                df = df.reset_index(drop=True)
+            
+            # Convert to numpy array
+            close = pd.to_numeric(df['close'], errors='coerce').astype(float).values
             
             # ===== MOMENTUM (35%) =====
             if len(close) >= 20:
-                mom_5 = (close.iloc[-1] - close.iloc[-5]) / close.iloc[-5] if close.iloc[-5] > 0 else 0
-                mom_20 = (close.iloc[-1] - close.iloc[-20]) / close.iloc[-20] if close.iloc[-20] > 0 else 0
+                mom_5 = (close[-1] - close[-5]) / close[-5] if close[-5] > 0 else 0
+                mom_20 = (close[-1] - close[-20]) / close[-20] if close[-20] > 0 else 0
                 
                 # Normalize to -1 to 1
                 momentum_score = (float(mom_5) + float(mom_20)) / 2
@@ -519,8 +523,8 @@ class BacktestEngine:
             
             # ===== TREND (10%) =====
             if len(close) >= 50:
-                ma_20 = close.tail(20).mean()
-                ma_50 = close.tail(50).mean()
+                ma_20 = float(np.mean(close[-20:]))
+                ma_50 = float(np.mean(close[-50:]))
                 scores['trend'] = 1.0 if ma_20 > ma_50 else -1.0
             
             # ===== ML PREDICTION (25%) =====
@@ -560,7 +564,8 @@ class BacktestEngine:
             if scores['fundamental'] == 0:
                 # Use price stability as proxy - lower volatility = better fundamentals
                 if len(close) >= 20:
-                    volatility = close.pct_change().tail(20).std()
+                    returns = np.diff(close[-21:]) / close[-21:-1]
+                    volatility = float(np.std(returns))
                     # Low volatility stocks get small positive, high volatility get negative
                     scores['fundamental'] = max(-0.2, min(0.2, 0.1 - volatility * 5))
             
