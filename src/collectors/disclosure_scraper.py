@@ -74,7 +74,7 @@ class DisclosureScraper:
     
     def fetch_disclosures(self, limit: int = 100) -> List[Dict]:
         """
-        Fetch latest disclosures from NGX website.
+        Fetch latest disclosures from NGX SharePoint API.
         
         Args:
             limit: Maximum number of disclosures to fetch
@@ -85,51 +85,66 @@ class DisclosureScraper:
         disclosures = []
         
         try:
-            logger.info(f"Fetching disclosures from NGX (limit={limit})...")
+            logger.info(f"Fetching disclosures from NGX API (limit={limit})...")
             
-            # Try Selenium first for JavaScript-rendered content
-            disclosures = self._fetch_with_selenium(limit)
-            if disclosures:
-                return disclosures
+            # SharePoint REST API endpoint discovered from NGX website
+            api_url = (
+                "https://doclib.ngxgroup.com/_api/Web/Lists/GetByTitle('XFinancial_News')/items/"
+                "?$select=URL,Modified,Created,CompanyName,CompanySymbol,InternationSecIN,Type_of_Submission"
+                "&$orderby=Created%20desc"
+                "&$filter=Modified%20ge%20%272024-01-01T00:00:00.000Z%27"
+                f"&$Top={limit}"
+            )
             
-            # Fallback to requests (may not work if JS-rendered)
-            response = self.session.get(NGX_DISCLOSURES_URL, timeout=30)
+            # Must include this header for JSON response
+            headers = {
+                'Accept': 'application/json;odata=verbose',
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
+            }
+            
+            response = self.session.get(api_url, headers=headers, timeout=30)
             response.raise_for_status()
             
-            soup = BeautifulSoup(response.text, 'html.parser')
+            data = response.json()
+            results = data.get('d', {}).get('results', [])
             
-            # Look for the correct table ID
-            table = soup.find('table', {'id': 'latestdiclosuresLanding'})
-            if not table:
-                table = soup.find('table', {'id': 'company-disclosure-table'})
-            if not table:
-                table = soup.find('table', {'class': 'dataTable'})
+            logger.info(f"API returned {len(results)} disclosures")
             
-            if not table:
-                logger.warning("Could not find disclosures table on page - may need Selenium")
-                return self._parse_disclosures_alternative(soup, limit)
-            
-            # Parse table rows
-            tbody = table.find('tbody', {'id': 'landing_corp_disclosure'})
-            if not tbody:
-                tbody = table.find('tbody')
-            rows = tbody.find_all('tr') if tbody else table.find_all('tr')[1:]
-            
-            for row in rows[:limit]:
+            for item in results:
                 try:
-                    disclosure = self._parse_table_row(row)
-                    if disclosure:
-                        disclosures.append(disclosure)
+                    url_info = item.get('URL', {})
+                    pdf_url = url_info.get('Url', '') if isinstance(url_info, dict) else ''
+                    title = url_info.get('Description', '') if isinstance(url_info, dict) else ''
+                    
+                    # Parse date
+                    created = item.get('Created', '')
+                    date_submitted = ''
+                    if created:
+                        try:
+                            from datetime import datetime
+                            dt = datetime.fromisoformat(created.replace('Z', '+00:00'))
+                            date_submitted = dt.strftime('%b %d, %Y')
+                        except:
+                            date_submitted = created[:10] if len(created) >= 10 else created
+                    
+                    disclosures.append({
+                        'company_symbol': item.get('CompanySymbol', ''),
+                        'company_name': item.get('CompanyName', ''),
+                        'title': title,
+                        'date_submitted': date_submitted,
+                        'pdf_url': pdf_url,
+                        'disclosure_type': item.get('Type_of_Submission', '')
+                    })
                 except Exception as e:
-                    logger.warning(f"Failed to parse row: {e}")
+                    logger.warning(f"Failed to parse disclosure item: {e}")
                     continue
             
-            logger.info(f"Fetched {len(disclosures)} disclosures")
+            logger.info(f"Parsed {len(disclosures)} disclosures from API")
             
         except requests.RequestException as e:
-            logger.error(f"Failed to fetch disclosures page: {e}")
+            logger.error(f"Failed to fetch disclosures from API: {e}")
         except Exception as e:
-            logger.error(f"Error parsing disclosures: {e}")
+            logger.error(f"Error parsing disclosures API response: {e}")
         
         return disclosures
     
