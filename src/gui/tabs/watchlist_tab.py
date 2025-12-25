@@ -333,7 +333,7 @@ class WatchlistTab:
         # Create dialog
         dialog = tk.Toplevel(self.parent)
         dialog.title("Add Stock to Watchlist")
-        dialog.geometry("350x150")
+        dialog.geometry("350x200")
         dialog.transient(self.parent)
         dialog.grab_set()
         
