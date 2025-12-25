@@ -344,30 +344,23 @@ class PCAAnalysisTab:
         colors = ['#00ff88', '#00bfff', '#ffdd00', '#ff6688', '#aa77ff']
         factors = ['Market', 'Size', 'Value', 'Momentum', 'Volatility']
         
-        recent = factor_returns.tail(window)
+        recent = factor_returns.tail(window).copy()
         
-        # Z-score normalize each factor so all are visible on same scale
-        # This shows relative movements, not absolute returns
+        # INDEXED RETURNS: Each factor starts at 100, shows relative growth
+        # This is the industry standard for comparing different securities
         for i, factor in enumerate(factors):
             if factor in recent.columns:
-                series = recent[factor]
-                # Z-score normalization: (x - mean) / std
-                if series.std() > 0:
-                    z_scores = (series - series.mean()) / series.std()
-                else:
-                    z_scores = series * 0  # All zeros if no variance
+                # Calculate cumulative wealth: 100 * (1 + r1) * (1 + r2) * ...
+                cumulative = 100 * (1 + recent[factor]).cumprod()
                 
-                # Cumulative z-score for trend visualization
-                cumulative_z = z_scores.cumsum()
-                
-                ax.plot(range(len(cumulative_z)), cumulative_z, 
+                ax.plot(range(len(cumulative)), cumulative, 
                        label=f"{factor}", color=colors[i], linewidth=2.5,
                        marker='o' if window <= 20 else None, markersize=4)
         
-        ax.axhline(y=0, color='white', linestyle='--', alpha=0.5, linewidth=1)
+        ax.axhline(y=100, color='white', linestyle='--', alpha=0.5, linewidth=1)
         ax.set_xlabel('Days', color='white', fontsize=10)
-        ax.set_ylabel('Z-Score (Cumulative)', color='white', fontsize=10)
-        ax.set_title(f'Factor Trend ({window}-day) - Normalized', color='white', fontsize=12, fontweight='bold')
+        ax.set_ylabel('Indexed Value (Base=100)', color='white', fontsize=10)
+        ax.set_title(f'Factor Performance ({window}-day)', color='white', fontsize=12, fontweight='bold')
         
         # Better legend
         legend = ax.legend(loc='upper left', facecolor='#2d2d4e', 
@@ -376,6 +369,9 @@ class PCAAnalysisTab:
         
         ax.tick_params(colors='white', labelsize=9)
         ax.grid(True, alpha=0.25, color='white', linestyle=':')
+        
+        # Set y-axis to show around 100
+        ax.set_ylim(bottom=max(95, ax.get_ylim()[0]), top=min(105, ax.get_ylim()[1]))
         
         # Add spines styling
         for spine in ax.spines.values():
