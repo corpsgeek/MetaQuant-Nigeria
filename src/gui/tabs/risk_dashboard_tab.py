@@ -413,9 +413,25 @@ class RiskDashboardTab:
             # Create sequence for auto ID
             self.db.conn.execute("CREATE SEQUENCE IF NOT EXISTS seq_custom_holdings START 1")
             
-            # Check if table exists without the sequence - drop it
+            # Check if table has wrong schema by trying to insert - if fails, recreate
             try:
-                self.db.conn.execute("DROP TABLE IF EXISTS custom_holdings_old")
+                # Test if the table works with the sequence
+                test = self.db.conn.execute("SELECT COUNT(*) FROM custom_holdings").fetchone()
+            except:
+                # Table doesn't exist yet, create it
+                pass
+            
+            # Force drop and recreate if table was created with wrong schema
+            # This is a one-time fix
+            try:
+                result = self.db.conn.execute("""
+                    SELECT column_name FROM information_schema.columns 
+                    WHERE table_name = 'custom_holdings' AND column_name = 'id'
+                """).fetchone()
+                if result:
+                    # Table exists - drop and recreate to fix schema
+                    self.db.conn.execute("DROP TABLE custom_holdings")
+                    logger.info("Dropped old custom_holdings table to recreate with correct schema")
             except:
                 pass
             
