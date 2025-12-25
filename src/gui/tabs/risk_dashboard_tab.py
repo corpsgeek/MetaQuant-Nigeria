@@ -224,10 +224,11 @@ class RiskDashboardTab:
     def _get_positions(self) -> List[Dict]:
         """Get current portfolio positions."""
         try:
+            # paper_trades stores symbol directly, not stock_id
             result = self.db.conn.execute("""
                 SELECT s.symbol, s.name, s.sector, s.last_price, t.quantity, t.entry_price
                 FROM paper_trades t
-                JOIN stocks s ON t.stock_id = s.id
+                JOIN stocks s ON t.symbol = s.symbol
                 WHERE t.status = 'OPEN'
             """).fetchall()
             
