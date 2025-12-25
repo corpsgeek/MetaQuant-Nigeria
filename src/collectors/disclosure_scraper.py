@@ -34,7 +34,7 @@ class DisclosureScraper:
         """Initialize database table for disclosures."""
         self.db.conn.execute("""
             CREATE TABLE IF NOT EXISTS corporate_disclosures (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id INTEGER PRIMARY KEY,
                 company_symbol TEXT,
                 company_name TEXT,
                 title TEXT,
