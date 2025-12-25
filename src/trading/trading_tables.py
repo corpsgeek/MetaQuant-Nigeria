@@ -168,21 +168,25 @@ class TradingTables:
         position_value = quantity * entry_price
         entry_date = datetime.now().strftime('%Y-%m-%d')
         
-        result = self.conn.execute("""
+        # Get next available ID
+        result = self.conn.execute(
+            "SELECT COALESCE(MAX(id), 0) + 1 FROM paper_trades"
+        ).fetchone()
+        next_id = result[0] if result else 1
+        
+        self.conn.execute("""
             INSERT INTO paper_trades 
-            (book_id, symbol, entry_date, entry_price, quantity, position_value,
+            (id, book_id, symbol, entry_date, entry_price, quantity, position_value,
              stop_loss_price, take_profit_price, entry_score, entry_attribution, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'OPEN')
-            RETURNING id
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'OPEN')
         """, [
-            book_id, symbol, entry_date, entry_price, quantity, position_value,
+            next_id, book_id, symbol, entry_date, entry_price, quantity, position_value,
             stop_loss, take_profit, entry_score,
             json.dumps(entry_attribution) if entry_attribution else None
-        ]).fetchone()
+        ])
         
-        trade_id = result[0]
-        logger.info(f"Opened trade #{trade_id}: {symbol} x{quantity} @ ₦{entry_price:,.2f}")
-        return trade_id
+        logger.info(f"Opened trade #{next_id}: {symbol} x{quantity} @ ₦{entry_price:,.2f}")
+        return next_id
     
     def close_trade(self, trade_id: int, exit_price: float, exit_reason: str,
                     exit_score: float = 0, exit_attribution: Dict = None):
