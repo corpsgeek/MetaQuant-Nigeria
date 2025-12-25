@@ -164,29 +164,35 @@ class DisclosuresTab:
     def _create_details_panel(self, parent):
         """Create the details/analysis panel."""
         frame = ttk.LabelFrame(parent, text="🔍 Disclosure Analysis")
-        frame.pack(fill=tk.BOTH, expand=True)
+        frame.pack(fill=tk.BOTH, expand=True, padx=5)
         
         # Scrollable content
         canvas = tk.Canvas(frame, bg=COLORS['bg_dark'], highlightthickness=0)
         scrollbar = ttk.Scrollbar(frame, orient='vertical', command=canvas.yview)
         
         self.details_frame = ttk.Frame(canvas)
+        self.details_canvas = canvas  # Store reference
         
-        canvas.create_window((0, 0), window=self.details_frame, anchor='nw')
+        # Create window in canvas
+        self.canvas_window = canvas.create_window((0, 0), window=self.details_frame, anchor='nw')
         canvas.configure(yscrollcommand=scrollbar.set)
         
-        def on_configure(event):
+        def on_frame_configure(event):
             canvas.configure(scrollregion=canvas.bbox('all'))
-            canvas.itemconfig(canvas.find_withtag('all')[0], width=event.width - 20)
         
-        self.details_frame.bind('<Configure>', on_configure)
+        def on_canvas_configure(event):
+            # Set the frame width to match canvas width
+            canvas.itemconfig(self.canvas_window, width=event.width - 10)
+        
+        self.details_frame.bind('<Configure>', on_frame_configure)
+        canvas.bind('<Configure>', on_canvas_configure)
         
         canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y, pady=5)
         
         # Initial message
         ttk.Label(self.details_frame, text="Select a disclosure to view analysis",
-                 font=get_font('body'), foreground=COLORS['text_muted']).pack(pady=50)
+                 font=get_font('body'), foreground=COLORS['text_muted']).pack(pady=50, padx=20)
     
     def _refresh_disclosures(self):
         """Load disclosures from database."""
