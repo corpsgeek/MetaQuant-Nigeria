@@ -31,6 +31,13 @@ from src.gui.tabs.risk_dashboard_tab import RiskDashboardTab
 from src.gui.tabs.data_quality_tab import DataQualityTab
 from src.gui.components.tv_login_dialog import show_tv_login_dialog
 
+# Background data sync
+try:
+    from src.collectors.intraday_collector import IntradayCollector
+    INTRADAY_COLLECTOR_AVAILABLE = True
+except ImportError:
+    INTRADAY_COLLECTOR_AVAILABLE = False
+
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +104,9 @@ class MetaQuantApp:
         
         # Bind events
         self._bind_events()
+        
+        # Start background data sync (every 5 minutes)
+        self._start_background_sync()
     
     def _setup_ui(self):
         """Setup the main UI layout."""
@@ -314,6 +324,21 @@ class MetaQuantApp:
         
         # Window close
         self.root.protocol("WM_DELETE_WINDOW", self._quit)
+    
+    def _start_background_sync(self):
+        """Start background data sync to keep data fresh."""
+        if not INTRADAY_COLLECTOR_AVAILABLE:
+            logger.warning("IntradayCollector not available - background sync disabled")
+            return
+        
+        try:
+            self.data_collector = IntradayCollector(self.db)
+            # Sync every 5 minutes (300 seconds)
+            self.data_collector.start_background_sync(interval_seconds=300)
+            logger.info("Background data sync started (every 5 minutes)")
+            self.set_status("📡 Auto-sync enabled")
+        except Exception as e:
+            logger.error(f"Failed to start background sync: {e}")
     
     def _refresh_data(self):
         """Refresh data from collectors."""
