@@ -136,19 +136,24 @@ class PCAAnalysisTab:
     
     def _create_overview_tab(self, parent):
         """Create overview tab with regime and factors."""
-        # Two columns
-        left = ttk.Frame(parent)
-        left.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 5))
+        # Use PanedWindow for resizable columns
+        main_pane = ttk.PanedWindow(parent, orient=tk.HORIZONTAL)
+        main_pane.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
-        right = ttk.Frame(parent)
-        right.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=(5, 0))
+        # Left column (40%) - Regime, Variance, Returns
+        left = ttk.Frame(main_pane)
+        main_pane.add(left, weight=40)
         
-        # Left: Regime + Variance
+        # Right column (60%) - Exposure heatmap (larger)
+        right = ttk.Frame(main_pane)
+        main_pane.add(right, weight=60)
+        
+        # Left: Regime + Variance + Returns
         self._create_regime_panel(left)
         self._create_variance_panel(left)
         self._create_factor_returns_panel(left)
         
-        # Right: Exposure heatmap
+        # Right: Exposure heatmap (full height)
         self._create_exposure_panel(right)
     
     def _create_regime_panel(self, parent):
@@ -298,27 +303,36 @@ class PCAAnalysisTab:
                      font=('Helvetica', 12)).pack(pady=50)
             return
         
-        # Chart controls
+        # Chart controls bar (styled)
         ctrl = ttk.Frame(parent)
-        ctrl.pack(fill=tk.X, padx=10, pady=5)
+        ctrl.pack(fill=tk.X, padx=10, pady=8)
         
-        ttk.Label(ctrl, text="Period:").pack(side=tk.LEFT)
-        self.chart_window_var = tk.StringVar(value='5')
-        chart_options = [('1D', '1'), ('1W', '5'), ('1M', '20'), ('YTD', 'YTD')]
+        # Period selector
+        period_frame = ttk.LabelFrame(ctrl, text="📅 Period")
+        period_frame.pack(side=tk.LEFT, padx=(0, 20))
+        
+        self.chart_window_var = tk.StringVar(value='20')
+        chart_options = [('1D', '1'), ('1W', '5'), ('1M', '20'), ('3M', '60'), ('YTD', 'YTD')]
         for label, value in chart_options:
-            ttk.Radiobutton(ctrl, text=label, variable=self.chart_window_var, 
-                           value=value, command=self._update_chart).pack(side=tk.LEFT, padx=5)
+            ttk.Radiobutton(period_frame, text=label, variable=self.chart_window_var, 
+                           value=value, command=self._update_chart).pack(side=tk.LEFT, padx=4, pady=3)
         
-        ttk.Button(ctrl, text="📊 Update Chart", 
-                   command=self._update_chart).pack(side=tk.RIGHT)
+        # Update button
+        ttk.Button(ctrl, text="� Refresh", 
+                   command=self._update_chart, style='Accent.TButton').pack(side=tk.LEFT, padx=10)
         
-        # Chart area
-        chart_frame = ttk.Frame(parent)
+        # Chart info
+        self.chart_info_label = ttk.Label(ctrl, text="", font=('Helvetica', 9))
+        self.chart_info_label.pack(side=tk.RIGHT, padx=10)
+        
+        # Chart area (expanded)
+        chart_frame = ttk.LabelFrame(parent, text="📈 Factor Performance")
         chart_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
         
-        self._figure = Figure(figsize=(10, 5), dpi=100, facecolor='#1a1a2e')
+        # Larger figure for better visibility
+        self._figure = Figure(figsize=(12, 6), dpi=100, facecolor='#1a1a2e')
         self._canvas = FigureCanvasTkAgg(self._figure, master=chart_frame)
-        self._canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+        self._canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
     
     def _update_chart(self):
         """Update the factor timing chart."""
@@ -684,24 +698,24 @@ class PCAAnalysisTab:
     
     def _create_stock_tab(self, parent):
         """Create super enhanced stock analysis tab."""
-        # Main scrollable frame
+        # Main frame with padding
         main = ttk.Frame(parent)
-        main.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        main.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
         
-        # Top: Symbol selector
+        # Top: Symbol selector (compact)
         self._create_stock_selector(main)
         
-        # Create 3x2 grid of panels
+        # Create 3x2 grid for analysis panels
         grid = ttk.Frame(main)
-        grid.pack(fill=tk.BOTH, expand=True, pady=10)
+        grid.pack(fill=tk.BOTH, expand=True, pady=5)
         
-        # Configure grid weights
+        # Configure grid weights for equal distribution
         for i in range(3):
-            grid.columnconfigure(i, weight=1)
+            grid.columnconfigure(i, weight=1, uniform='col')
         for i in range(2):
-            grid.rowconfigure(i, weight=1)
+            grid.rowconfigure(i, weight=1, uniform='row')
         
-        # Row 1: Radar Chart | Factor Bars | Similar Stocks
+        # Row 1: Factor Profile | Factor Bars | Similar Stocks
         self._create_radar_panel(grid, 0, 0)
         self._create_factor_bars_panel(grid, 0, 1)
         self._create_similar_stocks_panel(grid, 0, 2)
@@ -711,7 +725,7 @@ class PCAAnalysisTab:
         self._create_stock_regime_panel(grid, 1, 1)
         self._create_risk_panel(grid, 1, 2)
         
-        # Bottom: AI Insight + What-If
+        # Bottom: AI Insight + What-If (full width)
         self._create_ai_insight_panel(main)
     
     def _create_stock_selector(self, parent):
