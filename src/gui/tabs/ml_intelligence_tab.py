@@ -130,6 +130,11 @@ class MLIntelligenceTab:
         self.rotation_tab = ttk.Frame(self.sub_notebook)
         self.sub_notebook.add(self.rotation_tab, text="🔄 Sector Rotation")
         self._create_rotation_ui()
+        
+        # Tab 5: Pattern Recognition
+        self.patterns_tab = ttk.Frame(self.sub_notebook)
+        self.sub_notebook.add(self.patterns_tab, text="📐 Patterns")
+        self._create_patterns_ui()
     
     def _create_overview_ui(self):
         """Create Signal Overview sub-tab with all stocks predictions."""
@@ -1964,6 +1969,167 @@ class MLIntelligenceTab:
                 text=f"⚠️ Training: {error}",
             )
     
+    # ==================== PATTERN RECOGNITION ====================
+    
+    def _create_patterns_ui(self):
+        """Create Pattern Recognition sub-tab UI."""
+        main = self.patterns_tab
+        
+        # Header
+        header = ttk.Frame(main)
+        header.pack(fill=tk.X, padx=15, pady=10)
+        
+        ttk.Label(header, text="📐 Pattern Recognition",
+                 font=get_font('heading'), foreground=COLORS['primary']).pack(side=tk.LEFT)
+        
+        ttk.Button(header, text="🔍 Scan Patterns", command=self._scan_patterns).pack(side=tk.RIGHT)
+        
+        # Summary cards
+        cards_frame = ttk.Frame(main)
+        cards_frame.pack(fill=tk.X, padx=15, pady=10)
+        
+        self.pattern_cards = {}
+        cards = [
+            ('total', '📊 Patterns Found', '0', COLORS['text_primary']),
+            ('bullish', '🟢 Bullish', '0', COLORS['gain']),
+            ('bearish', '🔴 Bearish', '0', COLORS['loss']),
+            ('top_conf', '🎯 Top Confidence', '--%', COLORS['primary']),
+        ]
+        
+        for key, label, default, color in cards:
+            card = ttk.Frame(cards_frame, style='Card.TFrame')
+            card.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+            
+            inner = ttk.Frame(card)
+            inner.pack(padx=12, pady=10)
+            
+            ttk.Label(inner, text=label, font=get_font('small'),
+                     foreground=COLORS['text_muted']).pack(anchor='w')
+            val = ttk.Label(inner, text=default, font=('Helvetica', 18, 'bold'),
+                           foreground=color)
+            val.pack(anchor='w')
+            self.pattern_cards[key] = val
+        
+        # Pattern type filter
+        filter_frame = ttk.Frame(main)
+        filter_frame.pack(fill=tk.X, padx=15, pady=5)
+        
+        ttk.Label(filter_frame, text="Filter:").pack(side=tk.LEFT)
+        self.pattern_filter_var = tk.StringVar(value="ALL")
+        for val, text in [("ALL", "All"), ("bullish", "🟢 Bullish"), ("bearish", "🔴 Bearish")]:
+            ttk.Radiobutton(filter_frame, text=text, variable=self.pattern_filter_var,
+                           value=val, command=self._filter_patterns).pack(side=tk.LEFT, padx=10)
+        
+        # Patterns table
+        table_frame = ttk.Frame(main)
+        table_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=10)
+        
+        columns = ('symbol', 'pattern', 'type', 'bias', 'confidence', 'description', 'target')
+        self.patterns_tree = ttk.Treeview(table_frame, columns=columns, show='headings', height=18)
+        
+        col_config = [
+            ('symbol', 'Symbol', 80),
+            ('pattern', 'Pattern', 140),
+            ('type', 'Type', 90),
+            ('bias', 'Bias', 70),
+            ('confidence', 'Confidence', 85),
+            ('description', 'Description', 200),
+            ('target', 'Target ₦', 90),
+        ]
+        
+        for col_id, col_text, width in col_config:
+            self.patterns_tree.heading(col_id, text=col_text)
+            self.patterns_tree.column(col_id, width=width, minwidth=width-10)
+        
+        scrollbar = ttk.Scrollbar(table_frame, orient=tk.VERTICAL, command=self.patterns_tree.yview)
+        self.patterns_tree.configure(yscrollcommand=scrollbar.set)
+        
+        self.patterns_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # Tags
+        self.patterns_tree.tag_configure('bullish', foreground=COLORS['gain'])
+        self.patterns_tree.tag_configure('bearish', foreground=COLORS['loss'])
+        
+        # Double-click for analysis
+        self.patterns_tree.bind('<Double-1>', self._on_pattern_double_click)
+        
+        # Store results
+        self.all_patterns = []
+    
+    def _scan_patterns(self):
+        """Scan all stocks for chart patterns."""
+        self.pattern_cards['total'].config(text="Scanning...")
+        
+        def scan():
+            try:
+                from src.ml.pattern_recognition import PatternRecognitionEngine
+                engine = PatternRecognitionEngine(self.db)
+                patterns = engine.scan_all_stocks(min_days=30)
+                
+                self.all_patterns = patterns
+                
+                # Count by bias
+                bullish = sum(1 for p in patterns if p.get('bias') == 'bullish')
+                bearish = sum(1 for p in patterns if p.get('bias') == 'bearish')
+                top_conf = max((p.get('confidence', 0) for p in patterns), default=0)
+                
+                # Update UI
+                self.frame.after(0, lambda: self._display_patterns(
+                    patterns, bullish, bearish, top_conf
+                ))
+                
+            except Exception as e:
+                logger.error(f"Failed to scan patterns: {e}")
+                self.frame.after(0, lambda: self.pattern_cards['total'].config(text="Error"))
+        
+        import threading
+        threading.Thread(target=scan, daemon=True).start()
+    
+    def _display_patterns(self, patterns, bullish, bearish, top_conf):
+        """Display pattern scan results."""
+        self.pattern_cards['total'].config(text=str(len(patterns)))
+        self.pattern_cards['bullish'].config(text=str(bullish))
+        self.pattern_cards['bearish'].config(text=str(bearish))
+        self.pattern_cards['top_conf'].config(text=f"{top_conf:.0f}%")
+        
+        self._filter_patterns()
+    
+    def _filter_patterns(self):
+        """Filter and display patterns table."""
+        for item in self.patterns_tree.get_children():
+            self.patterns_tree.delete(item)
+        
+        filter_val = self.pattern_filter_var.get()
+        
+        filtered = [p for p in self.all_patterns
+                   if filter_val == "ALL" or p.get('bias') == filter_val]
+        
+        for p in filtered:
+            bias = p.get('bias', '')
+            tag = bias
+            bias_icon = '🟢' if bias == 'bullish' else '🔴' if bias == 'bearish' else ''
+            
+            self.patterns_tree.insert('', tk.END, values=(
+                p.get('symbol', ''),
+                p.get('name', ''),
+                p.get('type', ''),
+                f"{bias_icon} {bias.title()}",
+                f"{p.get('confidence', 0):.0f}%",
+                p.get('description', '')[:40],
+                f"₦{p.get('target', 0):,.2f}" if p.get('target') else 'N/A'
+            ), tags=(tag,))
+    
+    def _on_pattern_double_click(self, event):
+        """Open stock analysis on double-click."""
+        selection = self.patterns_tree.selection()
+        if selection:
+            item = self.patterns_tree.item(selection[0])
+            symbol = item['values'][0]
+            from src.gui.components.stock_analysis_modal import show_stock_analysis
+            show_stock_analysis(self.parent, self.db, symbol, self.ml_engine)
+    
     def refresh(self):
         """Refresh all ML data."""
         self._initialize_ml()
+
