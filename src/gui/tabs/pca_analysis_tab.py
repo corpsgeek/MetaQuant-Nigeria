@@ -683,7 +683,7 @@ class PCAAnalysisTab:
         self.ai_text.config(state=tk.DISABLED)
     
     def _generate_ai_insights(self):
-        """Generate AI-powered factor insights."""
+        """Generate comprehensive AI-powered factor insights synthesized from all sources."""
         if not self.ml_engine or not hasattr(self.ml_engine, 'pca_engine'):
             return
         
@@ -694,59 +694,113 @@ class PCAAnalysisTab:
         regime_info = pca.get_market_regime()
         regime = regime_info.get('regime', 'Unknown')
         factor_signals = regime_info.get('factor_signals', {})
+        mkt_return = regime_info.get('market_return', 0)
+        volatility = regime_info.get('volatility', 0)
+        confidence = regime_info.get('confidence', 0)
         
         # Update regime label
         color_map = {'Risk-On': COLORS['gain'], 'Risk-Off': COLORS['loss'], 'Rotation': COLORS['warning']}
         self.ai_regime_label.config(text=regime, foreground=color_map.get(regime, 'white'))
         
-        # Generate recommendations
+        # ============ SECTION 1: MARKET REGIME HEADER ============
         recommendations = []
-        recommendations.append(f"═══════════════════════════════════════")
-        recommendations.append(f"  MARKET REGIME: {regime.upper()}")
-        recommendations.append(f"  Confidence: {regime_info.get('confidence', 0):.0%}")
-        recommendations.append(f"═══════════════════════════════════════\n")
+        recommendations.append(f"{'═' * 55}")
+        recommendations.append(f"  🎯 MARKET REGIME: {regime.upper()}")
+        recommendations.append(f"  Confidence: {confidence:.0%} | Mkt Return: {mkt_return:+.1f}% | Vol: {volatility:.1f}%")
+        recommendations.append(f"{'═' * 55}\n")
         
-        # Regime-specific advice
+        # ============ SECTION 2: REGIME INTERPRETATION ============
         if regime == 'Risk-On':
-            recommendations.append("📈 BULLISH ENVIRONMENT DETECTED\n")
-            recommendations.append("✅ RECOMMENDED TILTS:")
-            recommendations.append("   • Increase Market beta exposure")
-            recommendations.append("   • Favor high-momentum stocks")
-            recommendations.append("   • Consider small-cap tilt")
-            recommendations.append("\n⚠️ AVOID:")
-            recommendations.append("   • Defensive/low-vol strategies")
-            recommendations.append("   • Excessive hedging")
+            recommendations.append("📈 BULLISH RISK-ON ENVIRONMENT\n")
+            recommendations.append("The market is in a risk-seeking phase. Factors favoring:")
+            recommendations.append("high-beta, momentum, and growth stocks are likely to outperform.\n")
         elif regime == 'Risk-Off':
-            recommendations.append("📉 DEFENSIVE ENVIRONMENT DETECTED\n")
-            recommendations.append("✅ RECOMMENDED TILTS:")
-            recommendations.append("   • Reduce Market beta exposure")
-            recommendations.append("   • Favor low-volatility stocks")
-            recommendations.append("   • Consider value tilt")
-            recommendations.append("   • Increase cash allocation")
-            recommendations.append("\n⚠️ AVOID:")
-            recommendations.append("   • High-beta momentum plays")
-            recommendations.append("   • Overconcentration in single factors")
+            recommendations.append("📉 DEFENSIVE RISK-OFF ENVIRONMENT\n")
+            recommendations.append("The market is in a risk-averse phase. Factors favoring:")
+            recommendations.append("low-volatility, value, and quality stocks are likely to outperform.\n")
         else:
-            recommendations.append("⚡ ROTATION ENVIRONMENT DETECTED\n")
-            recommendations.append("✅ RECOMMENDED TILTS:")
-            recommendations.append("   • Diversify factor exposures")
-            recommendations.append("   • Monitor for regime shift")
-            recommendations.append("   • Balance momentum and value")
-            recommendations.append("\n⚠️ CAUTION:")
-            recommendations.append("   • High uncertainty period")
-            recommendations.append("   • Avoid large factor bets")
+            recommendations.append("⚡ ROTATION / TRANSITION ENVIRONMENT\n")
+            recommendations.append("The market is rotating between regimes. Factor leadership")
+            recommendations.append("is unclear - maintain diversified factor exposure.\n")
         
-        # Factor-specific signals
-        recommendations.append("\n───────────────────────────────────────")
-        recommendations.append("FACTOR SIGNALS:\n")
+        # ============ SECTION 3: FACTOR SIGNAL MATRIX ============
+        recommendations.append(f"{'─' * 55}")
+        recommendations.append("📊 FACTOR SIGNAL MATRIX\n")
+        
+        bullish_factors = []
+        bearish_factors = []
         
         for factor, signal in factor_signals.items():
             emoji = "🟢" if signal == 'Bullish' else "🔴" if signal == 'Bearish' else "⚪"
-            recommendations.append(f"   {emoji} {factor}: {signal}")
+            recommendations.append(f"   {emoji} {factor:10} → {signal}")
+            if signal == 'Bullish':
+                bullish_factors.append(factor)
+            elif signal == 'Bearish':
+                bearish_factors.append(factor)
         
-        # Top picks based on alignment
-        recommendations.append("\n───────────────────────────────────────")
-        recommendations.append("TOP FACTOR-ALIGNED STOCKS:\n")
+        recommendations.append("")
+        if bullish_factors:
+            recommendations.append(f"   ✅ Overweight: {', '.join(bullish_factors)}")
+        if bearish_factors:
+            recommendations.append(f"   ⛔ Underweight: {', '.join(bearish_factors)}")
+        
+        # ============ SECTION 4: VARIANCE & EXPLANATORY POWER ============
+        variance = pca.get_variance_explained()
+        total_var = sum(variance.values()) * 100
+        
+        recommendations.append(f"\n{'─' * 55}")
+        recommendations.append(f"🔬 FACTOR EXPLANATORY POWER (Total: {total_var:.1f}%)\n")
+        
+        sorted_var = sorted(variance.items(), key=lambda x: x[1], reverse=True)
+        for factor, var in sorted_var:
+            bar = "█" * int(var * 100) + "░" * (10 - int(var * 100))
+            recommendations.append(f"   {factor:10} {bar} {var*100:.1f}%")
+        
+        if total_var < 20:
+            recommendations.append("\n   ⚠️ Low explanatory power - stock-specific factors dominate")
+        elif total_var > 30:
+            recommendations.append("\n   ✅ High factor coherence - factor strategies effective")
+        
+        # ============ SECTION 5: FACTOR RETURNS ============
+        factor_returns = pca.get_factor_returns()
+        if not factor_returns.empty:
+            recommendations.append(f"\n{'─' * 55}")
+            recommendations.append("📈 FACTOR MOMENTUM (Recent Performance)\n")
+            
+            latest_returns = factor_returns.tail(20).sum() * 100
+            sorted_returns = sorted([(f, latest_returns.get(f, 0)) for f in variance.keys()], 
+                                   key=lambda x: x[1], reverse=True)
+            
+            recommendations.append(f"   {'Factor':<10} {'1M Ret':>8} {'Signal':>12}")
+            recommendations.append(f"   {'-'*32}")
+            
+            for factor, ret in sorted_returns:
+                signal = "🔥 Hot" if ret > 2 else "❄️ Cold" if ret < -2 else "➖ Neutral"
+                recommendations.append(f"   {factor:<10} {ret:+7.1f}% {signal:>12}")
+        
+        # ============ SECTION 6: ACTIONABLE RECOMMENDATIONS ============
+        recommendations.append(f"\n{'─' * 55}")
+        recommendations.append("🎮 ACTIONABLE RECOMMENDATIONS\n")
+        
+        if regime == 'Risk-On':
+            recommendations.append("   1️⃣  INCREASE beta exposure gradually")
+            recommendations.append("   2️⃣  ROTATE into momentum winners")
+            recommendations.append("   3️⃣  REDUCE defensive/low-vol positions")
+            recommendations.append("   4️⃣  CONSIDER small-cap tilt for alpha")
+        elif regime == 'Risk-Off':
+            recommendations.append("   1️⃣  REDUCE market beta exposure")
+            recommendations.append("   2️⃣  FAVOR low-volatility, quality names")
+            recommendations.append("   3️⃣  INCREASE value tilt")
+            recommendations.append("   4️⃣  RAISE cash allocation 5-10%")
+        else:
+            recommendations.append("   1️⃣  MAINTAIN balanced factor exposure")
+            recommendations.append("   2️⃣  REDUCE position sizing")
+            recommendations.append("   3️⃣  WAIT for regime clarity")
+            recommendations.append("   4️⃣  MONITOR factor leadership shifts")
+        
+        # ============ SECTION 7: TOP ALIGNED STOCKS ============
+        recommendations.append(f"\n{'─' * 55}")
+        recommendations.append("🏆 TOP REGIME-ALIGNED STOCKS\n")
         
         exposures = pca.get_all_exposures()
         if not exposures.empty:
@@ -754,9 +808,40 @@ class PCAAnalysisTab:
             for symbol in exposures.index:
                 alignments[symbol] = pca.calculate_factor_alignment(symbol)
             
-            top_aligned = sorted(alignments.items(), key=lambda x: x[1], reverse=True)[:5]
+            top_aligned = sorted(alignments.items(), key=lambda x: x[1], reverse=True)[:7]
+            
+            recommendations.append(f"   {'Rank':<5} {'Symbol':<12} {'Alignment':>10} {'Action':>10}")
+            recommendations.append(f"   {'-'*40}")
+            
             for i, (symbol, align) in enumerate(top_aligned, 1):
-                recommendations.append(f"   {i}. {symbol}: {align:+.3f}")
+                action = "BUY" if align > 0.15 else "HOLD" if align > 0 else "WATCH"
+                emoji = "🟢" if align > 0.15 else "🟡" if align > 0 else "⚪"
+                recommendations.append(f"   {i:<5} {symbol:<12} {align:+9.3f} {emoji} {action}")
+            
+            # Bottom aligned (misaligned)
+            recommendations.append("\n   ⚠️ MISALIGNED (Consider Reducing):")
+            bottom_aligned = sorted(alignments.items(), key=lambda x: x[1])[:3]
+            for symbol, align in bottom_aligned:
+                recommendations.append(f"      • {symbol}: {align:+.3f}")
+        
+        # ============ SECTION 8: RISK WARNINGS ============
+        recommendations.append(f"\n{'─' * 55}")
+        recommendations.append("⚠️ RISK CONSIDERATIONS\n")
+        
+        if volatility > 4:
+            recommendations.append("   🔴 HIGH VOLATILITY: Reduce position sizes")
+        if confidence < 0.7:
+            recommendations.append("   🟡 LOW REGIME CONFIDENCE: Factor bets may be unreliable")
+        if total_var < 15:
+            recommendations.append("   🟡 LOW FACTOR COHERENCE: Idiosyncratic risk dominates")
+        if mkt_return < -3:
+            recommendations.append("   🔴 NEGATIVE MARKET MOMENTUM: Defensive posture advised")
+        if mkt_return > 5:
+            recommendations.append("   🟢 STRONG MARKET MOMENTUM: Trend may continue")
+        
+        recommendations.append(f"\n{'═' * 55}")
+        recommendations.append(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+        recommendations.append(f"{'═' * 55}")
         
         # Update text widget
         self.ai_text.config(state=tk.NORMAL)
