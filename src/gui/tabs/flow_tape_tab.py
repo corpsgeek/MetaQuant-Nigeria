@@ -1910,7 +1910,7 @@ class FlowTapeTab:
             
             # Contribution bar (simple canvas)
             bar_canvas = tk.Canvas(card, width=80, height=12, 
-                                   bg=COLORS['bg_secondary'], highlightthickness=0)
+                                   bg=COLORS['bg_medium'], highlightthickness=0)
             bar_canvas.pack(pady=(2, 5))
             
             self.signal_cards[key] = {
@@ -1923,7 +1923,7 @@ class FlowTapeTab:
         narrative_frame.pack(fill=tk.X, padx=15, pady=8)
         
         self.pathway_narrative = tk.Text(narrative_frame, height=4, wrap=tk.WORD,
-                                          bg=COLORS['bg_secondary'], fg=COLORS['text_primary'],
+                                          bg=COLORS['bg_medium'], fg=COLORS['text_primary'],
                                           font=get_font('body'), relief='flat')
         self.pathway_narrative.pack(fill=tk.X, padx=10, pady=10)
         self.pathway_narrative.insert('1.0', "Select a symbol and click Refresh to generate pathway predictions...")
