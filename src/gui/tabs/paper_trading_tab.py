@@ -121,12 +121,15 @@ class PaperTradingTab:
         return None
     
     def _build_ui(self):
-        """Build the UI layout."""
+        """Build the UI layout with hero section."""
         # Main container - this is what gets added to notebook
         self.frame = ttk.Frame(self.parent)
         
         # Top bar - Portfolio selector and actions
         self._create_top_bar(self.frame)
+        
+        # === HERO SECTION - Portfolio Dashboard ===
+        self._create_hero_section(self.frame)
         
         # Main content - split into left and right panels
         content_frame = ttk.Frame(self.frame)
@@ -143,12 +146,47 @@ class PaperTradingTab:
         right_frame = ttk.Frame(content_frame)
         right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
         
-        self._create_performance_panel(right_frame)
+        self._create_quick_trade_panel(right_frame)  # NEW: Quick trade panel
         self._create_history_panel(right_frame)
         
         # Status bar
         self.status_label = ttk.Label(self.frame, text="Ready", foreground=COLORS['text_primary'])
         self.status_label.pack(fill=tk.X, pady=5)
+    
+    def _create_hero_section(self, parent):
+        """Create hero section with large portfolio metrics."""
+        hero_frame = ttk.Frame(parent)
+        hero_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        # Hero metrics - large cards
+        self.hero_metrics = {}
+        
+        metrics = [
+            ('value', '💰 Portfolio Value', '₦0', COLORS['text_primary']),
+            ('today_pnl', '📈 Today\'s P&L', '₦0', COLORS['gain']),
+            ('total_return', '📊 Total Return', '0%', COLORS['text_primary']),
+            ('win_rate', '🎯 Win Rate', '0%', COLORS['text_primary']),
+            ('open_positions', '📍 Open Positions', '0/15', COLORS['text_primary']),
+        ]
+        
+        for key, label, default, color in metrics:
+            card = ttk.Frame(hero_frame, style='Card.TFrame')
+            card.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+            
+            inner = ttk.Frame(card)
+            inner.pack(padx=15, pady=10)
+            
+            # Label
+            lbl = ttk.Label(inner, text=label, font=('Helvetica', 9),
+                           foreground=COLORS['text_muted'])
+            lbl.pack(anchor='w')
+            
+            # Value - large text
+            val = ttk.Label(inner, text=default, font=('Helvetica', 18, 'bold'),
+                           foreground=color)
+            val.pack(anchor='w')
+            
+            self.hero_metrics[key] = val
     
     def _create_top_bar(self, parent):
         """Create top bar with portfolio selector and actions."""
@@ -356,6 +394,109 @@ class PaperTradingTab:
         self.history_tree.tag_configure('profit', foreground=COLORS['gain'])
         self.history_tree.tag_configure('loss', foreground=COLORS['loss'])
     
+    def _create_quick_trade_panel(self, parent):
+        """Create quick trade panel for fast execution."""
+        trade_frame = ttk.LabelFrame(parent, text="⚡ Quick Trade")
+        trade_frame.pack(fill=tk.X, pady=(0, 5))
+        
+        # Symbol selector
+        row1 = ttk.Frame(trade_frame)
+        row1.pack(fill=tk.X, padx=10, pady=5)
+        
+        ttk.Label(row1, text="Symbol:").pack(side=tk.LEFT)
+        self.quick_symbol_var = tk.StringVar()
+        self.quick_symbol_combo = ttk.Combobox(row1, textvariable=self.quick_symbol_var,
+                                               width=12, state='readonly')
+        self.quick_symbol_combo.pack(side=tk.LEFT, padx=5)
+        
+        ttk.Label(row1, text="Qty:").pack(side=tk.LEFT, padx=(10, 0))
+        self.quick_qty_var = tk.StringVar(value="100")
+        ttk.Entry(row1, textvariable=self.quick_qty_var, width=8).pack(side=tk.LEFT, padx=5)
+        
+        # SL/TP row
+        row2 = ttk.Frame(trade_frame)
+        row2.pack(fill=tk.X, padx=10, pady=5)
+        
+        ttk.Label(row2, text="SL %:").pack(side=tk.LEFT)
+        self.quick_sl_var = tk.StringVar(value="5")
+        ttk.Entry(row2, textvariable=self.quick_sl_var, width=5).pack(side=tk.LEFT, padx=5)
+        
+        ttk.Label(row2, text="TP %:").pack(side=tk.LEFT, padx=(10, 0))
+        self.quick_tp_var = tk.StringVar(value="15")
+        ttk.Entry(row2, textvariable=self.quick_tp_var, width=5).pack(side=tk.LEFT, padx=5)
+        
+        # Buttons
+        btn_frame = ttk.Frame(trade_frame)
+        btn_frame.pack(fill=tk.X, padx=10, pady=(5, 10))
+        
+        buy_btn = ttk.Button(btn_frame, text="🟢 BUY", command=self._quick_buy)
+        buy_btn.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
+        
+        sell_btn = ttk.Button(btn_frame, text="🔴 SELL", command=self._quick_sell)
+        sell_btn.pack(side=tk.LEFT, fill=tk.X, expand=True)
+    
+    def _quick_buy(self):
+        """Execute quick buy."""
+        symbol = self.quick_symbol_var.get()
+        if not symbol:
+            messagebox.showwarning("Quick Trade", "Please select a symbol")
+            return
+        
+        try:
+            qty = int(self.quick_qty_var.get())
+            sl_pct = float(self.quick_sl_var.get())
+            tp_pct = float(self.quick_tp_var.get())
+        except ValueError:
+            messagebox.showerror("Quick Trade", "Invalid quantity or SL/TP values")
+            return
+        
+        price = self._get_current_price(symbol)
+        if not price:
+            messagebox.showerror("Quick Trade", f"No price data for {symbol}")
+            return
+        
+        sl = price * (1 - sl_pct / 100)
+        tp = price * (1 + tp_pct / 100)
+        
+        # Execute via trade executor
+        if self._trade_executor:
+            try:
+                from ...trading import TradingSignal
+                signal = TradingSignal(
+                    symbol=symbol,
+                    signal='BUY',
+                    score=0.5,
+                    current_price=price,
+                    stop_loss=sl,
+                    take_profit=tp,
+                    attribution={}
+                )
+                result = self._trade_executor.execute_signals([signal], {symbol: price}, self._current_book_id)
+                self._update_all()
+                messagebox.showinfo("Quick Trade", f"Bought {qty} {symbol} at ₦{price:,.2f}")
+            except Exception as e:
+                messagebox.showerror("Quick Trade", f"Trade failed: {e}")
+    
+    def _quick_sell(self):
+        """Execute quick sell (close position)."""
+        symbol = self.quick_symbol_var.get()
+        if not symbol:
+            messagebox.showwarning("Quick Trade", "Please select a symbol")
+            return
+        
+        # Close position for this symbol
+        if self._portfolio_manager:
+            positions = self._portfolio_manager.get_open_positions(self._current_book_id)
+            for pos in positions:
+                if pos.symbol == symbol:
+                    price = self._get_current_price(symbol)
+                    if price:
+                        self._trade_executor.close_position(pos.trade_id, price, 'MANUAL_CLOSE')
+                        self._update_all()
+                        messagebox.showinfo("Quick Trade", f"Closed {symbol} at ₦{price:,.2f}")
+                        return
+            messagebox.showwarning("Quick Trade", f"No open position for {symbol}")
+    
     # ==================== Data Loading ====================
     
     def _load_portfolio_books(self):
@@ -438,40 +579,69 @@ class PaperTradingTab:
             ), tags=(tag,))
     
     def _update_performance(self):
-        """Update performance metrics display."""
+        """Update performance metrics display and hero section."""
         if not self._portfolio_manager:
             return
         
         summary = self._portfolio_manager.get_portfolio_summary(self._current_book_id)
+        positions = self._portfolio_manager.get_open_positions(self._current_book_id)
         
-        # Format and display metrics
-        self.perf_metrics['total_value'].config(
-            text=f"₦{summary.get('total_value', 0):,.0f}"
-        )
+        # Update hero metrics
+        if hasattr(self, 'hero_metrics'):
+            total_value = summary.get('total_value', 0)
+            self.hero_metrics['value'].config(text=f"₦{total_value:,.0f}")
+            
+            unrealized = summary.get('unrealized_pnl', 0)
+            self.hero_metrics['today_pnl'].config(
+                text=f"₦{unrealized:+,.0f}",
+                foreground=COLORS['gain'] if unrealized >= 0 else COLORS['loss']
+            )
+            
+            ret = summary.get('total_return_pct', 0)
+            self.hero_metrics['total_return'].config(
+                text=f"{ret:+.1f}%",
+                foreground=COLORS['gain'] if ret >= 0 else COLORS['loss']
+            )
+            
+            win_rate = summary.get('win_rate', 0)
+            self.hero_metrics['win_rate'].config(text=f"{win_rate:.0f}%")
+            
+            self.hero_metrics['open_positions'].config(text=f"{len(positions)}/15")
         
-        ret = summary.get('total_return_pct', 0)
-        self.perf_metrics['total_return_pct'].config(
-            text=f"{ret:+.2f}%",
-            foreground=COLORS['gain'] if ret >= 0 else COLORS['loss']
-        )
+        # Update quick trade symbol combo
+        if hasattr(self, 'quick_symbol_combo') and self._price_data:
+            symbols = list(self._price_data.keys())
+            self.quick_symbol_combo['values'] = sorted(symbols)
         
-        unrealized = summary.get('unrealized_pnl', 0)
-        self.perf_metrics['unrealized_pnl'].config(
-            text=f"₦{unrealized:,.0f}",
-            foreground=COLORS['gain'] if unrealized >= 0 else COLORS['loss']
-        )
-        
-        realized = summary.get('realized_pnl', 0)
-        self.perf_metrics['realized_pnl'].config(
-            text=f"₦{realized:,.0f}",
-            foreground=COLORS['gain'] if realized >= 0 else COLORS['loss']
-        )
-        
-        self.perf_metrics['win_rate'].config(
-            text=f"{summary.get('win_rate', 0):.1f}%"
-        )
-        
-        self.perf_metrics['total_trades'].config(
+        # Format and display old metrics (for compatibility)
+        if hasattr(self, 'perf_metrics'):
+            self.perf_metrics['total_value'].config(
+                text=f"₦{summary.get('total_value', 0):,.0f}"
+            )
+            
+            ret = summary.get('total_return_pct', 0)
+            self.perf_metrics['total_return_pct'].config(
+                text=f"{ret:+.2f}%",
+                foreground=COLORS['gain'] if ret >= 0 else COLORS['loss']
+            )
+            
+            unrealized = summary.get('unrealized_pnl', 0)
+            self.perf_metrics['unrealized_pnl'].config(
+                text=f"₦{unrealized:,.0f}",
+                foreground=COLORS['gain'] if unrealized >= 0 else COLORS['loss']
+            )
+            
+            realized = summary.get('realized_pnl', 0)
+            self.perf_metrics['realized_pnl'].config(
+                text=f"₦{realized:,.0f}",
+                foreground=COLORS['gain'] if realized >= 0 else COLORS['loss']
+            )
+            
+            self.perf_metrics['win_rate'].config(
+                text=f"{summary.get('win_rate', 0):.1f}%"
+            )
+            
+            self.perf_metrics['total_trades'].config(
             text=str(summary.get('total_trades', 0))
         )
     
