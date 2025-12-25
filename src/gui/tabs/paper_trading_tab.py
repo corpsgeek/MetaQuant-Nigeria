@@ -677,7 +677,7 @@ class PaperTradingTab:
                 if prices:
                     df = pd.DataFrame(prices, columns=['date', 'open', 'high', 'low', 'close', 'volume'])
                     df['date'] = pd.to_datetime(df['date'])
-                    df.set_index('date', inplace=True)
+                    # Keep date as column, use integer index to avoid DatetimeArray rmul errors
                     self._price_data[symbol] = df
             
             logger.info(f"Loaded price data for {len(self._price_data)} stocks")
