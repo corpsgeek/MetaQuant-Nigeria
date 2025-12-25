@@ -550,82 +550,110 @@ class PaperTradingTab:
     
     def _quick_optimize_strategies(self):
         """
-        Run actual backtest-based optimization in background.
-        Uses batched processing with delays for stability.
+        Run backtest-based optimization via subprocess.
+        Completely isolates memory from GUI process to prevent segfaults.
         """
         if not self._price_data:
             messagebox.showwarning("Warning", "Load price data first")
             return
         
-        if not self._strategy_optimizer:
-            messagebox.showerror("Error", "Strategy optimizer not initialized")
-            return
-        
-        if self._strategy_optimizer.is_running():
+        if hasattr(self, '_opt_process') and self._opt_process and self._opt_process.poll() is None:
             messagebox.showwarning("Warning", "Optimization already in progress")
             return
         
+        stock_count = len(self._price_data)
+        
         if not messagebox.askyesno("Run Backtest Optimization?", 
-            f"This will run actual backtests on {len(self._price_data)} stocks.\n\n"
-            "Uses:\n"
-            "• Batched processing (10 stocks at a time)\n"
-            "• 1-second delays between batches\n"
-            "• Background thread execution\n\n"
-            "Estimated time: ~5 minutes\n\n"
+            f"This will run actual backtests on {stock_count} stocks.\n\n"
+            "Uses SEPARATE PROCESS to prevent crashes:\n"
+            "• Batches of 5 stocks\n"
+            "• 2-second delays between batches\n"
+            "• Isolated memory space\n\n"
+            f"Estimated time: ~{stock_count // 5 * 30}s ({stock_count // 5} batches)\n\n"
             "Continue?"):
             return
         
-        symbols = list(self._price_data.keys())
+        import subprocess
+        import os
         
-        # Progress update callback
-        def on_complete(results):
-            count = len(results)
-            self.frame.after(0, lambda: self.status_label.config(
-                text=f"Optimized {count} strategies via backtesting",
-                foreground=COLORS['gain']
-            ))
-            # Refresh signal generator cache
-            if self._signal_generator:
-                self._signal_generator._refresh_strategies(force=True)
+        # Get the path to the optimization script
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+        script_path = os.path.join(project_root, 'scripts', 'optimize_strategies.py')
         
-        # Start background optimization
-        self._strategy_optimizer.optimize_all_stocks_background(
-            symbols, self._price_data, on_complete
-        )
-        
-        self.status_label.config(
-            text="Backtest optimization running in background...",
-            foreground=COLORS['warning']
-        )
-        
-        # Start progress polling
-        self._poll_optimization_progress()
-    
-    def _poll_optimization_progress(self):
-        """Poll optimization progress and update status."""
-        if not self._strategy_optimizer:
+        if not os.path.exists(script_path):
+            messagebox.showerror("Error", f"Optimization script not found: {script_path}")
             return
         
-        progress = self._strategy_optimizer.get_progress()
+        self.status_label.config(
+            text="Starting optimization subprocess...",
+            foreground=COLORS['warning']
+        )
+        self.frame.update()
         
-        if progress['status'] == 'running':
-            current = progress['current']
-            total = progress['total']
-            symbol = progress['symbol']
-            
-            self.status_label.config(
-                text=f"Optimizing {current}/{total}: {symbol}...",
-                foreground=COLORS['warning']
+        # Run optimization script as subprocess
+        try:
+            self._opt_process = subprocess.Popen(
+                ['python', script_path, '--batch-size', '5', '--delay', '2.0'],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                cwd=project_root
             )
             
+            # Start monitoring the process
+            self._poll_subprocess_optimization()
+            
+        except Exception as e:
+            logger.error(f"Failed to start optimization: {e}")
+            self.status_label.config(text=f"Error: {e}", foreground=COLORS['loss'])
+    
+    def _poll_subprocess_optimization(self):
+        """Poll subprocess optimization progress."""
+        if not hasattr(self, '_opt_process') or self._opt_process is None:
+            return
+        
+        # Check if process is still running
+        if self._opt_process.poll() is None:
+            # Read any available output
+            try:
+                line = self._opt_process.stdout.readline()
+                if line:
+                    # Parse progress from log line
+                    if 'Processing batch' in line:
+                        # Extract batch info
+                        self.status_label.config(
+                            text=line.strip().split(' - ')[-1][:60],
+                            foreground=COLORS['warning']
+                        )
+                    elif 'Optimized:' in line:
+                        self.status_label.config(
+                            text=line.strip().split(' - ')[-1],
+                            foreground=COLORS['gain']
+                        )
+            except:
+                pass
+            
             # Poll again in 500ms
-            self.frame.after(500, self._poll_optimization_progress)
-        elif progress['status'] == 'complete':
-            # Done - status already updated by callback
-            pass
+            self.frame.after(500, self._poll_subprocess_optimization)
         else:
-            # Idle or other state
-            pass
+            # Process finished
+            exit_code = self._opt_process.returncode
+            
+            if exit_code == 0:
+                self.status_label.config(
+                    text="Optimization complete! Click Generate Signals to update.",
+                    foreground=COLORS['gain']
+                )
+                # Refresh strategy cache
+                if self._signal_generator:
+                    self._signal_generator._refresh_strategies(force=True)
+            else:
+                self.status_label.config(
+                    text=f"Optimization failed (exit code {exit_code})",
+                    foreground=COLORS['loss']
+                )
+            
+            self._opt_process = None
     
     def _execute_trades(self):
         """Execute trades based on current signals."""
