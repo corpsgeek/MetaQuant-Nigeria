@@ -32,65 +32,39 @@ class DisclosureScraper:
     
     def _init_table(self):
         """Initialize database table for disclosures."""
-        # Always recreate table - simpler approach to ensure correct schema
-        # Check if we can insert without ID (indicates DEFAULT is working)
-        needs_recreate = False
+        # Simple table creation - no sequences needed
         try:
-            # Check if table exists and test if ID auto-generates
             self.db.conn.execute("""
-                SELECT id FROM corporate_disclosures LIMIT 1
+                CREATE TABLE IF NOT EXISTS corporate_disclosures (
+                    id INTEGER PRIMARY KEY,
+                    company_symbol TEXT,
+                    company_name TEXT,
+                    title TEXT,
+                    date_submitted TEXT,
+                    pdf_url TEXT UNIQUE,
+                    pdf_text TEXT,
+                    ai_summary TEXT,
+                    impact_score INTEGER,
+                    impact_label TEXT,
+                    key_highlights TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    processed_at TIMESTAMP
+                )
             """)
-            # Table exists - try a test insert to see if sequence works
-            # (We'll check by attempting to get the column default)
-            try:
-                result = self.db.conn.execute("""
-                    SELECT column_default FROM information_schema.columns 
-                    WHERE table_name = 'corporate_disclosures' AND column_name = 'id'
-                """).fetchone()
-                # If no default or wrong default, recreate
-                if not result or not result[0] or 'nextval' not in str(result[0]):
-                    needs_recreate = True
-                    logger.info("Table exists but ID column has wrong default - recreating")
-            except:
-                # Can't check schema - force recreate to be safe
-                needs_recreate = True
-        except:
-            # Table doesn't exist
-            needs_recreate = True
-        
-        if needs_recreate:
-            logger.info("Dropping and recreating corporate_disclosures table...")
-            try:
-                self.db.conn.execute("DROP TABLE IF EXISTS corporate_disclosures")
-                self.db.conn.execute("DROP SEQUENCE IF EXISTS disclosure_id_seq")
-            except Exception as e:
-                logger.warning(f"Drop failed: {e}")
-        
-        # Create sequence for auto-increment ID
+            self.db.conn.commit()
+            logger.info("Corporate disclosures table initialized")
+        except Exception as e:
+            logger.warning(f"Table init warning: {e}")
+    
+    def _get_next_id(self) -> int:
+        """Get next available ID for disclosures."""
         try:
-            self.db.conn.execute("CREATE SEQUENCE IF NOT EXISTS disclosure_id_seq START 1")
+            result = self.db.conn.execute(
+                "SELECT COALESCE(MAX(id), 0) + 1 FROM corporate_disclosures"
+            ).fetchone()
+            return result[0] if result else 1
         except:
-            pass
-        
-        self.db.conn.execute("""
-            CREATE TABLE IF NOT EXISTS corporate_disclosures (
-                id INTEGER PRIMARY KEY DEFAULT nextval('disclosure_id_seq'),
-                company_symbol TEXT,
-                company_name TEXT,
-                title TEXT,
-                date_submitted TEXT,
-                pdf_url TEXT UNIQUE,
-                pdf_text TEXT,
-                ai_summary TEXT,
-                impact_score INTEGER,
-                impact_label TEXT,
-                key_highlights TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                processed_at TIMESTAMP
-            )
-        """)
-        self.db.conn.commit()
-        logger.info("Corporate disclosures table initialized")
+            return 1
     
     def fetch_disclosures(self, limit: int = 100) -> List[Dict]:
         """
@@ -346,6 +320,7 @@ class DisclosureScraper:
             Number of new records stored
         """
         stored = 0
+        next_id = self._get_next_id()
         
         for disc in disclosures:
             try:
@@ -357,17 +332,20 @@ class DisclosureScraper:
                 if existing:
                     continue
                 
+                # Insert with explicit ID
                 self.db.conn.execute("""
                     INSERT INTO corporate_disclosures 
-                    (company_symbol, company_name, title, date_submitted, pdf_url)
-                    VALUES (?, ?, ?, ?, ?)
+                    (id, company_symbol, company_name, title, date_submitted, pdf_url)
+                    VALUES (?, ?, ?, ?, ?, ?)
                 """, [
+                    next_id,
                     disc.get('company_symbol'),
                     disc.get('company_name'),
                     disc.get('title'),
                     disc.get('date_submitted'),
                     disc.get('pdf_url')
                 ])
+                next_id += 1
                 stored += 1
                     
             except Exception as e:
