@@ -708,7 +708,7 @@ class PCAAnalysisTab:
         
         # Row 2: Attribution | Regime Sensitivity | Risk Decomposition
         self._create_attribution_panel(grid, 1, 0)
-        self._create_regime_panel(grid, 1, 1)
+        self._create_stock_regime_panel(grid, 1, 1)
         self._create_risk_panel(grid, 1, 2)
         
         # Bottom: AI Insight + What-If
@@ -819,8 +819,8 @@ class PCAAnalysisTab:
             lbl.pack(side=tk.LEFT)
             self.attribution_labels[item] = lbl
     
-    def _create_regime_panel(self, parent, row, col):
-        """Create regime sensitivity panel."""
+    def _create_stock_regime_panel(self, parent, row, col):
+        """Create stock regime sensitivity panel."""
         frame = ttk.LabelFrame(parent, text="⚡ Regime Sensitivity")
         frame.grid(row=row, column=col, sticky='nsew', padx=3, pady=3)
         
