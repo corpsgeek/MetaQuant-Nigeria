@@ -550,92 +550,82 @@ class PaperTradingTab:
     
     def _quick_optimize_strategies(self):
         """
-        Quick optimization based on price volatility and momentum.
-        Doesn't run full backtests - uses statistical analysis instead.
+        Run actual backtest-based optimization in background.
+        Uses batched processing with delays for stability.
         """
         if not self._price_data:
             messagebox.showwarning("Warning", "Load price data first")
             return
         
-        self.status_label.config(text="Optimizing strategies...", foreground=COLORS['warning'])
-        self.frame.update()
+        if not self._strategy_optimizer:
+            messagebox.showerror("Error", "Strategy optimizer not initialized")
+            return
         
-        import numpy as np
+        if self._strategy_optimizer.is_running():
+            messagebox.showwarning("Warning", "Optimization already in progress")
+            return
         
-        optimized = 0
-        total = len(self._price_data)
+        if not messagebox.askyesno("Run Backtest Optimization?", 
+            f"This will run actual backtests on {len(self._price_data)} stocks.\n\n"
+            "Uses:\n"
+            "• Batched processing (10 stocks at a time)\n"
+            "• 1-second delays between batches\n"
+            "• Background thread execution\n\n"
+            "Estimated time: ~5 minutes\n\n"
+            "Continue?"):
+            return
         
-        for i, (symbol, df) in enumerate(self._price_data.items()):
-            if df.empty or len(df) < 50:
-                continue
-            
-            try:
-                close = df['close'].astype(float)
-                
-                # Calculate volatility (for stop-loss sizing)
-                daily_returns = close.pct_change().dropna()
-                volatility = daily_returns.std()
-                avg_daily_move = abs(daily_returns).mean()
-                
-                # Calculate momentum statistics (for buy/sell thresholds)
-                mom_10 = (close.iloc[-1] - close.iloc[-10]) / close.iloc[-10] if len(close) >= 10 else 0
-                mom_20 = (close.iloc[-1] - close.iloc[-20]) / close.iloc[-20] if len(close) >= 20 else 0
-                
-                # Calculate max drawdown from recent highs (for take-profit)
-                rolling_max = close.rolling(20).max()
-                drawdown = (close - rolling_max) / rolling_max
-                max_drawdown = abs(drawdown.min())
-                
-                # Calculate average gain per trade (simulated with peaks)
-                avg_gain = close.pct_change().clip(lower=0).mean() * 20  # Approx 20-day gain
-                
-                # Set stop-loss: based on volatility (2x daily volatility as minimum)
-                stop_loss = max(0.03, min(0.12, volatility * 2.5))
-                
-                # Set take-profit: based on typical gains and drawdown recovery
-                take_profit = max(0.08, min(0.30, avg_gain + max_drawdown * 0.5))
-                
-                # Buy threshold: lower threshold for trending stocks
-                if mom_20 > 0:
-                    buy_threshold = max(0.15, min(0.35, 0.3 - mom_20 * 0.5))
-                else:
-                    buy_threshold = max(0.25, min(0.45, 0.3 - mom_20 * 0.3))
-                
-                # Sell threshold: based on momentum direction
-                sell_threshold = -buy_threshold * 0.8
-                
-                # Save strategy
-                strategy = {
-                    'stop_loss': round(stop_loss, 3),
-                    'take_profit': round(take_profit, 3),
-                    'buy_threshold': round(buy_threshold, 3),
-                    'sell_threshold': round(sell_threshold, 3),
-                    'avg_hold_days': 10,
-                    'min_hold_days': 3,
-                    'return': float(mom_20 * 100),
-                    'win_rate': 50,  # Unknown
-                    'sharpe': 0,
-                    'trades': 0
-                }
-                
-                self._trading_tables.save_stock_strategy(symbol, strategy)
-                optimized += 1
-                
-                # Progress update every 20 stocks
-                if (i + 1) % 20 == 0:
-                    self.status_label.config(text=f"Optimizing {i+1}/{total} stocks...")
-                    self.frame.update()
-                    
-            except Exception as e:
-                logger.debug(f"Failed to optimize {symbol}: {e}")
+        symbols = list(self._price_data.keys())
         
-        # Refresh strategy cache
-        self._signal_generator._refresh_strategies(force=True)
+        # Progress update callback
+        def on_complete(results):
+            count = len(results)
+            self.frame.after(0, lambda: self.status_label.config(
+                text=f"Optimized {count} strategies via backtesting",
+                foreground=COLORS['gain']
+            ))
+            # Refresh signal generator cache
+            if self._signal_generator:
+                self._signal_generator._refresh_strategies(force=True)
+        
+        # Start background optimization
+        self._strategy_optimizer.optimize_all_stocks_background(
+            symbols, self._price_data, on_complete
+        )
         
         self.status_label.config(
-            text=f"Optimized {optimized} strategies based on volatility analysis",
-            foreground=COLORS['gain']
+            text="Backtest optimization running in background...",
+            foreground=COLORS['warning']
         )
+        
+        # Start progress polling
+        self._poll_optimization_progress()
+    
+    def _poll_optimization_progress(self):
+        """Poll optimization progress and update status."""
+        if not self._strategy_optimizer:
+            return
+        
+        progress = self._strategy_optimizer.get_progress()
+        
+        if progress['status'] == 'running':
+            current = progress['current']
+            total = progress['total']
+            symbol = progress['symbol']
+            
+            self.status_label.config(
+                text=f"Optimizing {current}/{total}: {symbol}...",
+                foreground=COLORS['warning']
+            )
+            
+            # Poll again in 500ms
+            self.frame.after(500, self._poll_optimization_progress)
+        elif progress['status'] == 'complete':
+            # Done - status already updated by callback
+            pass
+        else:
+            # Idle or other state
+            pass
     
     def _execute_trades(self):
         """Execute trades based on current signals."""
