@@ -234,7 +234,11 @@ class RiskDashboardTab:
             
             positions = []
             for symbol, name, sector, price, qty, entry in result:
-                price = price or 0
+                # Cast to float to avoid Decimal/float mixing
+                price = float(price) if price else 0.0
+                qty = int(qty) if qty else 0
+                entry = float(entry) if entry else 0.0
+                
                 value = price * qty
                 cost = entry * qty
                 return_pct = ((price - entry) / entry) * 100 if entry > 0 else 0
