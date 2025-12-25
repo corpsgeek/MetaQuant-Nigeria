@@ -116,13 +116,24 @@ class PatternRecognitionEngine:
     def _get_price_data(self, symbol: str, days: int) -> List[Dict]:
         """Get price data for pattern analysis."""
         try:
+            # Use intraday_ohlcv table with daily interval or fallback
             result = self.db.conn.execute("""
-                SELECT date, open, high, low, close, volume
-                FROM price_history
-                WHERE symbol = ?
-                ORDER BY date DESC
+                SELECT datetime, open, high, low, close, volume
+                FROM intraday_ohlcv
+                WHERE symbol = ? AND interval = '1d'
+                ORDER BY datetime DESC
                 LIMIT ?
             """, [symbol, days]).fetchall()
+            
+            # If no daily data, try 15m data (grouped by date wouldn't work, just get recent)
+            if not result:
+                result = self.db.conn.execute("""
+                    SELECT datetime, open, high, low, close, volume
+                    FROM intraday_ohlcv
+                    WHERE symbol = ?
+                    ORDER BY datetime DESC
+                    LIMIT ?
+                """, [symbol, days]).fetchall()
             
             return [
                 {

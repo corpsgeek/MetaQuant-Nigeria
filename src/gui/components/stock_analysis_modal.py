@@ -233,10 +233,10 @@ class StockAnalysisModal:
         indicators = {}
         
         try:
-            # Get price history
+            # Get price history from intraday_ohlcv table
             result = self.db.conn.execute("""
-                SELECT close, high, low FROM price_history
-                WHERE symbol = ? ORDER BY date DESC LIMIT 50
+                SELECT close, high, low FROM intraday_ohlcv
+                WHERE symbol = ? ORDER BY datetime DESC LIMIT 50
             """, [symbol]).fetchall()
             
             if len(result) < 14:
