@@ -27,6 +27,7 @@ from src.gui.tabs.backtest_tab import BacktestTab
 from src.gui.tabs.portfolio_manager_tab import PortfolioManagerTab
 from src.gui.tabs.paper_trading_tab import PaperTradingTab
 from src.gui.tabs.watchlist_tab import WatchlistTab
+from src.gui.tabs.risk_dashboard_tab import RiskDashboardTab
 from src.gui.components.tv_login_dialog import show_tv_login_dialog
 
 
@@ -256,6 +257,11 @@ class MetaQuantApp:
         self.notebook.add(self.pca_analysis_tab.frame, text="🔬 PCA Factors")
         self.notebook.add(self.backtest_tab.frame, text="📈 Backtest")
         self.notebook.add(self.paper_trading_tab.frame, text="📝 Paper Trading")
+        
+        # Risk Dashboard
+        self.risk_dashboard_tab = RiskDashboardTab(self.notebook, self.db)
+        self.notebook.add(self.risk_dashboard_tab.frame, text="⚠️ Risk Dashboard")
+        
         self.notebook.add(self.portfolio_mgr_tab.frame, text="🤖 AI Manager")
         self.notebook.add(self.history_tab.frame, text="📅 History")
     
