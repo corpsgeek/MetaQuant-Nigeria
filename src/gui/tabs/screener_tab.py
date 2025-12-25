@@ -85,7 +85,7 @@ class ScreenerTab:
         ttk.Label(
             left, text="📊 Stock Screener",
             font=get_font('heading'),
-            foreground=COLORS['text']
+            foreground=COLORS['text_primary']
         ).pack(anchor='w')
         
         ttk.Label(
@@ -125,7 +125,7 @@ class ScreenerTab:
         lbl.pack()
         
         val = ttk.Label(inner, text=value, font=get_font('subheading'),
-                       foreground=COLORS['text'])
+                       foreground=COLORS['text_primary'])
         val.pack()
         
         # Store reference to value label
@@ -385,7 +385,7 @@ class ScreenerTab:
         
         self.results_count_label = ttk.Label(
             header, text="📋 Results: 0 stocks",
-            font=get_font('subheading'), foreground=COLORS['text']
+            font=get_font('subheading'), foreground=COLORS['text_primary']
         )
         self.results_count_label.pack(side=tk.LEFT)
         
