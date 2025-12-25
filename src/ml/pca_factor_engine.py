@@ -431,3 +431,214 @@ class PCAFactorEngine:
             'variance_explained': self.get_variance_explained(),
             'current_regime': self.get_market_regime()
         }
+    
+    # ==================== ADVANCED ANALYTICS ====================
+    
+    def find_similar_stocks(self, symbol: str, top_n: int = 5) -> List[Tuple[str, float]]:
+        """
+        Find stocks with similar factor profiles using Euclidean distance.
+        
+        Args:
+            symbol: Target stock symbol
+            top_n: Number of similar stocks to return
+            
+        Returns:
+            List of (symbol, similarity_score) tuples, higher is more similar
+        """
+        if not self._is_fitted or symbol not in self._symbols:
+            return []
+        
+        idx = self._symbols.index(symbol)
+        target_loadings = self._factor_loadings[idx]
+        
+        similarities = []
+        for i, sym in enumerate(self._symbols):
+            if sym == symbol:
+                continue
+            
+            other_loadings = self._factor_loadings[i]
+            # Euclidean distance, converted to similarity
+            distance = np.sqrt(np.sum((target_loadings - other_loadings) ** 2))
+            similarity = 1 / (1 + distance)  # 0 to 1, higher is more similar
+            similarities.append((sym, round(similarity, 3)))
+        
+        # Sort by similarity descending
+        similarities.sort(key=lambda x: x[1], reverse=True)
+        return similarities[:top_n]
+    
+    def get_factor_attribution(self, symbol: str, days: int = 20) -> Dict[str, float]:
+        """
+        Decompose stock return into factor contributions.
+        
+        Args:
+            symbol: Stock symbol
+            days: Lookback period
+            
+        Returns:
+            Dict with factor contributions + residual alpha
+        """
+        if not self._is_fitted or symbol not in self._symbols:
+            return {}
+        
+        if self._returns_matrix is None or len(self._returns_matrix) < days:
+            return {}
+        
+        idx = self._symbols.index(symbol)
+        
+        # Get stock returns and factor returns for period
+        stock_returns = self._returns_matrix.iloc[-days:, self._returns_matrix.columns.get_loc(symbol)]
+        total_return = stock_returns.sum()
+        
+        # Factor contributions
+        factor_returns = self.get_factor_returns().tail(days)
+        exposures = self._factor_loadings[idx]
+        
+        attribution = {}
+        total_factor_contribution = 0
+        
+        for i, factor_name in enumerate(self.FACTOR_NAMES[:self.n_components]):
+            if factor_name in factor_returns.columns:
+                factor_ret = factor_returns[factor_name].sum()
+                contribution = exposures[i] * factor_ret
+                attribution[factor_name] = round(contribution * 100, 2)  # As percentage
+                total_factor_contribution += contribution
+        
+        # Residual alpha = total return - factor explained return
+        attribution['Alpha'] = round((total_return - total_factor_contribution) * 100, 2)
+        attribution['Total'] = round(total_return * 100, 2)
+        
+        return attribution
+    
+    def get_regime_performance(self, symbol: str) -> Dict[str, Dict]:
+        """
+        Calculate historical performance by regime type.
+        
+        Args:
+            symbol: Stock symbol
+            
+        Returns:
+            Dict with performance stats per regime
+        """
+        if not self._is_fitted or symbol not in self._symbols:
+            return {}
+        
+        if self._returns_matrix is None or len(self._returns_matrix) < 60:
+            return {}
+        
+        # Classify each historical period into regimes
+        returns = self._returns_matrix[symbol].values
+        
+        # Use rolling PCA or approximate regime detection
+        regime_returns = {'Risk-On': [], 'Risk-Off': [], 'Rotation': []}
+        
+        # Simplified: use market factor return to determine regime
+        factor_returns = self.get_factor_returns()
+        if factor_returns.empty or 'Market' not in factor_returns.columns:
+            return {}
+        
+        market_returns = factor_returns['Market'].values
+        
+        for i in range(20, len(returns)):
+            # Rolling market mean to detect regime
+            rolling_market = np.mean(market_returns[max(0, i-20):i])
+            stock_ret = returns[i]
+            
+            if rolling_market > 0.001:
+                regime_returns['Risk-On'].append(stock_ret)
+            elif rolling_market < -0.001:
+                regime_returns['Risk-Off'].append(stock_ret)
+            else:
+                regime_returns['Rotation'].append(stock_ret)
+        
+        result = {}
+        for regime, rets in regime_returns.items():
+            if len(rets) > 5:
+                result[regime] = {
+                    'avg_return': round(np.mean(rets) * 100 * 20, 2),  # Monthly equivalent
+                    'count': len(rets),
+                    'win_rate': round(sum(1 for r in rets if r > 0) / len(rets) * 100, 1)
+                }
+            else:
+                result[regime] = {'avg_return': 0, 'count': len(rets), 'win_rate': 50}
+        
+        return result
+    
+    def get_risk_decomposition(self, symbol: str) -> Dict[str, float]:
+        """
+        Decompose stock volatility by factor source.
+        
+        Args:
+            symbol: Stock symbol
+            
+        Returns:
+            Dict with % of risk from each factor + idiosyncratic
+        """
+        if not self._is_fitted or symbol not in self._symbols:
+            return {}
+        
+        if self._returns_matrix is None:
+            return {}
+        
+        idx = self._symbols.index(symbol)
+        exposures = self._factor_loadings[idx]
+        
+        # Get factor variances
+        factor_returns = self.get_factor_returns()
+        if factor_returns.empty:
+            return {}
+        
+        factor_vars = factor_returns.var().values[:self.n_components]
+        
+        # Stock variance
+        stock_var = self._returns_matrix[symbol].var()
+        if stock_var == 0:
+            return {}
+        
+        # Factor contribution to variance: beta^2 * factor_variance
+        decomposition = {}
+        total_factor_var = 0
+        
+        for i, factor_name in enumerate(self.FACTOR_NAMES[:self.n_components]):
+            factor_contribution = (exposures[i] ** 2) * factor_vars[i]
+            pct = min(100, max(0, factor_contribution / stock_var * 100))
+            decomposition[factor_name] = round(pct, 1)
+            total_factor_var += factor_contribution
+        
+        # Idiosyncratic risk
+        idio_pct = max(0, 100 - sum(decomposition.values()))
+        decomposition['Idiosyncratic'] = round(idio_pct, 1)
+        
+        return decomposition
+    
+    def calculate_what_if(self, symbol: str, factor: str, change_pct: float) -> float:
+        """
+        Simulate stock return if a factor moves by given percentage.
+        
+        Args:
+            symbol: Stock symbol
+            factor: Factor name (Market, Size, etc.)
+            change_pct: Factor change in percentage (e.g., 5 for +5%)
+            
+        Returns:
+            Expected stock return in percentage
+        """
+        if not self._is_fitted or symbol not in self._symbols:
+            return 0.0
+        
+        exposures = self.get_factor_exposures(symbol)
+        exposure = exposures.get(factor, 0)
+        
+        # Stock return ≈ exposure × factor return
+        expected_return = exposure * (change_pct / 100) * 100
+        return round(expected_return, 2)
+    
+    def get_market_average_exposures(self) -> Dict[str, float]:
+        """Get average factor exposures across all stocks."""
+        if not self._is_fitted:
+            return {}
+        
+        avg_exposures = np.mean(self._factor_loadings, axis=0)
+        return {
+            self.FACTOR_NAMES[i]: round(float(avg_exposures[i]), 3)
+            for i in range(self.n_components)
+        }

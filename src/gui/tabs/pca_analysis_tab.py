@@ -680,69 +680,230 @@ class PCAAnalysisTab:
         self.ai_text.insert('1.0', '\n'.join(recommendations))
         self.ai_text.config(state=tk.DISABLED)
     
-    # ==================== STOCK ANALYSIS TAB ====================
+    # ==================== STOCK ANALYSIS TAB (ENHANCED) ====================
     
     def _create_stock_tab(self, parent):
-        """Create stock analysis tab."""
-        # Left: Stock selector and details
-        left = ttk.Frame(parent)
-        left.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(10, 5), pady=10)
+        """Create super enhanced stock analysis tab."""
+        # Main scrollable frame
+        main = ttk.Frame(parent)
+        main.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
-        # Selector
-        sel_frame = ttk.LabelFrame(left, text="🔍 Select Stock")
+        # Top: Symbol selector
+        self._create_stock_selector(main)
+        
+        # Create 3x2 grid of panels
+        grid = ttk.Frame(main)
+        grid.pack(fill=tk.BOTH, expand=True, pady=10)
+        
+        # Configure grid weights
+        for i in range(3):
+            grid.columnconfigure(i, weight=1)
+        for i in range(2):
+            grid.rowconfigure(i, weight=1)
+        
+        # Row 1: Radar Chart | Factor Bars | Similar Stocks
+        self._create_radar_panel(grid, 0, 0)
+        self._create_factor_bars_panel(grid, 0, 1)
+        self._create_similar_stocks_panel(grid, 0, 2)
+        
+        # Row 2: Attribution | Regime Sensitivity | Risk Decomposition
+        self._create_attribution_panel(grid, 1, 0)
+        self._create_regime_panel(grid, 1, 1)
+        self._create_risk_panel(grid, 1, 2)
+        
+        # Bottom: AI Insight + What-If
+        self._create_ai_insight_panel(main)
+    
+    def _create_stock_selector(self, parent):
+        """Create stock selector row."""
+        sel_frame = ttk.Frame(parent)
         sel_frame.pack(fill=tk.X, pady=(0, 10))
         
-        sel_inner = ttk.Frame(sel_frame)
-        sel_inner.pack(fill=tk.X, padx=10, pady=10)
+        ttk.Label(sel_frame, text="🔬 Stock:", font=('Helvetica', 11, 'bold')).pack(side=tk.LEFT)
         
         self.symbol_var = tk.StringVar()
-        self.symbol_combo = ttk.Combobox(sel_inner, textvariable=self.symbol_var, width=15)
+        self.symbol_combo = ttk.Combobox(sel_frame, textvariable=self.symbol_var, width=12)
         self.symbol_combo.pack(side=tk.LEFT, padx=5)
         self.symbol_combo.bind('<<ComboboxSelected>>', self._on_symbol_change)
         
-        ttk.Button(sel_inner, text="Analyze", command=self._analyze_stock).pack(side=tk.LEFT, padx=5)
+        ttk.Button(sel_frame, text="🔍 Analyze", command=self._analyze_stock).pack(side=tk.LEFT, padx=5)
         
-        # Factor exposures
-        exp_frame = ttk.LabelFrame(left, text="📊 Factor Exposures")
-        exp_frame.pack(fill=tk.BOTH, expand=True)
+        # Current stock info
+        self.stock_info_label = ttk.Label(sel_frame, text="", font=('Helvetica', 10))
+        self.stock_info_label.pack(side=tk.LEFT, padx=20)
+    
+    def _create_radar_panel(self, parent, row, col):
+        """Create factor radar chart panel."""
+        frame = ttk.LabelFrame(parent, text="📊 Factor Profile")
+        frame.grid(row=row, column=col, sticky='nsew', padx=3, pady=3)
+        
+        if MATPLOTLIB_AVAILABLE:
+            from matplotlib.figure import Figure
+            from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+            
+            self._radar_fig = Figure(figsize=(3, 2.5), dpi=80, facecolor='#1a1a2e')
+            self._radar_canvas = FigureCanvasTkAgg(self._radar_fig, master=frame)
+            self._radar_canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+        else:
+            ttk.Label(frame, text="Matplotlib required").pack()
+    
+    def _create_factor_bars_panel(self, parent, row, col):
+        """Create factor exposure bar panel."""
+        frame = ttk.LabelFrame(parent, text="🎯 Factor Exposures")
+        frame.grid(row=row, column=col, sticky='nsew', padx=3, pady=3)
+        
+        inner = ttk.Frame(frame)
+        inner.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
         self.stock_exposure_labels = {}
         factors = ['Market', 'Size', 'Value', 'Momentum', 'Volatility']
         
-        for factor in factors:
-            row_frame = ttk.Frame(exp_frame)
-            row_frame.pack(fill=tk.X, padx=10, pady=5)
+        for i, factor in enumerate(factors):
+            row_f = ttk.Frame(inner)
+            row_f.pack(fill=tk.X, pady=2)
             
-            ttk.Label(row_frame, text=factor + ":", width=12, 
-                     font=('Helvetica', 10)).pack(side=tk.LEFT)
+            ttk.Label(row_f, text=factor[:3], width=4, font=('Helvetica', 8)).pack(side=tk.LEFT)
+            bar = ttk.Progressbar(row_f, length=80, mode='determinate')
+            bar.pack(side=tk.LEFT, padx=2)
+            lbl = ttk.Label(row_f, text="-", width=6, font=('Helvetica', 9, 'bold'))
+            lbl.pack(side=tk.LEFT)
+            interp = ttk.Label(row_f, text="", font=('Helvetica', 8), foreground='gray')
+            interp.pack(side=tk.LEFT)
             
-            # Visual bar
-            bar = ttk.Progressbar(row_frame, length=100, mode='determinate')
-            bar.pack(side=tk.LEFT, padx=5)
-            
-            exp_lbl = ttk.Label(row_frame, text="-", width=8, 
-                               font=('Helvetica', 10, 'bold'))
-            exp_lbl.pack(side=tk.LEFT, padx=5)
-            
-            interp_lbl = ttk.Label(row_frame, text="", font=('Helvetica', 9), foreground='gray')
-            interp_lbl.pack(side=tk.LEFT, padx=5)
-            
-            self.stock_exposure_labels[factor] = (bar, exp_lbl, interp_lbl)
+            self.stock_exposure_labels[factor] = (bar, lbl, interp)
         
-        # Alignment score
-        align_frame = ttk.Frame(exp_frame)
-        align_frame.pack(fill=tk.X, padx=10, pady=15)
-        
-        ttk.Label(align_frame, text="Factor Alignment Score:", 
-                  font=('Helvetica', 11, 'bold')).pack(side=tk.LEFT)
-        
-        self.alignment_label = ttk.Label(align_frame, text="-", 
-                                          font=('Helvetica', 14, 'bold'))
-        self.alignment_label.pack(side=tk.LEFT, padx=10)
-        
-        self.alignment_interp = ttk.Label(align_frame, text="", 
-                                           font=('Helvetica', 10))
+        # Alignment
+        align_f = ttk.Frame(inner)
+        align_f.pack(fill=tk.X, pady=(10, 0))
+        ttk.Label(align_f, text="Alignment:", font=('Helvetica', 9)).pack(side=tk.LEFT)
+        self.alignment_label = ttk.Label(align_f, text="-", font=('Helvetica', 10, 'bold'))
+        self.alignment_label.pack(side=tk.LEFT, padx=5)
+        self.alignment_interp = ttk.Label(align_f, text="", font=('Helvetica', 8))
         self.alignment_interp.pack(side=tk.LEFT)
+    
+    def _create_similar_stocks_panel(self, parent, row, col):
+        """Create similar stocks panel."""
+        frame = ttk.LabelFrame(parent, text="👥 Similar Stocks")
+        frame.grid(row=row, column=col, sticky='nsew', padx=3, pady=3)
+        
+        self.similar_stocks_list = tk.Listbox(frame, height=6, font=('Helvetica', 9),
+                                               bg='#2d2d4e', fg='white', 
+                                               selectbackground='#7c3aed')
+        self.similar_stocks_list.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        self.similar_stocks_list.bind('<<ListboxSelect>>', self._on_similar_stock_click)
+    
+    def _create_attribution_panel(self, parent, row, col):
+        """Create factor attribution panel."""
+        frame = ttk.LabelFrame(parent, text="💰 1M Factor Attribution")
+        frame.grid(row=row, column=col, sticky='nsew', padx=3, pady=3)
+        
+        inner = ttk.Frame(frame)
+        inner.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        self.attribution_labels = {}
+        items = ['Total', 'Market', 'Size', 'Value', 'Momentum', 'Alpha']
+        
+        for item in items:
+            row_f = ttk.Frame(inner)
+            row_f.pack(fill=tk.X, pady=1)
+            
+            prefix = "├─" if item != 'Alpha' else "└─"
+            if item == 'Total':
+                prefix = ""
+                font = ('Helvetica', 9, 'bold')
+            else:
+                font = ('Helvetica', 8)
+            
+            ttk.Label(row_f, text=f"{prefix}{item}:", font=font, width=12).pack(side=tk.LEFT)
+            lbl = ttk.Label(row_f, text="-", font=('Helvetica', 9, 'bold'), width=8)
+            lbl.pack(side=tk.LEFT)
+            self.attribution_labels[item] = lbl
+    
+    def _create_regime_panel(self, parent, row, col):
+        """Create regime sensitivity panel."""
+        frame = ttk.LabelFrame(parent, text="⚡ Regime Sensitivity")
+        frame.grid(row=row, column=col, sticky='nsew', padx=3, pady=3)
+        
+        inner = ttk.Frame(frame)
+        inner.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        self.regime_performance_labels = {}
+        regimes = ['Risk-On', 'Risk-Off', 'Rotation']
+        
+        for regime in regimes:
+            row_f = ttk.Frame(inner)
+            row_f.pack(fill=tk.X, pady=2)
+            
+            emoji = "🟢" if regime == 'Risk-On' else "🔴" if regime == 'Risk-Off' else "⚡"
+            ttk.Label(row_f, text=f"{emoji} {regime}:", width=12, font=('Helvetica', 9)).pack(side=tk.LEFT)
+            
+            ret_lbl = ttk.Label(row_f, text="-", width=7, font=('Helvetica', 9, 'bold'))
+            ret_lbl.pack(side=tk.LEFT)
+            
+            win_lbl = ttk.Label(row_f, text="", width=8, font=('Helvetica', 8), foreground='gray')
+            win_lbl.pack(side=tk.LEFT)
+            
+            self.regime_performance_labels[regime] = (ret_lbl, win_lbl)
+        
+        # Best regime
+        best_f = ttk.Frame(inner)
+        best_f.pack(fill=tk.X, pady=(10, 0))
+        ttk.Label(best_f, text="Best in:", font=('Helvetica', 9)).pack(side=tk.LEFT)
+        self.best_regime_label = ttk.Label(best_f, text="-", font=('Helvetica', 9, 'bold'))
+        self.best_regime_label.pack(side=tk.LEFT, padx=5)
+    
+    def _create_risk_panel(self, parent, row, col):
+        """Create risk decomposition panel."""
+        frame = ttk.LabelFrame(parent, text="🎲 Risk Decomposition")
+        frame.grid(row=row, column=col, sticky='nsew', padx=3, pady=3)
+        
+        inner = ttk.Frame(frame)
+        inner.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        self.risk_decomp_labels = {}
+        items = ['Market', 'Size', 'Value', 'Momentum', 'Idiosyncratic']
+        
+        for item in items:
+            row_f = ttk.Frame(inner)
+            row_f.pack(fill=tk.X, pady=1)
+            
+            ttk.Label(row_f, text=item[:4] + ":", width=5, font=('Helvetica', 8)).pack(side=tk.LEFT)
+            bar = ttk.Progressbar(row_f, length=60, mode='determinate')
+            bar.pack(side=tk.LEFT, padx=2)
+            lbl = ttk.Label(row_f, text="-", width=5, font=('Helvetica', 8))
+            lbl.pack(side=tk.LEFT)
+            
+            self.risk_decomp_labels[item] = (bar, lbl)
+    
+    def _create_ai_insight_panel(self, parent):
+        """Create AI insight and what-if panel."""
+        frame = ttk.LabelFrame(parent, text="🤖 AI Stock Insight")
+        frame.pack(fill=tk.X, pady=(5, 0))
+        
+        inner = ttk.Frame(frame)
+        inner.pack(fill=tk.X, padx=10, pady=10)
+        
+        # AI text
+        self.stock_ai_text = ttk.Label(inner, text="Select a stock and click Analyze...",
+                                        font=('Helvetica', 9), wraplength=600)
+        self.stock_ai_text.pack(fill=tk.X)
+        
+        # What-if simulator
+        whatif = ttk.Frame(inner)
+        whatif.pack(fill=tk.X, pady=(10, 0))
+        
+        ttk.Label(whatif, text="🎛️ What-If:", font=('Helvetica', 9, 'bold')).pack(side=tk.LEFT)
+        ttk.Label(whatif, text="If Market", font=('Helvetica', 9)).pack(side=tk.LEFT, padx=(10, 0))
+        
+        self.whatif_var = tk.StringVar(value='5')
+        whatif_entry = ttk.Entry(whatif, textvariable=self.whatif_var, width=4)
+        whatif_entry.pack(side=tk.LEFT, padx=2)
+        
+        ttk.Label(whatif, text="% →", font=('Helvetica', 9)).pack(side=tk.LEFT)
+        self.whatif_result = ttk.Label(whatif, text="Stock: -", font=('Helvetica', 9, 'bold'))
+        self.whatif_result.pack(side=tk.LEFT, padx=5)
+        
+        ttk.Button(whatif, text="Calculate", command=self._calculate_whatif).pack(side=tk.LEFT)
     
     # ==================== ACTIONS ====================
     
@@ -939,35 +1100,185 @@ class PCAAnalysisTab:
         exposures = pca.get_factor_exposures(symbol)
         
         interpretations = {
-            'Market': lambda v: "High beta" if v > 0.3 else "Low beta" if v < -0.3 else "Neutral",
-            'Size': lambda v: "Large-cap" if v > 0.3 else "Small-cap" if v < -0.3 else "Mid-cap",
+            'Market': lambda v: "High β" if v > 0.3 else "Low β" if v < -0.3 else "Neutral",
+            'Size': lambda v: "Large" if v > 0.3 else "Small" if v < -0.3 else "Mid",
             'Value': lambda v: "Value" if v > 0.3 else "Growth" if v < -0.3 else "Blend",
-            'Momentum': lambda v: "High mom" if v > 0.3 else "Mean-revert" if v < -0.3 else "Moderate",
-            'Volatility': lambda v: "High vol" if v > 0.3 else "Low vol" if v < -0.3 else "Normal"
+            'Momentum': lambda v: "Hi Mom" if v > 0.3 else "Mean-Rev" if v < -0.3 else "Mod",
+            'Volatility': lambda v: "Hi Vol" if v > 0.3 else "Lo Vol" if v < -0.3 else "Norm"
         }
         
+        # Update factor bars
         for factor, (bar, exp_lbl, interp_lbl) in self.stock_exposure_labels.items():
             value = exposures.get(factor, 0)
             color = COLORS['gain'] if value > 0 else COLORS['loss'] if value < 0 else 'gray'
-            
-            # Update bar (scale -1 to 1 to 0 to 100)
             bar['value'] = (value + 1) * 50
-            
-            exp_lbl.config(text=f"{value:+.3f}", foreground=color)
+            exp_lbl.config(text=f"{value:+.2f}", foreground=color)
             interp_lbl.config(text=interpretations.get(factor, lambda v: "")(value))
         
         # Alignment
         alignment = pca.calculate_factor_alignment(symbol)
         color = COLORS['gain'] if alignment > 0 else COLORS['loss']
-        self.alignment_label.config(text=f"{alignment:+.3f}", foreground=color)
-        
-        if alignment > 0.2:
-            interp = "✅ Well aligned with regime"
-        elif alignment < -0.2:
-            interp = "⚠️ Misaligned with regime"
-        else:
-            interp = "➖ Neutral alignment"
+        self.alignment_label.config(text=f"{alignment:+.2f}", foreground=color)
+        interp = "✅ Aligned" if alignment > 0.2 else "⚠️ Misaligned" if alignment < -0.2 else "➖ Neutral"
         self.alignment_interp.config(text=interp)
+        
+        # Update radar chart
+        self._update_radar_chart(symbol, exposures)
+        
+        # Similar stocks
+        similar = pca.find_similar_stocks(symbol, top_n=5)
+        self.similar_stocks_list.delete(0, tk.END)
+        for sym, score in similar:
+            self.similar_stocks_list.insert(tk.END, f"{sym}  ({score:.0%})")
+        
+        # Factor attribution
+        attribution = pca.get_factor_attribution(symbol, days=20)
+        for item, lbl in self.attribution_labels.items():
+            if item == 'Volatility':
+                continue  # Skip if not in attribution
+            val = attribution.get(item, 0)
+            color = COLORS['gain'] if val > 0 else COLORS['loss']
+            lbl.config(text=f"{val:+.1f}%", foreground=color)
+        
+        # Regime performance
+        regime_perf = pca.get_regime_performance(symbol)
+        best_regime = None
+        best_return = -999
+        for regime, (ret_lbl, win_lbl) in self.regime_performance_labels.items():
+            if regime in regime_perf:
+                perf = regime_perf[regime]
+                ret = perf.get('avg_return', 0)
+                win = perf.get('win_rate', 50)
+                color = COLORS['gain'] if ret > 0 else COLORS['loss']
+                ret_lbl.config(text=f"{ret:+.1f}%", foreground=color)
+                win_lbl.config(text=f"({win:.0f}% win)")
+                if ret > best_return:
+                    best_return = ret
+                    best_regime = regime
+        
+        if best_regime:
+            self.best_regime_label.config(text=best_regime, foreground=COLORS['gain'])
+        
+        # Risk decomposition
+        risk_decomp = pca.get_risk_decomposition(symbol)
+        for item, (bar, lbl) in self.risk_decomp_labels.items():
+            pct = risk_decomp.get(item, 0)
+            bar['value'] = min(pct, 100)
+            lbl.config(text=f"{pct:.0f}%")
+        
+        # AI Insight
+        self._generate_stock_ai_insight(symbol, exposures, alignment, attribution, regime_perf)
+    
+    def _update_radar_chart(self, symbol: str, exposures: dict):
+        """Update the radar chart with stock factor profile."""
+        if not MATPLOTLIB_AVAILABLE or not hasattr(self, '_radar_fig'):
+            return
+        
+        import numpy as np
+        
+        self._radar_fig.clear()
+        ax = self._radar_fig.add_subplot(111, projection='polar')
+        ax.set_facecolor('#1a1a2e')
+        
+        factors = ['Market', 'Size', 'Value', 'Momentum', 'Volatility']
+        values = [exposures.get(f, 0) for f in factors]
+        values.append(values[0])  # Close the loop
+        
+        angles = np.linspace(0, 2 * np.pi, len(factors), endpoint=False).tolist()
+        angles.append(angles[0])
+        
+        # Stock line
+        ax.plot(angles, [(v + 1) * 50 for v in values], 'o-', linewidth=2, 
+                color='#00ff88', label=symbol)
+        ax.fill(angles, [(v + 1) * 50 for v in values], alpha=0.25, color='#00ff88')
+        
+        # Market average line
+        if self.ml_engine and hasattr(self.ml_engine, 'pca_engine'):
+            avg = self.ml_engine.pca_engine.get_market_average_exposures()
+            avg_values = [avg.get(f, 0) for f in factors]
+            avg_values.append(avg_values[0])
+            ax.plot(angles, [(v + 1) * 50 for v in avg_values], '--', 
+                    linewidth=1, color='#888888', label='Market Avg')
+        
+        ax.set_xticks(angles[:-1])
+        ax.set_xticklabels([f[:3] for f in factors], color='white', fontsize=8)
+        ax.set_yticks([])
+        ax.tick_params(colors='white')
+        
+        self._radar_fig.tight_layout()
+        self._radar_canvas.draw()
+    
+    def _generate_stock_ai_insight(self, symbol: str, exposures: dict, 
+                                    alignment: float, attribution: dict, regime_perf: dict):
+        """Generate AI insight text for the stock."""
+        # Build characteristics
+        chars = []
+        if exposures.get('Market', 0) > 0.3:
+            chars.append("high-beta")
+        elif exposures.get('Market', 0) < -0.3:
+            chars.append("defensive")
+        
+        if exposures.get('Value', 0) > 0.3:
+            chars.append("value-tilted")
+        elif exposures.get('Value', 0) < -0.3:
+            chars.append("growth-oriented")
+        
+        if exposures.get('Momentum', 0) > 0.3:
+            chars.append("momentum-driven")
+        
+        if exposures.get('Volatility', 0) > 0.3:
+            chars.append("high-volatility")
+        elif exposures.get('Volatility', 0) < -0.3:
+            chars.append("low-volatility")
+        
+        char_text = ", ".join(chars) if chars else "balanced"
+        
+        # Current regime assessment
+        regime_info = self.ml_engine.pca_engine.get_market_regime()
+        current_regime = regime_info.get('regime', 'Unknown')
+        
+        if current_regime in regime_perf:
+            hist_ret = regime_perf[current_regime].get('avg_return', 0)
+            if hist_ret > 5:
+                regime_assessment = f"FAVORABLE. Historical {current_regime} return: {hist_ret:+.1f}%"
+            elif hist_ret < -5:
+                regime_assessment = f"UNFAVORABLE. Historical {current_regime} return: {hist_ret:+.1f}%"
+            else:
+                regime_assessment = f"NEUTRAL. Historical {current_regime} return: {hist_ret:+.1f}%"
+        else:
+            regime_assessment = "Insufficient data"
+        
+        # Alpha
+        alpha = attribution.get('Alpha', 0)
+        alpha_text = f"Recent alpha: {alpha:+.1f}%" if alpha else ""
+        
+        insight = f"{symbol} is a {char_text} stock. Current {current_regime} regime is {regime_assessment}. {alpha_text}"
+        
+        self.stock_ai_text.config(text=insight)
+    
+    def _on_similar_stock_click(self, event):
+        """Handle click on similar stock to analyze it."""
+        selection = self.similar_stocks_list.curselection()
+        if selection:
+            item = self.similar_stocks_list.get(selection[0])
+            symbol = item.split()[0]  # Extract symbol from "SYMBOL (XX%)"
+            self.symbol_var.set(symbol)
+            self._analyze_stock()
+    
+    def _calculate_whatif(self):
+        """Calculate what-if scenario."""
+        symbol = self.symbol_var.get()
+        if not symbol or not self.ml_engine or not hasattr(self.ml_engine, 'pca_engine'):
+            return
+        
+        try:
+            change = float(self.whatif_var.get())
+            pca = self.ml_engine.pca_engine
+            result = pca.calculate_what_if(symbol, 'Market', change)
+            color = COLORS['gain'] if result > 0 else COLORS['loss']
+            self.whatif_result.config(text=f"Stock: {result:+.1f}%", foreground=color)
+        except ValueError:
+            self.whatif_result.config(text="Invalid input")
     
     def _load_price_data(self):
         """Load price data from database."""
@@ -996,3 +1307,4 @@ class PCAAnalysisTab:
         except Exception as e:
             logger.error(f"Failed to load price data: {e}")
             return {}
+
