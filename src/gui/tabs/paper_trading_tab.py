@@ -854,7 +854,9 @@ class PaperTradingTab:
             )
             
         except Exception as e:
+            import traceback
             logger.error(f"Trade execution failed: {e}")
+            logger.error(f"Full traceback:\n{traceback.format_exc()}")
             self.status_label.config(text=f"Error: {e}", foreground=COLORS['loss'])
     
     def _optimize_strategies(self):
