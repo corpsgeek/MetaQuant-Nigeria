@@ -142,22 +142,42 @@ class DisclosureScraper:
             from selenium.webdriver.support import expected_conditions as EC
             from selenium.webdriver.chrome.options import Options
             
+            logger.info("Starting Selenium fetch...")
+            
             options = Options()
             options.add_argument('--headless')
             options.add_argument('--no-sandbox')
             options.add_argument('--disable-dev-shm-usage')
+            options.add_argument('--disable-gpu')
+            options.add_argument('--window-size=1920,1080')
             
             driver = webdriver.Chrome(options=options)
             driver.get(NGX_DISCLOSURES_URL)
+            logger.info("Page loaded, waiting for table...")
             
             # Wait for table to load
-            WebDriverWait(driver, 10).until(
-                EC.presence_of_element_located((By.ID, "latestdiclosuresLanding"))
-            )
-            time.sleep(2)  # Extra wait for data
+            try:
+                WebDriverWait(driver, 15).until(
+                    EC.presence_of_element_located((By.ID, "latestdiclosuresLanding"))
+                )
+                logger.info("Table found, waiting for data to load...")
+            except Exception as e:
+                logger.warning(f"Table not found after 15s: {e}")
+                driver.quit()
+                return []
+            
+            time.sleep(3)  # Extra wait for data to populate
             
             disclosures = []
+            
+            # Try finding rows
             rows = driver.find_elements(By.CSS_SELECTOR, "#landing_corp_disclosure tr")
+            logger.info(f"Found {len(rows)} rows in table")
+            
+            if len(rows) == 0:
+                # Try alternative selector
+                rows = driver.find_elements(By.CSS_SELECTOR, "table tbody tr")
+                logger.info(f"Alternative selector found {len(rows)} rows")
             
             for row in rows[:limit]:
                 try:
@@ -166,7 +186,8 @@ class DisclosureScraper:
                         continue
                     
                     # Company
-                    company_link = cells[0].find_element(By.TAG_NAME, "a") if cells[0].find_elements(By.TAG_NAME, "a") else None
+                    company_links = cells[0].find_elements(By.TAG_NAME, "a")
+                    company_link = company_links[0] if company_links else None
                     company_name = cells[0].text.strip()
                     company_symbol = None
                     if company_link:
@@ -176,29 +197,32 @@ class DisclosureScraper:
                             company_symbol = match.group(1)
                     
                     # Title and PDF
-                    title_link = cells[1].find_element(By.TAG_NAME, "a") if cells[1].find_elements(By.TAG_NAME, "a") else None
+                    title_links = cells[1].find_elements(By.TAG_NAME, "a")
+                    title_link = title_links[0] if title_links else None
                     title = cells[1].text.strip()
                     pdf_url = title_link.get_attribute('href') if title_link else ''
                     
                     # Date
                     date_submitted = cells[2].text.strip()
                     
-                    disclosures.append({
-                        'company_symbol': company_symbol,
-                        'company_name': company_name,
-                        'title': title,
-                        'date_submitted': date_submitted,
-                        'pdf_url': pdf_url
-                    })
+                    if title and pdf_url:  # Only add if we have content
+                        disclosures.append({
+                            'company_symbol': company_symbol,
+                            'company_name': company_name,
+                            'title': title,
+                            'date_submitted': date_submitted,
+                            'pdf_url': pdf_url
+                        })
                 except Exception as e:
+                    logger.debug(f"Row parse error: {e}")
                     continue
             
             driver.quit()
             logger.info(f"Fetched {len(disclosures)} disclosures via Selenium")
             return disclosures
             
-        except ImportError:
-            logger.info("Selenium not available, using requests fallback")
+        except ImportError as e:
+            logger.info(f"Selenium not available: {e}")
             return []
         except Exception as e:
             logger.warning(f"Selenium fetch failed: {e}")
