@@ -281,16 +281,16 @@ class MLIntelligenceTab:
                 
                 for symbol, name, sector, price in stocks:
                     try:
-                        # Get OHLCV data for this symbol
+                        # Get OHLCV data for this symbol (need 200 to have 50+ after feature computation)
                         ohlcv = self.db.conn.execute("""
                             SELECT datetime, open, high, low, close, volume
                             FROM intraday_ohlcv
                             WHERE symbol = ?
                             ORDER BY datetime DESC
-                            LIMIT 100
+                            LIMIT 200
                         """, [symbol]).fetchall()
                         
-                        if len(ohlcv) < 20:
+                        if len(ohlcv) < 50:
                             continue  # Not enough data
                         
                         import pandas as pd
@@ -322,6 +322,8 @@ class MLIntelligenceTab:
                                 'price': float(price) if price else 0,
                                 'target': result.get('predicted_price', float(price) if price else 0)
                             })
+                        elif result:
+                            logger.debug(f"Prediction not successful for {symbol}: {result.get('error', 'unknown')}")
                     except Exception as e:
                         logger.debug(f"Prediction failed for {symbol}: {e}")
                 
