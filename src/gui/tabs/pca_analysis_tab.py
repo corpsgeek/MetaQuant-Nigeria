@@ -347,11 +347,12 @@ class PCAAnalysisTab:
         recent = factor_returns.tail(window).copy()
         
         # INDEXED RETURNS: Each factor starts at 100, shows relative growth
-        # This is the industry standard for comparing different securities
+        all_values = []
         for i, factor in enumerate(factors):
             if factor in recent.columns:
                 # Calculate cumulative wealth: 100 * (1 + r1) * (1 + r2) * ...
                 cumulative = 100 * (1 + recent[factor]).cumprod()
+                all_values.extend(cumulative.values)
                 
                 ax.plot(range(len(cumulative)), cumulative, 
                        label=f"{factor}", color=colors[i], linewidth=2.5,
@@ -370,8 +371,12 @@ class PCAAnalysisTab:
         ax.tick_params(colors='white', labelsize=9)
         ax.grid(True, alpha=0.25, color='white', linestyle=':')
         
-        # Set y-axis to show around 100
-        ax.set_ylim(bottom=max(95, ax.get_ylim()[0]), top=min(105, ax.get_ylim()[1]))
+        # Auto-scale y-axis with padding to show all data
+        if all_values:
+            y_min = min(all_values)
+            y_max = max(all_values)
+            padding = (y_max - y_min) * 0.1 or 2  # 10% padding or at least 2 points
+            ax.set_ylim(bottom=y_min - padding, top=y_max + padding)
         
         # Add spines styling
         for spine in ax.spines.values():
