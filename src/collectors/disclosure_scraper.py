@@ -42,12 +42,19 @@ class DisclosureScraper:
             logger.info("Recreating corporate_disclosures table with correct schema...")
             try:
                 self.db.conn.execute("DROP TABLE IF EXISTS corporate_disclosures")
+                self.db.conn.execute("DROP SEQUENCE IF EXISTS disclosure_id_seq")
             except:
                 pass
         
+        # Create sequence for auto-increment ID
+        try:
+            self.db.conn.execute("CREATE SEQUENCE IF NOT EXISTS disclosure_id_seq START 1")
+        except:
+            pass
+        
         self.db.conn.execute("""
             CREATE TABLE IF NOT EXISTS corporate_disclosures (
-                id INTEGER PRIMARY KEY,
+                id INTEGER PRIMARY KEY DEFAULT nextval('disclosure_id_seq'),
                 company_symbol TEXT,
                 company_name TEXT,
                 title TEXT,
@@ -283,8 +290,16 @@ class DisclosureScraper:
         
         for disc in disclosures:
             try:
+                # Check if already exists
+                existing = self.db.conn.execute("""
+                    SELECT id FROM corporate_disclosures WHERE pdf_url = ?
+                """, [disc.get('pdf_url')]).fetchone()
+                
+                if existing:
+                    continue
+                
                 self.db.conn.execute("""
-                    INSERT OR IGNORE INTO corporate_disclosures 
+                    INSERT INTO corporate_disclosures 
                     (company_symbol, company_name, title, date_submitted, pdf_url)
                     VALUES (?, ?, ?, ?, ?)
                 """, [
@@ -294,9 +309,7 @@ class DisclosureScraper:
                     disc.get('date_submitted'),
                     disc.get('pdf_url')
                 ])
-                
-                if self.db.conn.total_changes > 0:
-                    stored += 1
+                stored += 1
                     
             except Exception as e:
                 logger.warning(f"Failed to store disclosure: {e}")
