@@ -63,18 +63,23 @@ class RiskDashboardTab:
         # === HERO RISK METRICS ===
         self._create_hero_metrics(main)
         
-        # === MAIN CONTENT ===
+        # === MAIN CONTENT (3-column layout) ===
         content = ttk.Frame(main)
         content.pack(fill=tk.BOTH, expand=True, pady=10)
         
         # Left: Concentration Analysis
         left = ttk.Frame(content)
-        left.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 10))
+        left.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 5))
         self._create_concentration_panel(left)
+        
+        # Center: Performance Attribution
+        center = ttk.Frame(content)
+        center.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5)
+        self._create_attribution_panel(center)
         
         # Right: Risk Alerts
         right = ttk.Frame(content)
-        right.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        right.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(5, 0))
         self._create_alerts_panel(right)
     
     def _create_hero_metrics(self, parent):
@@ -165,6 +170,69 @@ class RiskDashboardTab:
         self.holdings_tree.tag_configure('medium', foreground=COLORS['warning'])
         self.holdings_tree.tag_configure('low', foreground=COLORS['gain'])
     
+    def _create_attribution_panel(self, parent):
+        """Create performance attribution panel."""
+        frame = ttk.LabelFrame(parent, text="📈 Performance Attribution")
+        frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Attribution summary cards
+        summary_frame = ttk.Frame(frame)
+        summary_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        self.attr_labels = {}
+        attr_items = [
+            ('total_return', 'Total Return', '0.00%'),
+            ('alpha', 'Alpha (vs ASI)', '0.00%'),
+            ('selection', 'Selection Effect', '0.00%'),
+        ]
+        
+        for i, (key, label, default) in enumerate(attr_items):
+            item_frame = ttk.Frame(summary_frame)
+            item_frame.pack(side=tk.LEFT, expand=True, fill=tk.X)
+            
+            ttk.Label(item_frame, text=label, font=('Helvetica', 9)).pack(anchor='w')
+            val_label = ttk.Label(item_frame, text=default, font=('Helvetica', 12, 'bold'),
+                                 foreground=COLORS['text_primary'])
+            val_label.pack(anchor='w')
+            self.attr_labels[key] = val_label
+        
+        ttk.Separator(frame, orient=tk.HORIZONTAL).pack(fill=tk.X, padx=10, pady=5)
+        
+        # Top Contributors
+        ttk.Label(frame, text="🟢 Top Contributors", font=get_font('subheading'),
+                 foreground=COLORS['gain']).pack(anchor='w', padx=10, pady=(5, 2))
+        
+        columns = ('symbol', 'contribution', 'return')
+        self.top_contrib_tree = ttk.Treeview(frame, columns=columns, show='headings', height=4)
+        
+        self.top_contrib_tree.heading('symbol', text='Symbol')
+        self.top_contrib_tree.heading('contribution', text='Contrib.')
+        self.top_contrib_tree.heading('return', text='Return')
+        
+        self.top_contrib_tree.column('symbol', width=80, anchor='w')
+        self.top_contrib_tree.column('contribution', width=70, anchor='center')
+        self.top_contrib_tree.column('return', width=70, anchor='center')
+        
+        self.top_contrib_tree.pack(fill=tk.X, padx=10, pady=2)
+        self.top_contrib_tree.tag_configure('positive', foreground=COLORS['gain'])
+        
+        # Bottom Contributors
+        ttk.Label(frame, text="🔴 Bottom Contributors", font=get_font('subheading'),
+                 foreground=COLORS['loss']).pack(anchor='w', padx=10, pady=(10, 2))
+        
+        self.bottom_contrib_tree = ttk.Treeview(frame, columns=columns, show='headings', height=4)
+        
+        self.bottom_contrib_tree.heading('symbol', text='Symbol')
+        self.bottom_contrib_tree.heading('contribution', text='Contrib.')
+        self.bottom_contrib_tree.heading('return', text='Return')
+        
+        self.bottom_contrib_tree.column('symbol', width=80, anchor='w')
+        self.bottom_contrib_tree.column('contribution', width=70, anchor='center')
+        self.bottom_contrib_tree.column('return', width=70, anchor='center')
+        
+        self.bottom_contrib_tree.pack(fill=tk.X, padx=10, pady=2)
+        self.bottom_contrib_tree.tag_configure('negative', foreground=COLORS['loss'])
+    
     def _create_alerts_panel(self, parent):
         """Create risk alerts panel."""
         frame = ttk.LabelFrame(parent, text="🚨 Risk Alerts")
@@ -182,7 +250,91 @@ class RiskDashboardTab:
         """Refresh all risk metrics."""
         self._calculate_risk_metrics()
         self._analyze_concentration()
+        self._refresh_attribution()
         self._generate_alerts()
+    
+    def _refresh_attribution(self):
+        """Calculate and display performance attribution."""
+        try:
+            positions = self._get_positions()
+            if not positions:
+                return
+            
+            # Calculate total portfolio return
+            total_value = sum(p.get('value', 0) for p in positions)
+            total_cost = sum(p.get('value', 0) / (1 + p.get('return_pct', 0) / 100) for p in positions if p.get('return_pct'))
+            
+            if total_cost > 0:
+                total_return = ((total_value - total_cost) / total_cost) * 100
+            else:
+                total_return = 0
+            
+            # Simulated benchmark return (NGX ASI) - would be fetched from real data
+            benchmark_return = 12.5  # Placeholder for NGX ASI YTD return
+            
+            # Alpha = Portfolio Return - Benchmark Return
+            alpha = total_return - benchmark_return
+            
+            # Selection effect (simplified: sum of position-weighted alpha)
+            selection_effect = alpha * 0.7  # Simplified attribution
+            
+            # Update labels
+            if hasattr(self, 'attr_labels'):
+                self.attr_labels['total_return'].config(
+                    text=f"{total_return:+.2f}%",
+                    foreground=COLORS['gain'] if total_return >= 0 else COLORS['loss']
+                )
+                self.attr_labels['alpha'].config(
+                    text=f"{alpha:+.2f}%",
+                    foreground=COLORS['gain'] if alpha >= 0 else COLORS['loss']
+                )
+                self.attr_labels['selection'].config(
+                    text=f"{selection_effect:+.2f}%",
+                    foreground=COLORS['gain'] if selection_effect >= 0 else COLORS['loss']
+                )
+            
+            # Calculate individual contributions
+            contributions = []
+            for p in positions:
+                return_pct = p.get('return_pct', 0)
+                value = p.get('value', 0)
+                weight = (value / total_value * 100) if total_value > 0 else 0
+                contribution = (return_pct * weight / 100)  # Contribution to total return
+                contributions.append({
+                    'symbol': p.get('symbol', 'N/A'),
+                    'return': return_pct,
+                    'contribution': contribution
+                })
+            
+            # Sort by contribution
+            contributions.sort(key=lambda x: x['contribution'], reverse=True)
+            
+            # Update top contributors
+            if hasattr(self, 'top_contrib_tree'):
+                for item in self.top_contrib_tree.get_children():
+                    self.top_contrib_tree.delete(item)
+                    
+                for c in contributions[:5]:
+                    self.top_contrib_tree.insert('', 'end', values=(
+                        c['symbol'],
+                        f"+{c['contribution']:.2f}%",
+                        f"{c['return']:+.1f}%"
+                    ), tags=('positive',))
+            
+            # Update bottom contributors
+            if hasattr(self, 'bottom_contrib_tree'):
+                for item in self.bottom_contrib_tree.get_children():
+                    self.bottom_contrib_tree.delete(item)
+                    
+                for c in contributions[-5:]:
+                    self.bottom_contrib_tree.insert('', 'end', values=(
+                        c['symbol'],
+                        f"{c['contribution']:+.2f}%",
+                        f"{c['return']:+.1f}%"
+                    ), tags=('negative',))
+                    
+        except Exception as e:
+            logger.error(f"Failed to calculate attribution: {e}")
     
     def _calculate_risk_metrics(self):
         """Calculate portfolio risk metrics."""

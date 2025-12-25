@@ -8,6 +8,7 @@ from .fundamentals_tab import FundamentalsTab
 from .market_intelligence_tab import MarketIntelligenceTab
 from .backtest_tab import BacktestTab
 from .pca_analysis_tab import PCAAnalysisTab
+from .data_quality_tab import DataQualityTab
 
 __all__ = [
     'ScreenerTab',
@@ -17,5 +18,7 @@ __all__ = [
     'FundamentalsTab',
     'MarketIntelligenceTab',
     'BacktestTab',
-    'PCAAnalysisTab'
+    'PCAAnalysisTab',
+    'DataQualityTab'
 ]
+
