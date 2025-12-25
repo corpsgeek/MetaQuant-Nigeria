@@ -147,9 +147,17 @@ class MLIntelligenceTab:
         ttk.Label(header, text="🎯 ML Signal Overview",
                  font=get_font('heading'), foreground=COLORS['primary']).pack(side=tk.LEFT)
         
-        # Scan all Button
+        # ML Status label
+        self.ml_status_label = ttk.Label(header, text="⏳ ML Not Trained", 
+                                         font=get_font('small'), foreground=COLORS['warning'])
+        self.ml_status_label.pack(side=tk.LEFT, padx=20)
+        
+        # Buttons (right side)
         scan_btn = ttk.Button(header, text="🔍 Scan All Stocks", command=self._scan_all_predictions)
         scan_btn.pack(side=tk.RIGHT)
+        
+        train_btn = ttk.Button(header, text="🧠 Train ML Model", command=self._train_ml_model)
+        train_btn.pack(side=tk.RIGHT, padx=5)
         
         # === HERO CARDS ===
         cards_frame = ttk.Frame(main)
@@ -384,6 +392,52 @@ class MLIntelligenceTab:
                 self.overview_sort_column = col_map[column]
                 self.overview_sort_reverse = True
             self._filter_overview_table()
+    
+    def _train_ml_model(self):
+        """Train the ML model for predictions."""
+        if not self.ml_engine:
+            logger.warning("ML engine not available for training")
+            self.ml_status_label.config(text="❌ No ML Engine", foreground=COLORS['loss'])
+            return
+        
+        logger.info("Starting ML model training...")
+        self.ml_status_label.config(text="🔄 Training...", foreground=COLORS['warning'])
+        
+        def train():
+            try:
+                # Call ML engine training
+                result = self.ml_engine.train()
+                
+                if result and result.get('success', False):
+                    accuracy = result.get('accuracy', 0) * 100
+                    logger.info(f"ML training complete! Accuracy: {accuracy:.1f}%")
+                    self.frame.after(0, lambda: self._training_complete(True, accuracy))
+                else:
+                    error = result.get('error', 'Training failed') if result else 'No result'
+                    logger.error(f"ML training failed: {error}")
+                    self.frame.after(0, lambda: self._training_complete(False, 0))
+                    
+            except Exception as e:
+                import traceback
+                logger.error(f"ML training error: {e}\n{traceback.format_exc()}")
+                self.frame.after(0, lambda: self._training_complete(False, 0))
+        
+        import threading
+        threading.Thread(target=train, daemon=True).start()
+    
+    def _training_complete(self, success: bool, accuracy: float):
+        """Update UI after training completes."""
+        if success:
+            self.ml_status_label.config(
+                text=f"✅ ML Ready ({accuracy:.0f}% acc)", 
+                foreground=COLORS['gain']
+            )
+            self.overview_cards['accuracy'].config(text=f"{accuracy:.0f}%")
+        else:
+            self.ml_status_label.config(
+                text="❌ Training Failed", 
+                foreground=COLORS['loss']
+            )
 
     def _create_predictions_ui(self):
         """Create super-enhanced price predictions sub-tab UI."""
