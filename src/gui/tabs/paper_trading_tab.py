@@ -224,7 +224,7 @@ class PaperTradingTab:
             self.pos_menu.post(event.x_root, event.y_root)
     
     def _create_signals_panel(self, parent):
-        """Create signals panel."""
+        """Create signals panel with attribution display."""
         sig_frame = ttk.LabelFrame(parent, text="📡 Today's Signals")
         sig_frame.pack(fill=tk.BOTH, expand=True)
         
@@ -249,6 +249,47 @@ class PaperTradingTab:
         self.signals_tree.tag_configure('buy', foreground=COLORS['gain'])
         self.signals_tree.tag_configure('sell', foreground=COLORS['loss'])
         self.signals_tree.tag_configure('hold', foreground=COLORS['warning'])
+        
+        # Bind selection to show attribution
+        self.signals_tree.bind('<<TreeviewSelect>>', self._on_signal_select)
+        
+        # Bind hover for tooltip
+        self.signals_tree.bind('<Motion>', self._on_signal_hover)
+        self.signals_tree.bind('<Leave>', self._hide_tooltip)
+        
+        # Tooltip window
+        self._tooltip = None
+        
+        # Attribution detail panel
+        attr_frame = ttk.LabelFrame(parent, text="📊 Score Attribution")
+        attr_frame.pack(fill=tk.X, pady=(5, 0))
+        
+        self._attr_labels = {}
+        attr_grid = ttk.Frame(attr_frame)
+        attr_grid.pack(fill=tk.X, padx=5, pady=5)
+        
+        components = [
+            ('momentum', 'Momentum (35%)'),
+            ('ml', 'ML Score (25%)'),
+            ('fundamental', 'Fundamental (20%)'),
+            ('trend', 'Trend (10%)'),
+            ('anomaly', 'Anomaly (10%)')
+        ]
+        
+        for i, (key, label) in enumerate(components):
+            row, col = i // 3, (i % 3) * 2
+            ttk.Label(attr_grid, text=label + ":", font=('Helvetica', 9)).grid(
+                row=row, column=col, sticky='e', padx=(5, 2))
+            value_label = ttk.Label(attr_grid, text="-", width=6, font=('Helvetica', 9, 'bold'))
+            value_label.grid(row=row, column=col+1, sticky='w', padx=(0, 10))
+            self._attr_labels[key] = value_label
+        
+        # Total score label
+        ttk.Label(attr_grid, text="Total:", font=('Helvetica', 10, 'bold')).grid(
+            row=1, column=4, sticky='e', padx=(5, 2))
+        self._attr_labels['total'] = ttk.Label(attr_grid, text="-", width=6, 
+                                                font=('Helvetica', 10, 'bold'))
+        self._attr_labels['total'].grid(row=1, column=5, sticky='w')
     
     def _create_performance_panel(self, parent):
         """Create performance metrics panel."""
@@ -446,6 +487,117 @@ class PaperTradingTab:
                 trade.get('holding_days', 0),
                 trade.get('exit_reason', '-')
             ), tags=(tag,))
+    
+    # ==================== Signal Attribution Handlers ====================
+    
+    def _on_signal_select(self, event):
+        """Handle signal selection - show attribution in detail panel."""
+        selection = self.signals_tree.selection()
+        if not selection or not self._current_signals:
+            return
+        
+        # Get selected signal by rank
+        item = self.signals_tree.item(selection[0])
+        values = item['values']
+        if not values:
+            return
+        
+        rank = int(values[0])
+        
+        # Find signal with this rank
+        signal = None
+        for s in self._current_signals:
+            if s.rank == rank:
+                signal = s
+                break
+        
+        if not signal:
+            return
+        
+        # Update attribution labels
+        attr = signal.attribution or {}
+        
+        for key in ['momentum', 'ml', 'fundamental', 'trend', 'anomaly']:
+            if key in self._attr_labels:
+                value = attr.get(key, 0)
+                color = COLORS['gain'] if value > 0 else COLORS['loss'] if value < 0 else 'gray'
+                self._attr_labels[key].config(text=f"{value:+.2f}", foreground=color)
+        
+        # Update total
+        self._attr_labels['total'].config(
+            text=f"{signal.score:+.2f}",
+            foreground=COLORS['gain'] if signal.score > 0 else COLORS['loss']
+        )
+        
+        # Log to console
+        logger.info(f"Signal Attribution for {signal.symbol}:")
+        logger.info(f"  Score: {signal.score:+.3f} ({signal.signal})")
+        for key, value in attr.items():
+            if isinstance(value, (int, float)):
+                logger.info(f"  {key}: {value:+.3f}")
+    
+    def _on_signal_hover(self, event):
+        """Show tooltip on hover with quick attribution summary."""
+        # Identify row under cursor
+        row_id = self.signals_tree.identify_row(event.y)
+        if not row_id or not self._current_signals:
+            self._hide_tooltip(event)
+            return
+        
+        # Get signal data
+        item = self.signals_tree.item(row_id)
+        values = item['values']
+        if not values:
+            return
+        
+        rank = int(values[0])
+        
+        # Find signal
+        signal = None
+        for s in self._current_signals:
+            if s.rank == rank:
+                signal = s
+                break
+        
+        if not signal:
+            return
+        
+        # Build tooltip text
+        attr = signal.attribution or {}
+        lines = [f"{signal.symbol} - {signal.signal} ({signal.score:+.2f})"]
+        lines.append("-" * 25)
+        
+        for key in ['momentum', 'ml', 'fundamental', 'trend', 'anomaly']:
+            value = attr.get(key, 0)
+            lines.append(f"{key.capitalize():12} {value:+.3f}")
+        
+        tooltip_text = "\n".join(lines)
+        
+        # Show tooltip
+        self._show_tooltip(event, tooltip_text)
+    
+    def _show_tooltip(self, event, text):
+        """Display tooltip near cursor."""
+        self._hide_tooltip(event)
+        
+        self._tooltip = tk.Toplevel(self.frame)
+        self._tooltip.wm_overrideredirect(True)
+        self._tooltip.wm_geometry(f"+{event.x_root + 15}+{event.y_root + 10}")
+        
+        label = tk.Label(
+            self._tooltip, text=text, 
+            background='#2d2d2d', foreground='white',
+            font=('Courier', 9), justify=tk.LEFT,
+            padx=8, pady=6, relief=tk.SOLID, borderwidth=1
+        )
+        label.pack()
+    
+    def _hide_tooltip(self, event=None):
+        """Hide the tooltip."""
+        if self._tooltip:
+            self._tooltip.destroy()
+            self._tooltip = None
+
     
     # ==================== Actions ====================
     
