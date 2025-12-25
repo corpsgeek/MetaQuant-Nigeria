@@ -202,7 +202,9 @@ class SignalGenerator:
         scores = {
             'momentum': 0.0,
             'ml': 0.0,
+            'pca_alpha': 0.0,
             'fundamental': 0.0,
+            'factor_align': 0.0,
             'anomaly': 0.0,
             'trend': 0.0
         }
@@ -210,20 +212,21 @@ class SignalGenerator:
         try:
             close = pd.to_numeric(df['close'], errors='coerce').astype(float)
             
-            # ===== MOMENTUM (35%) =====
+            # ===== MOMENTUM (25%) =====
+            raw_momentum = 0.0
             if len(close) >= 20:
                 mom_5 = (close.iloc[-1] - close.iloc[-5]) / close.iloc[-5] if close.iloc[-5] > 0 else 0
                 mom_20 = (close.iloc[-1] - close.iloc[-20]) / close.iloc[-20] if close.iloc[-20] > 0 else 0
-                momentum_score = (float(mom_5) + float(mom_20)) / 2
-                scores['momentum'] = max(-1, min(1, momentum_score * 5))
+                raw_momentum = (float(mom_5) + float(mom_20)) / 2
+                scores['momentum'] = max(-1, min(1, raw_momentum * 5))
             
-            # ===== TREND (10%) =====
+            # ===== TREND (5%) =====
             if len(close) >= 50:
                 ma_20 = close.tail(20).mean()
                 ma_50 = close.tail(50).mean()
                 scores['trend'] = 1.0 if ma_20 > ma_50 else -1.0
             
-            # ===== ML PREDICTION (25%) =====
+            # ===== ML PREDICTION (20%) =====
             if self.ml_engine and hasattr(self.ml_engine, 'predict'):
                 try:
                     ml_result = self.ml_engine.predict(symbol)
@@ -244,7 +247,20 @@ class SignalGenerator:
             else:
                 scores['ml'] = scores['momentum'] * 0.5
             
-            # ===== FUNDAMENTALS (20%) =====
+            # ===== PCA ALPHA (20%) =====
+            # Factor-adjusted signal removes systematic risk
+            if self.ml_engine and hasattr(self.ml_engine, 'get_pca_score'):
+                raw_signal = scores['momentum'] * 0.5 + scores['ml'] * 0.5
+                scores['pca_alpha'] = self.ml_engine.get_pca_score(symbol, raw_signal)
+            else:
+                scores['pca_alpha'] = scores['momentum']
+            
+            # ===== FACTOR ALIGNMENT (10%) =====
+            # How well aligned with current regime
+            if self.ml_engine and hasattr(self.ml_engine, 'get_factor_alignment'):
+                scores['factor_align'] = self.ml_engine.get_factor_alignment(symbol)
+            
+            # ===== FUNDAMENTALS (15%) =====
             if self.db:
                 fund_score = self._score_fundamentals(symbol)
                 scores['fundamental'] = fund_score
@@ -254,12 +270,15 @@ class SignalGenerator:
                 scores['fundamental'] = max(-0.2, min(0.2, 0.1 - volatility * 5))
             
             # ===== COMPOSITE SCORE =====
+            # New weights with PCA components
             weights = {
-                'momentum': 0.35,
-                'ml': 0.25,
-                'fundamental': 0.20,
-                'anomaly': 0.10,
-                'trend': 0.10
+                'momentum': 0.25,
+                'ml': 0.20,
+                'pca_alpha': 0.20,
+                'fundamental': 0.15,
+                'factor_align': 0.10,
+                'trend': 0.05,
+                'anomaly': 0.05
             }
             
             composite = sum(scores[k] * weights[k] for k in scores)

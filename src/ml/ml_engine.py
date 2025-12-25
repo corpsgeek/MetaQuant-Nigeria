@@ -1,6 +1,6 @@
 """
 ML Engine - Main coordinator for all ML models in MetaQuant Nigeria.
-Provides unified interface for price prediction, anomaly detection, and clustering.
+Provides unified interface for price prediction, anomaly detection, clustering, and PCA factors.
 """
 
 import logging
@@ -15,6 +15,7 @@ from .xgb_predictor import XGBPredictor
 from .anomaly_detector import AnomalyDetector, Anomaly, AnomalyType
 from .stock_clusterer import StockClusterer
 from .sector_rotation_predictor import SectorRotationPredictor
+from .pca_factor_engine import PCAFactorEngine
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,7 @@ class MLEngine:
     - Anomaly detection (Isolation Forest + statistical)
     - Stock clustering (K-Means)
     - Sector rotation prediction (XGBoost classifier)
+    - PCA factor analysis (Market, Size, Value, Momentum, Volatility)
     """
     
     def __init__(self, model_dir: Optional[str] = None, db=None):
@@ -51,6 +53,7 @@ class MLEngine:
         self.anomaly_detector = AnomalyDetector(model_dir=str(self.model_dir))
         self.clusterer = StockClusterer(model_dir=str(self.model_dir))
         self.sector_predictor = SectorRotationPredictor(db=db, model_dir=str(self.model_dir))
+        self.pca_engine = PCAFactorEngine(n_components=5)
         
         # Status tracking
         self.initialized = False
@@ -70,11 +73,14 @@ class MLEngine:
     
     def get_status(self) -> Dict[str, Any]:
         """Get status of all ML components."""
+        pca_summary = self.pca_engine.get_summary() if self.pca_engine else {}
         return {
             'available': self.available,
             'predictor_available': self.predictor.available,
             'anomaly_detector_available': self.anomaly_detector.available,
             'clusterer_available': self.clusterer.available,
+            'pca_fitted': pca_summary.get('is_fitted', False),
+            'pca_regime': pca_summary.get('current_regime', {}).get('regime', 'Unknown'),
             'initialized': self.initialized,
             'last_training': self.last_training_time.isoformat() if self.last_training_time else None,
             'training_in_progress': self.training_in_progress,
@@ -404,3 +410,82 @@ class MLEngine:
     def clear_cache(self):
         """Clear prediction cache."""
         self._prediction_cache.clear()
+    
+    # ========== PCA FACTOR ANALYSIS ==========
+    
+    def fit_pca(self, price_data: Dict[str, pd.DataFrame]):
+        """
+        Fit PCA on historical price data.
+        
+        Args:
+            price_data: Dict of symbol -> DataFrame with 'close' prices
+        """
+        if not self.pca_engine:
+            return
+        
+        self.pca_engine.fit(price_data)
+        logger.info(f"PCA fitted: {self.pca_engine.get_summary()}")
+    
+    def get_pca_score(self, symbol: str, raw_signal: float) -> float:
+        """
+        Get factor-adjusted alpha score.
+        
+        Args:
+            symbol: Stock symbol
+            raw_signal: Raw trading signal
+            
+        Returns:
+            Factor-adjusted alpha
+        """
+        if not self.pca_engine or not self.pca_engine._is_fitted:
+            return raw_signal
+        
+        return self.pca_engine.calculate_alpha_score(symbol, raw_signal)
+    
+    def get_factor_alignment(self, symbol: str) -> float:
+        """
+        Get stock's alignment with current factor momentum.
+        
+        Args:
+            symbol: Stock symbol
+            
+        Returns:
+            Alignment score (-1 to +1)
+        """
+        if not self.pca_engine or not self.pca_engine._is_fitted:
+            return 0.0
+        
+        return self.pca_engine.calculate_factor_alignment(symbol)
+    
+    def get_market_regime(self) -> Dict:
+        """
+        Get current market regime from PCA.
+        
+        Returns:
+            Dict with regime, confidence, and factor signals
+        """
+        if not self.pca_engine:
+            return {'regime': 'Unknown', 'confidence': 0}
+        
+        return self.pca_engine.get_market_regime()
+    
+    def get_factor_exposures(self, symbol: str) -> Dict[str, float]:
+        """
+        Get stock's exposure to each factor.
+        
+        Args:
+            symbol: Stock symbol
+            
+        Returns:
+            Dict of factor_name -> exposure
+        """
+        if not self.pca_engine or not self.pca_engine._is_fitted:
+            return {}
+        
+        return self.pca_engine.get_factor_exposures(symbol)
+    
+    def get_pca_summary(self) -> Dict:
+        """Get summary of PCA state."""
+        if not self.pca_engine:
+            return {}
+        return self.pca_engine.get_summary()

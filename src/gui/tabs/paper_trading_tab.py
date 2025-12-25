@@ -268,28 +268,31 @@ class PaperTradingTab:
         attr_grid = ttk.Frame(attr_frame)
         attr_grid.pack(fill=tk.X, padx=5, pady=5)
         
+        # Updated components with PCA factors
         components = [
-            ('momentum', 'Momentum (35%)'),
-            ('ml', 'ML Score (25%)'),
-            ('fundamental', 'Fundamental (20%)'),
-            ('trend', 'Trend (10%)'),
-            ('anomaly', 'Anomaly (10%)')
+            ('momentum', 'Momentum (25%)'),
+            ('ml', 'ML (20%)'),
+            ('pca_alpha', 'PCA Alpha (20%)'),
+            ('fundamental', 'Fundm. (15%)'),
+            ('factor_align', 'Factor Align (10%)'),
+            ('trend', 'Trend (5%)'),
+            ('anomaly', 'Anomaly (5%)')
         ]
         
         for i, (key, label) in enumerate(components):
-            row, col = i // 3, (i % 3) * 2
-            ttk.Label(attr_grid, text=label + ":", font=('Helvetica', 9)).grid(
-                row=row, column=col, sticky='e', padx=(5, 2))
-            value_label = ttk.Label(attr_grid, text="-", width=6, font=('Helvetica', 9, 'bold'))
-            value_label.grid(row=row, column=col+1, sticky='w', padx=(0, 10))
+            row, col = i // 4, (i % 4) * 2
+            ttk.Label(attr_grid, text=label + ":", font=('Helvetica', 8)).grid(
+                row=row, column=col, sticky='e', padx=(2, 1))
+            value_label = ttk.Label(attr_grid, text="-", width=5, font=('Helvetica', 8, 'bold'))
+            value_label.grid(row=row, column=col+1, sticky='w', padx=(0, 5))
             self._attr_labels[key] = value_label
         
         # Total score label
-        ttk.Label(attr_grid, text="Total:", font=('Helvetica', 10, 'bold')).grid(
-            row=1, column=4, sticky='e', padx=(5, 2))
-        self._attr_labels['total'] = ttk.Label(attr_grid, text="-", width=6, 
-                                                font=('Helvetica', 10, 'bold'))
-        self._attr_labels['total'].grid(row=1, column=5, sticky='w')
+        ttk.Label(attr_grid, text="Total:", font=('Helvetica', 9, 'bold')).grid(
+            row=2, column=4, sticky='e', padx=(5, 2))
+        self._attr_labels['total'] = ttk.Label(attr_grid, text="-", width=5, 
+                                                font=('Helvetica', 9, 'bold'))
+        self._attr_labels['total'].grid(row=2, column=5, sticky='w')
     
     def _create_performance_panel(self, parent):
         """Create performance metrics panel."""
@@ -565,11 +568,11 @@ class PaperTradingTab:
         # Build tooltip text
         attr = signal.attribution or {}
         lines = [f"{signal.symbol} - {signal.signal} ({signal.score:+.2f})"]
-        lines.append("-" * 25)
+        lines.append("-" * 28)
         
-        for key in ['momentum', 'ml', 'fundamental', 'trend', 'anomaly']:
+        for key in ['momentum', 'ml', 'pca_alpha', 'fundamental', 'factor_align', 'trend', 'anomaly']:
             value = attr.get(key, 0)
-            lines.append(f"{key.capitalize():12} {value:+.3f}")
+            lines.append(f"{key:14} {value:+.3f}")
         
         tooltip_text = "\n".join(lines)
         
