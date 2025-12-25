@@ -106,6 +106,11 @@ class MLIntelligenceTab:
         self.sub_notebook = ttk.Notebook(self.frame)
         self.sub_notebook.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
+        # Tab 0: Signal Overview (NEW - all stocks)
+        self.overview_tab = ttk.Frame(self.sub_notebook)
+        self.sub_notebook.add(self.overview_tab, text="🎯 Signal Overview")
+        self._create_overview_ui()
+        
         # Tab 1: Price Predictions
         self.predictions_tab = ttk.Frame(self.sub_notebook)
         self.sub_notebook.add(self.predictions_tab, text="📈 Price Predictions")
@@ -126,6 +131,236 @@ class MLIntelligenceTab:
         self.sub_notebook.add(self.rotation_tab, text="🔄 Sector Rotation")
         self._create_rotation_ui()
     
+    def _create_overview_ui(self):
+        """Create Signal Overview sub-tab with all stocks predictions."""
+        main = self.overview_tab
+        
+        # Header
+        header = ttk.Frame(main)
+        header.pack(fill=tk.X, padx=15, pady=10)
+        
+        ttk.Label(header, text="🎯 ML Signal Overview",
+                 font=get_font('heading'), foreground=COLORS['primary']).pack(side=tk.LEFT)
+        
+        # Scan all Button
+        scan_btn = ttk.Button(header, text="🔍 Scan All Stocks", command=self._scan_all_predictions)
+        scan_btn.pack(side=tk.RIGHT)
+        
+        # === HERO CARDS ===
+        cards_frame = ttk.Frame(main)
+        cards_frame.pack(fill=tk.X, padx=15, pady=10)
+        
+        self.overview_cards = {}
+        cards = [
+            ('total', '📊 Total Scanned', '0', COLORS['text_primary']),
+            ('buy', '🟢 BUY Signals', '0', COLORS['gain']),
+            ('sell', '🔴 SELL Signals', '0', COLORS['loss']),
+            ('hold', '🟡 HOLD Signals', '0', COLORS['warning']),
+            ('accuracy', '🎯 Model Accuracy', '--%', COLORS['text_primary']),
+        ]
+        
+        for key, label, default, color in cards:
+            card = ttk.Frame(cards_frame, style='Card.TFrame')
+            card.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+            
+            inner = ttk.Frame(card)
+            inner.pack(padx=12, pady=10)
+            
+            ttk.Label(inner, text=label, font=get_font('small'),
+                     foreground=COLORS['text_muted']).pack(anchor='w')
+            val = ttk.Label(inner, text=default, font=('Helvetica', 20, 'bold'),
+                           foreground=color)
+            val.pack(anchor='w')
+            self.overview_cards[key] = val
+        
+        # === FILTER BAR ===
+        filter_frame = ttk.Frame(main)
+        filter_frame.pack(fill=tk.X, padx=15, pady=5)
+        
+        ttk.Label(filter_frame, text="Filter:").pack(side=tk.LEFT)
+        
+        self.overview_filter_var = tk.StringVar(value="ALL")
+        for val, text in [("ALL", "All"), ("BUY", "🟢 BUY"), ("SELL", "🔴 SELL"), ("HOLD", "🟡 HOLD")]:
+            ttk.Radiobutton(filter_frame, text=text, variable=self.overview_filter_var,
+                           value=val, command=self._filter_overview_table).pack(side=tk.LEFT, padx=10)
+        
+        # Sector filter
+        ttk.Label(filter_frame, text="  Sector:").pack(side=tk.LEFT, padx=(20, 5))
+        self.overview_sector_var = tk.StringVar(value="ALL")
+        self.overview_sector_combo = ttk.Combobox(filter_frame, textvariable=self.overview_sector_var,
+                                                  width=15, state='readonly')
+        self.overview_sector_combo['values'] = ["ALL"]
+        self.overview_sector_combo.pack(side=tk.LEFT)
+        self.overview_sector_combo.bind("<<ComboboxSelected>>", lambda e: self._filter_overview_table())
+        
+        # === PREDICTIONS TABLE ===
+        table_frame = ttk.Frame(main)
+        table_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=10)
+        
+        columns = ('rank', 'symbol', 'name', 'sector', 'signal', 'score', 'confidence', 'price', 'target')
+        self.overview_tree = ttk.Treeview(table_frame, columns=columns, show='headings', height=20)
+        
+        col_config = [
+            ('rank', '#', 40),
+            ('symbol', 'Symbol', 80),
+            ('name', 'Company', 150),
+            ('sector', 'Sector', 100),
+            ('signal', 'Signal', 70),
+            ('score', 'Score', 70),
+            ('confidence', 'Confidence', 85),
+            ('price', 'Price ₦', 90),
+            ('target', 'Target ₦', 90),
+        ]
+        
+        for col_id, col_text, width in col_config:
+            self.overview_tree.heading(col_id, text=col_text, command=lambda c=col_id: self._sort_overview(c))
+            self.overview_tree.column(col_id, width=width, minwidth=width-10)
+        
+        scrollbar = ttk.Scrollbar(table_frame, orient=tk.VERTICAL, command=self.overview_tree.yview)
+        self.overview_tree.configure(yscrollcommand=scrollbar.set)
+        
+        self.overview_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # Tags for styling
+        self.overview_tree.tag_configure('buy', foreground=COLORS['gain'])
+        self.overview_tree.tag_configure('sell', foreground=COLORS['loss'])
+        self.overview_tree.tag_configure('hold', foreground=COLORS['warning'])
+        
+        # Store all predictions for filtering
+        self.all_predictions = []
+        self.overview_sort_column = 'score'
+        self.overview_sort_reverse = True
+    
+    def _scan_all_predictions(self):
+        """Scan all stocks for ML predictions."""
+        if not self.ml_engine:
+            return
+        
+        self.overview_cards['total'].config(text="Scanning...")
+        
+        def scan():
+            try:
+                # Get all stocks
+                stocks = self.db.conn.execute(
+                    "SELECT symbol, name, sector, last_price FROM stocks WHERE is_active = TRUE"
+                ).fetchall()
+                
+                predictions = []
+                buy_count = sell_count = hold_count = 0
+                
+                for symbol, name, sector, price in stocks:
+                    try:
+                        result = self.ml_engine.predict(symbol)
+                        if result and 'prediction' in result:
+                            pred = result['prediction']
+                            direction = pred.get('direction', 'HOLD')
+                            
+                            if direction == 'UP':
+                                signal = 'BUY'
+                                buy_count += 1
+                            elif direction == 'DOWN':
+                                signal = 'SELL'
+                                sell_count += 1
+                            else:
+                                signal = 'HOLD'
+                                hold_count += 1
+                            
+                            predictions.append({
+                                'symbol': symbol,
+                                'name': name or '',
+                                'sector': sector or 'Unknown',
+                                'signal': signal,
+                                'score': pred.get('predicted_change', 0),
+                                'confidence': pred.get('confidence', 0),
+                                'price': price or 0,
+                                'target': price * (1 + pred.get('predicted_change', 0) / 100) if price else 0
+                            })
+                    except:
+                        pass
+                
+                # Sort by score
+                predictions.sort(key=lambda x: x['score'], reverse=True)
+                
+                # Add rank
+                for i, p in enumerate(predictions):
+                    p['rank'] = i + 1
+                
+                self.all_predictions = predictions
+                
+                # Update UI in main thread
+                self.frame.after(0, lambda: self._display_overview_results(
+                    predictions, buy_count, sell_count, hold_count
+                ))
+                
+            except Exception as e:
+                logger.error(f"Failed to scan predictions: {e}")
+        
+        import threading
+        threading.Thread(target=scan, daemon=True).start()
+    
+    def _display_overview_results(self, predictions, buy_count, sell_count, hold_count):
+        """Display overview scan results."""
+        total = len(predictions)
+        
+        # Update cards
+        self.overview_cards['total'].config(text=str(total))
+        self.overview_cards['buy'].config(text=str(buy_count))
+        self.overview_cards['sell'].config(text=str(sell_count))
+        self.overview_cards['hold'].config(text=str(hold_count))
+        
+        # Update sector filter
+        sectors = sorted(set(p['sector'] for p in predictions))
+        self.overview_sector_combo['values'] = ["ALL"] + sectors
+        
+        # Populate table
+        self._filter_overview_table()
+    
+    def _filter_overview_table(self):
+        """Filter and display overview table."""
+        # Clear
+        for item in self.overview_tree.get_children():
+            self.overview_tree.delete(item)
+        
+        filter_signal = self.overview_filter_var.get()
+        filter_sector = self.overview_sector_var.get()
+        
+        filtered = [p for p in self.all_predictions
+                   if (filter_signal == "ALL" or p['signal'] == filter_signal)
+                   and (filter_sector == "ALL" or p['sector'] == filter_sector)]
+        
+        # Sort
+        filtered.sort(key=lambda x: x.get(self.overview_sort_column, 0), 
+                     reverse=self.overview_sort_reverse)
+        
+        for i, p in enumerate(filtered):
+            tag = p['signal'].lower()
+            self.overview_tree.insert('', tk.END, values=(
+                i + 1,
+                p['symbol'],
+                p['name'][:20] if p['name'] else '',
+                p['sector'][:15] if p['sector'] else '',
+                f"{'🟢' if p['signal']=='BUY' else '🔴' if p['signal']=='SELL' else '🟡'} {p['signal']}",
+                f"{p['score']:+.2f}%",
+                f"{p['confidence']:.0f}%",
+                f"₦{p['price']:,.2f}",
+                f"₦{p['target']:,.2f}"
+            ), tags=(tag,))
+    
+    def _sort_overview(self, column):
+        """Sort overview table by column."""
+        col_map = {'rank': 'rank', 'score': 'score', 'confidence': 'confidence', 
+                   'price': 'price', 'target': 'target', 'symbol': 'symbol', 
+                   'signal': 'signal', 'sector': 'sector'}
+        
+        if column in col_map:
+            if self.overview_sort_column == col_map[column]:
+                self.overview_sort_reverse = not self.overview_sort_reverse
+            else:
+                self.overview_sort_column = col_map[column]
+                self.overview_sort_reverse = True
+            self._filter_overview_table()
+
     def _create_predictions_ui(self):
         """Create super-enhanced price predictions sub-tab UI."""
         main = self.predictions_tab
