@@ -268,20 +268,30 @@ class PathwaySynthesizer:
             if result and result[0]:
                 sector = result[0]
                 
-                # Get sector performance from fundamentals using symbol
+                # Get sector stocks and their recent price changes from intraday data
                 sector_stocks = self.db.conn.execute("""
-                    SELECT fs.change_percent
-                    FROM fundamental_snapshots fs
-                    WHERE fs.symbol IN (
-                        SELECT symbol FROM stocks WHERE sector = ?
-                    )
-                    AND fs.date = (
-                        SELECT MAX(date) FROM fundamental_snapshots
-                    )
+                    SELECT s.symbol
+                    FROM stocks s
+                    WHERE s.sector = ?
+                    LIMIT 20
                 """, [sector]).fetchall()
                 
                 if sector_stocks:
-                    changes = [s[0] for s in sector_stocks if s[0] is not None]
+                    changes = []
+                    for (sym,) in sector_stocks[:10]:  # Limit to 10 for performance
+                        price_data = self.db.conn.execute("""
+                            SELECT close FROM intraday_ohlcv
+                            WHERE symbol = ?
+                            ORDER BY datetime DESC LIMIT 2
+                        """, [sym]).fetchall()
+                        
+                        if len(price_data) >= 2:
+                            current = price_data[0][0]
+                            prev = price_data[1][0]
+                            if prev > 0:
+                                change = (current - prev) / prev * 100
+                                changes.append(change)
+                    
                     if changes:
                         signals['sector_momentum'] = float(np.clip(np.mean(changes) / 5, -1, 1))
                 
