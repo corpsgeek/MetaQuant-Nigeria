@@ -410,9 +410,18 @@ class RiskDashboardTab:
     def _init_custom_holdings_table(self):
         """Create custom holdings table if not exists."""
         try:
+            # Create sequence for auto ID
+            self.db.conn.execute("CREATE SEQUENCE IF NOT EXISTS seq_custom_holdings START 1")
+            
+            # Check if table exists without the sequence - drop it
+            try:
+                self.db.conn.execute("DROP TABLE IF EXISTS custom_holdings_old")
+            except:
+                pass
+            
             self.db.conn.execute("""
                 CREATE TABLE IF NOT EXISTS custom_holdings (
-                    id INTEGER PRIMARY KEY,
+                    id INTEGER DEFAULT nextval('seq_custom_holdings'),
                     symbol TEXT NOT NULL,
                     quantity INTEGER NOT NULL,
                     entry_price FLOAT NOT NULL,
@@ -422,6 +431,7 @@ class RiskDashboardTab:
                 )
             """)
             self.db.conn.commit()
+            logger.info("Custom holdings table initialized")
         except Exception as e:
             logger.error(f"Failed to create custom_holdings table: {e}")
     
