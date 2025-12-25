@@ -251,9 +251,10 @@ class WatchlistTab:
             self.items_tree.delete(item)
         
         try:
+            # Only select columns that exist in the database
             result = self.db.conn.execute("""
                 SELECT wi.id, s.symbol, s.name, s.last_price, s.change_percent,
-                       wi.target_price, wi.alert_above, wi.alert_below, wi.notes
+                       wi.target_price
                 FROM watchlist_items wi
                 JOIN stocks s ON wi.stock_id = s.id
                 WHERE wi.watchlist_id = ?
@@ -262,14 +263,12 @@ class WatchlistTab:
             
             self.watchlist_items = []
             for row in result:
-                item_id, symbol, name, price, change, target, alert_above, alert_below, notes = row
+                item_id, symbol, name, price, change, target = row
                 self.watchlist_items.append({
                     'id': item_id,
                     'symbol': symbol,
                     'price': price,
                     'target': target,
-                    'alert_above': alert_above,
-                    'alert_below': alert_below
                 })
                 
                 # Format values
@@ -279,20 +278,6 @@ class WatchlistTab:
                 # Determine tag
                 tag = 'gain' if change > 0 else ('loss' if change < 0 else '')
                 
-                # Check alerts
-                alert_text = ""
-                if alert_above and price >= alert_above:
-                    alert_text = f"⬆️ ≥₦{alert_above:,.0f}"
-                    tag = 'alert_triggered'
-                elif alert_below and price <= alert_below:
-                    alert_text = f"⬇️ ≤₦{alert_below:,.0f}"
-                    tag = 'alert_triggered'
-                elif alert_above or alert_below:
-                    if alert_above:
-                        alert_text = f"⬆️ {alert_above:,.0f}"
-                    if alert_below:
-                        alert_text += f" ⬇️ {alert_below:,.0f}"
-                
                 # Change text
                 if change > 0:
                     change_text = f"▲ +{change:.2f}%"
@@ -301,13 +286,22 @@ class WatchlistTab:
                 else:
                     change_text = f"  {change:.2f}%"
                 
+                # Check if target hit
+                alert_text = "-"
+                if target and price >= target:
+                    alert_text = "🎯 Target Hit!"
+                    tag = 'gain'
+                elif target:
+                    pct_to_target = ((target - price) / price) * 100 if price > 0 else 0
+                    alert_text = f"↗️ {pct_to_target:.1f}%"
+                
                 self.items_tree.insert('', tk.END, values=(
                     symbol,
                     name[:25] if name else '',
                     f"₦{price:,.2f}",
                     change_text,
                     f"₦{target:,.0f}" if target else "-",
-                    alert_text or "-",
+                    alert_text,
                     "🗑️ Remove"
                 ), tags=(tag,) if tag else ())
             
@@ -339,7 +333,7 @@ class WatchlistTab:
         # Create dialog
         dialog = tk.Toplevel(self.parent)
         dialog.title("Add Stock to Watchlist")
-        dialog.geometry("350x250")
+        dialog.geometry("350x150")
         dialog.transient(self.parent)
         dialog.grab_set()
         
@@ -354,14 +348,6 @@ class WatchlistTab:
         target_var = tk.StringVar()
         ttk.Entry(dialog, textvariable=target_var, width=20).pack()
         
-        ttk.Label(dialog, text="Alert Above (optional):").pack(pady=5)
-        alert_above_var = tk.StringVar()
-        ttk.Entry(dialog, textvariable=alert_above_var, width=20).pack()
-        
-        ttk.Label(dialog, text="Alert Below (optional):").pack(pady=5)
-        alert_below_var = tk.StringVar()
-        ttk.Entry(dialog, textvariable=alert_below_var, width=20).pack()
-        
         def add():
             selected = stock_var.get()
             if not selected:
@@ -370,14 +356,12 @@ class WatchlistTab:
             
             stock_id = stocks.get(selected)
             target = float(target_var.get()) if target_var.get() else None
-            alert_above = float(alert_above_var.get()) if alert_above_var.get() else None
-            alert_below = float(alert_below_var.get()) if alert_below_var.get() else None
             
             try:
                 self.db.conn.execute("""
-                    INSERT INTO watchlist_items (id, watchlist_id, stock_id, target_price, alert_above, alert_below)
-                    VALUES (nextval('seq_watchlist_items'), ?, ?, ?, ?, ?)
-                """, [self.current_watchlist_id, stock_id, target, alert_above, alert_below])
+                    INSERT INTO watchlist_items (id, watchlist_id, stock_id, target_price)
+                    VALUES (nextval('seq_watchlist_items'), ?, ?, ?)
+                """, [self.current_watchlist_id, stock_id, target])
                 self.db.conn.commit()
                 dialog.destroy()
                 self._load_items()
