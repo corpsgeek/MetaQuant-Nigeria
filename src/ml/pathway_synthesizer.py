@@ -275,8 +275,8 @@ class PathwaySynthesizer:
                     WHERE fs.symbol IN (
                         SELECT symbol FROM stocks WHERE sector = ?
                     )
-                    AND fs.snapshot_date = (
-                        SELECT MAX(snapshot_date) FROM fundamental_snapshots
+                    AND fs.date = (
+                        SELECT MAX(date) FROM fundamental_snapshots
                     )
                 """, [sector]).fetchall()
                 
@@ -308,7 +308,7 @@ class PathwaySynthesizer:
                 FROM fundamental_snapshots fs
                 JOIN stocks s ON fs.symbol = s.symbol
                 WHERE s.symbol = ?
-                ORDER BY fs.snapshot_date DESC LIMIT 1
+                ORDER BY fs.date DESC LIMIT 1
             """, [symbol]).fetchone()
             
             if result:
@@ -322,7 +322,7 @@ class PathwaySynthesizer:
                         FROM fundamental_snapshots fs
                         JOIN stocks s ON fs.symbol = s.symbol
                         WHERE s.sector = ? AND fs.pe_ratio > 0
-                        AND fs.snapshot_date = (SELECT MAX(snapshot_date) FROM fundamental_snapshots)
+                        AND fs.date = (SELECT MAX(date) FROM fundamental_snapshots)
                     """, [sector]).fetchone()
                     
                     if sector_pe and sector_pe[0]:
