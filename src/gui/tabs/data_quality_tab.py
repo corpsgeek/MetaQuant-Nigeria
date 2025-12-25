@@ -195,6 +195,10 @@ class DataQualityTab:
         self.status_var.set("Loading data quality metrics...")
         
         def load():
+            # Wait a bit longer to ensure main loop is running
+            import time
+            time.sleep(0.5)
+            
             try:
                 # Get all stocks
                 stocks = self.db.conn.execute("""
