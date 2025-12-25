@@ -500,11 +500,26 @@ class PathwaySynthesizer:
         # Get historical volatility
         volatility = self._get_volatility(symbol, horizon_days)
         
+        # Helper to safely convert to float
+        def safe_float(val, default=0.0):
+            try:
+                v = float(val)
+                if np.isnan(v) or np.isinf(v):
+                    return default
+                return v
+            except:
+                return default
+        
+        # Ensure all values are valid
+        signal_score = safe_float(signal_score, 0.0)
+        volatility = safe_float(volatility, 0.05)
+        current_price = safe_float(current_price, 100.0)
+        
         # Base expected return (signal * volatility scaling)
         base_return = signal_score * volatility * (horizon_days / 5)  # Scale by days
         
         # Clamp reasonable bounds
-        base_return = np.clip(base_return, -0.30, 0.30)
+        base_return = safe_float(np.clip(base_return, -0.30, 0.30), 0.0)
         
         expected_price = current_price * (1 + base_return)
         
@@ -520,18 +535,24 @@ class PathwaySynthesizer:
         # Probabilities based on signal strength
         if signal_score > 0.2:
             bull_prob = 0.35 + signal_score * 0.2
-            bear_prob = 0.15 - signal_score * 0.1
+            bear_prob = max(0.05, 0.15 - signal_score * 0.1)
         elif signal_score < -0.2:
-            bull_prob = 0.15 - abs(signal_score) * 0.1
+            bull_prob = max(0.05, 0.15 - abs(signal_score) * 0.1)
             bear_prob = 0.35 + abs(signal_score) * 0.2
         else:
             bull_prob = 0.25
             bear_prob = 0.25
         
-        base_prob = 1 - bull_prob - bear_prob
+        base_prob = max(0.1, 1 - bull_prob - bear_prob)
         
-        # Ensure probabilities sum to 1
+        # Ensure probabilities sum to 1 and are valid
+        bull_prob = safe_float(bull_prob, 0.33)
+        base_prob = safe_float(base_prob, 0.34)
+        bear_prob = safe_float(bear_prob, 0.33)
+        
         total = bull_prob + base_prob + bear_prob
+        if total <= 0:
+            total = 1
         bull_prob /= total
         base_prob /= total
         bear_prob /= total
@@ -539,25 +560,25 @@ class PathwaySynthesizer:
         return {
             'horizon_name': horizon_name,
             'horizon_days': horizon_days,
-            'current_price': current_price,
-            'expected_price': round(expected_price, 2),
-            'expected_return': round(base_return * 100, 2),
+            'current_price': safe_float(current_price, 100),
+            'expected_price': safe_float(expected_price, current_price),
+            'expected_return': safe_float(base_return * 100, 0),
             'bull': {
-                'price': round(bull_price, 2),
-                'return_pct': round(bull_return * 100, 2),
-                'probability': round(bull_prob * 100, 1)
+                'price': safe_float(bull_price, current_price),
+                'return_pct': safe_float(bull_return * 100, 0),
+                'probability': safe_float(bull_prob * 100, 33)
             },
             'base': {
-                'price': round(expected_price, 2),
-                'return_pct': round(base_return * 100, 2),
-                'probability': round(base_prob * 100, 1)
+                'price': safe_float(expected_price, current_price),
+                'return_pct': safe_float(base_return * 100, 0),
+                'probability': safe_float(base_prob * 100, 34)
             },
             'bear': {
-                'price': round(bear_price, 2),
-                'return_pct': round(bear_return * 100, 2),
-                'probability': round(bear_prob * 100, 1)
+                'price': safe_float(bear_price, current_price),
+                'return_pct': safe_float(bear_return * 100, 0),
+                'probability': safe_float(bear_prob * 100, 33)
             },
-            'confidence': round(self._calculate_overall_confidence(signals) * 100, 1)
+            'confidence': safe_float(self._calculate_overall_confidence(signals) * 100, 50)
         }
     
     def _calculate_weighted_signal(self, signals: Dict) -> float:
