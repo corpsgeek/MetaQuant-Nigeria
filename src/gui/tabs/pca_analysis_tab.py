@@ -854,27 +854,67 @@ class PCAAnalysisTab:
         self.best_regime_label.pack(side=tk.LEFT, padx=5)
     
     def _create_risk_panel(self, parent, row, col):
-        """Create risk decomposition panel."""
+        """Create enhanced risk decomposition panel."""
         frame = ttk.LabelFrame(parent, text="🎲 Risk Decomposition")
         frame.grid(row=row, column=col, sticky='nsew', padx=3, pady=3)
         
         inner = ttk.Frame(frame)
         inner.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
+        # Header
+        header = ttk.Frame(inner)
+        header.pack(fill=tk.X, pady=(0, 5))
+        ttk.Label(header, text="Source", width=6, font=('Helvetica', 7, 'bold')).pack(side=tk.LEFT)
+        ttk.Label(header, text="Risk %", width=12, font=('Helvetica', 7, 'bold')).pack(side=tk.LEFT)
+        ttk.Label(header, text="Category", font=('Helvetica', 7, 'bold')).pack(side=tk.LEFT)
+        
         self.risk_decomp_labels = {}
+        # Factor colors for visual distinction
+        factor_colors = {
+            'Market': '#ff6b6b',      # Red - systematic
+            'Size': '#4ecdc4',        # Teal
+            'Value': '#45b7d1',       # Blue
+            'Momentum': '#f9ca24',    # Yellow
+            'Idiosyncratic': '#a29bfe' # Purple - stock-specific
+        }
+        
         items = ['Market', 'Size', 'Value', 'Momentum', 'Idiosyncratic']
         
         for item in items:
             row_f = ttk.Frame(inner)
-            row_f.pack(fill=tk.X, pady=1)
+            row_f.pack(fill=tk.X, pady=2)
             
-            ttk.Label(row_f, text=item[:4] + ":", width=5, font=('Helvetica', 8)).pack(side=tk.LEFT)
-            bar = ttk.Progressbar(row_f, length=60, mode='determinate')
+            # Color indicator
+            color = factor_colors.get(item, 'white')
+            color_lbl = tk.Label(row_f, text="●", fg=color, bg='#1a1a2e', font=('Helvetica', 10))
+            color_lbl.pack(side=tk.LEFT)
+            
+            # Name
+            name_text = item[:4] if item != 'Idiosyncratic' else 'Idio'
+            ttk.Label(row_f, text=name_text, width=5, font=('Helvetica', 8)).pack(side=tk.LEFT)
+            
+            # Bar
+            bar = ttk.Progressbar(row_f, length=50, mode='determinate')
             bar.pack(side=tk.LEFT, padx=2)
-            lbl = ttk.Label(row_f, text="-", width=5, font=('Helvetica', 8))
-            lbl.pack(side=tk.LEFT)
             
-            self.risk_decomp_labels[item] = (bar, lbl)
+            # Percentage
+            pct_lbl = ttk.Label(row_f, text="-", width=5, font=('Helvetica', 9, 'bold'))
+            pct_lbl.pack(side=tk.LEFT)
+            
+            # Category label
+            cat_lbl = ttk.Label(row_f, text="", font=('Helvetica', 7), foreground='gray')
+            cat_lbl.pack(side=tk.LEFT)
+            
+            self.risk_decomp_labels[item] = (bar, pct_lbl, cat_lbl, color_lbl)
+        
+        # Summary row
+        summary = ttk.Frame(inner)
+        summary.pack(fill=tk.X, pady=(8, 0))
+        ttk.Separator(summary, orient='horizontal').pack(fill=tk.X, pady=3)
+        
+        self.risk_factor_total = ttk.Label(summary, text="Factor: -% | Idio: -%", 
+                                            font=('Helvetica', 8, 'bold'))
+        self.risk_factor_total.pack()
     
     def _create_ai_insight_panel(self, parent):
         """Create AI insight and what-if panel."""
@@ -1167,12 +1207,34 @@ class PCAAnalysisTab:
         if best_regime:
             self.best_regime_label.config(text=best_regime, foreground=COLORS['gain'])
         
-        # Risk decomposition
+        # Risk decomposition (enhanced)
         risk_decomp = pca.get_risk_decomposition(symbol)
-        for item, (bar, lbl) in self.risk_decomp_labels.items():
+        factor_total = 0
+        idio_pct = 0
+        
+        for item, labels in self.risk_decomp_labels.items():
+            bar, pct_lbl, cat_lbl, color_lbl = labels
             pct = risk_decomp.get(item, 0)
             bar['value'] = min(pct, 100)
-            lbl.config(text=f"{pct:.0f}%")
+            pct_lbl.config(text=f"{pct:.0f}%")
+            
+            # Category labels
+            if item == 'Idiosyncratic':
+                cat_lbl.config(text="Stock-specific")
+                idio_pct = pct
+            else:
+                factor_total += pct
+                if pct > 30:
+                    cat_lbl.config(text="Major driver")
+                elif pct > 15:
+                    cat_lbl.config(text="Significant")
+                elif pct > 5:
+                    cat_lbl.config(text="Minor")
+                else:
+                    cat_lbl.config(text="Negligible")
+        
+        # Update summary
+        self.risk_factor_total.config(text=f"📊 Factor: {factor_total:.0f}% | 🎯 Idio: {idio_pct:.0f}%")
         
         # AI Insight
         self._generate_stock_ai_insight(symbol, exposures, alignment, attribution, regime_perf)
