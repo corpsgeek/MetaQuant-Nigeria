@@ -29,6 +29,7 @@ from src.gui.tabs.paper_trading_tab import PaperTradingTab
 from src.gui.tabs.watchlist_tab import WatchlistTab
 from src.gui.tabs.risk_dashboard_tab import RiskDashboardTab
 from src.gui.tabs.data_quality_tab import DataQualityTab
+from src.gui.tabs.disclosures_tab import DisclosuresTab
 from src.gui.components.tv_login_dialog import show_tv_login_dialog
 
 # Background data sync
@@ -277,6 +278,10 @@ class MetaQuantApp:
         self.data_quality_frame = ttk.Frame(self.notebook)
         self.data_quality_tab = DataQualityTab(self.data_quality_frame, self.db)
         self.notebook.add(self.data_quality_frame, text="📊 Data Quality")
+        
+        # Corporate Disclosures Intelligence
+        self.disclosures_tab = DisclosuresTab(self.notebook, self.db)
+        self.notebook.add(self.disclosures_tab.frame, text="📋 Disclosures")
         
         self.notebook.add(self.portfolio_mgr_tab.frame, text="🤖 AI Manager")
         self.notebook.add(self.history_tab.frame, text="📅 History")
