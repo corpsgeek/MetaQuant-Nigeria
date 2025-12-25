@@ -269,31 +269,35 @@ class PCAAnalysisTab:
         self.total_variance.pack(anchor='e')
     
     def _create_returns_table(self, parent):
-        """Create compact factor returns table."""
-        frame = ttk.LabelFrame(parent, text="� Factor Returns")
+        """Create expanded factor returns table."""
+        frame = ttk.LabelFrame(parent, text="📈 Factor Returns")
         frame.pack(fill=tk.BOTH, expand=True, pady=5)
         
         inner = ttk.Frame(frame)
-        inner.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
+        inner.pack(fill=tk.BOTH, expand=True, padx=12, pady=12)
         
         factors = ['Market', 'Size', 'Value', 'Momentum', 'Volatility']
         periods = [('1D', 1), ('1W', 5), ('1M', 20), ('YTD', -1), ('Ann.', 252)]
         
-        # Header
-        ttk.Label(inner, text="", width=7).grid(row=0, column=0)
+        # Header row with larger fonts
+        ttk.Label(inner, text="Factor", width=9, font=('Helvetica', 10, 'bold')).grid(row=0, column=0, pady=5)
         for i, (period, _) in enumerate(periods):
-            ttk.Label(inner, text=period, width=5, font=('Helvetica', 8, 'bold')).grid(row=0, column=i+1)
+            ttk.Label(inner, text=period, width=7, font=('Helvetica', 10, 'bold')).grid(row=0, column=i+1, pady=5)
         
-        # Factor rows
+        # Factor rows with larger fonts and padding
         self.factor_return_labels = {}
         for row, factor in enumerate(factors, 1):
-            ttk.Label(inner, text=factor[:4], width=7, font=('Helvetica', 9)).grid(row=row, column=0, sticky='w')
+            ttk.Label(inner, text=factor, width=9, font=('Helvetica', 10)).grid(row=row, column=0, sticky='w', pady=4)
             
             self.factor_return_labels[factor] = {}
             for col, (period, _) in enumerate(periods, 1):
-                lbl = ttk.Label(inner, text="-", width=5, font=('Helvetica', 9, 'bold'))
-                lbl.grid(row=row, column=col)
+                lbl = ttk.Label(inner, text="-", width=7, font=('Helvetica', 11, 'bold'))
+                lbl.grid(row=row, column=col, pady=4)
                 self.factor_return_labels[factor][period] = lbl
+        
+        # Configure grid weights for expansion
+        for i in range(6):
+            inner.columnconfigure(i, weight=1)
     
     def _create_heatmap_panel(self, parent):
         """Create enhanced exposure heatmap panel."""
