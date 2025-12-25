@@ -1011,33 +1011,44 @@ class PCAAnalysisTab:
         self.risk_factor_total.pack()
     
     def _create_insight_bar(self, parent):
-        """Create AI insight bar at bottom."""
-        frame = ttk.LabelFrame(parent, text="🤖 AI Analysis")
-        frame.pack(fill=tk.X, padx=5, pady=5)
+        """Create enhanced AI insight panel at bottom."""
+        frame = ttk.LabelFrame(parent, text="🤖 AI Factor Intelligence Report")
+        frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
         inner = ttk.Frame(frame)
-        inner.pack(fill=tk.X, padx=10, pady=10)
+        inner.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
-        # AI Text
-        self.stock_ai_text = ttk.Label(inner, text="Select a stock and click Analyze...",
-                                        font=('Helvetica', 10), wraplength=800)
-        self.stock_ai_text.pack(fill=tk.X)
+        # AI Text - using Text widget for multi-line with scrollbar
+        text_frame = ttk.Frame(inner)
+        text_frame.pack(fill=tk.BOTH, expand=True)
+        
+        self.stock_ai_text = tk.Text(text_frame, height=12, font=('Helvetica', 10),
+                                      bg='#2d2d4e', fg='white', wrap=tk.WORD,
+                                      relief='flat', padx=10, pady=8)
+        self.stock_ai_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.stock_ai_text.insert('1.0', "Select a stock and click Analyze to generate Factor Intelligence Report...")
+        self.stock_ai_text.config(state=tk.DISABLED)
+        
+        scrollbar = ttk.Scrollbar(text_frame, orient=tk.VERTICAL, command=self.stock_ai_text.yview)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.stock_ai_text.config(yscrollcommand=scrollbar.set)
         
         # What-If row
         whatif = ttk.Frame(inner)
-        whatif.pack(fill=tk.X, pady=(8, 0))
+        whatif.pack(fill=tk.X, pady=(10, 0))
         
-        ttk.Label(whatif, text="🎛️ What-If Simulator:", font=('Helvetica', 9, 'bold')).pack(side=tk.LEFT)
-        ttk.Label(whatif, text="If Market moves", font=('Helvetica', 9)).pack(side=tk.LEFT, padx=(10, 0))
+        ttk.Label(whatif, text="🎛️ What-If Simulator:", font=('Helvetica', 10, 'bold')).pack(side=tk.LEFT)
+        ttk.Label(whatif, text="If Market moves", font=('Helvetica', 10)).pack(side=tk.LEFT, padx=(15, 0))
         
         self.whatif_var = tk.StringVar(value='5')
-        ttk.Entry(whatif, textvariable=self.whatif_var, width=4).pack(side=tk.LEFT, padx=3)
+        ttk.Entry(whatif, textvariable=self.whatif_var, width=5, font=('Helvetica', 11)).pack(side=tk.LEFT, padx=5)
         
-        ttk.Label(whatif, text="% →", font=('Helvetica', 9)).pack(side=tk.LEFT)
-        self.whatif_result = ttk.Label(whatif, text="Stock: -", font=('Helvetica', 10, 'bold'))
-        self.whatif_result.pack(side=tk.LEFT, padx=5)
+        ttk.Label(whatif, text="% →", font=('Helvetica', 10)).pack(side=tk.LEFT)
+        self.whatif_result = ttk.Label(whatif, text="Stock: -", font=('Helvetica', 12, 'bold'))
+        self.whatif_result.pack(side=tk.LEFT, padx=10)
         
-        ttk.Button(whatif, text="Calculate", command=self._calculate_whatif).pack(side=tk.LEFT, padx=5)
+        ttk.Button(whatif, text="Calculate", command=self._calculate_whatif, 
+                   style='Accent.TButton').pack(side=tk.LEFT, padx=5)
     
     # Legacy methods kept for compatibility
     def _create_stock_selector(self, parent):
@@ -1626,51 +1637,139 @@ class PCAAnalysisTab:
     
     def _generate_stock_ai_insight(self, symbol: str, exposures: dict, 
                                     alignment: float, attribution: dict, regime_perf: dict):
-        """Generate AI insight text for the stock."""
-        # Build characteristics
+        """Generate comprehensive AI insight text for the stock."""
+        if not self.ml_engine or not hasattr(self.ml_engine, 'pca_engine'):
+            return
+        
+        pca = self.ml_engine.pca_engine
+        
+        # === SECTION 1: FACTOR PROFILE ===
         chars = []
-        if exposures.get('Market', 0) > 0.3:
-            chars.append("high-beta")
-        elif exposures.get('Market', 0) < -0.3:
-            chars.append("defensive")
+        profile_details = []
         
-        if exposures.get('Value', 0) > 0.3:
-            chars.append("value-tilted")
-        elif exposures.get('Value', 0) < -0.3:
+        mkt_exp = exposures.get('Market', 0)
+        if mkt_exp > 0.5:
+            chars.append("high-beta aggressive")
+            profile_details.append(f"🔥 High Market Beta ({mkt_exp:+.2f}): Amplifies market moves by ~{abs(mkt_exp)*100:.0f}%")
+        elif mkt_exp > 0.2:
+            chars.append("market-sensitive")
+            profile_details.append(f"📈 Moderate Beta ({mkt_exp:+.2f}): Moves with the market")
+        elif mkt_exp < -0.3:
+            chars.append("defensive/counter-cyclical")
+            profile_details.append(f"🛡️ Defensive ({mkt_exp:+.2f}): Tends to resist market downturns")
+        else:
+            profile_details.append(f"• Market: Neutral exposure ({mkt_exp:+.2f})")
+        
+        val_exp = exposures.get('Value', 0)
+        if val_exp > 0.3:
+            chars.append("deep value")
+            profile_details.append(f"💎 Value Stock ({val_exp:+.2f}): May be undervalued, suits patient investors")
+        elif val_exp < -0.3:
             chars.append("growth-oriented")
+            profile_details.append(f"🚀 Growth Stock ({val_exp:+.2f}): Trades at premium, priced for future growth")
         
-        if exposures.get('Momentum', 0) > 0.3:
-            chars.append("momentum-driven")
+        mom_exp = exposures.get('Momentum', 0)
+        if mom_exp > 0.3:
+            chars.append("momentum winner")
+            profile_details.append(f"⚡ Momentum ({mom_exp:+.2f}): Recent outperformer, trend-following")
+        elif mom_exp < -0.3:
+            chars.append("mean-reverting")
+            profile_details.append(f"🔄 Mean-Reversion ({mom_exp:+.2f}): Recent underperformer, potential turnaround")
         
-        if exposures.get('Volatility', 0) > 0.3:
+        vol_exp = exposures.get('Volatility', 0)
+        if vol_exp > 0.3:
             chars.append("high-volatility")
-        elif exposures.get('Volatility', 0) < -0.3:
-            chars.append("low-volatility")
+            profile_details.append(f"⚠️ High Volatility ({vol_exp:+.2f}): Larger price swings, higher risk/reward")
+        elif vol_exp < -0.3:
+            chars.append("low-volatility stable")
+            profile_details.append(f"✅ Low Volatility ({vol_exp:+.2f}): Stable price action, lower risk")
         
-        char_text = ", ".join(chars) if chars else "balanced"
+        size_exp = exposures.get('Size', 0)
+        if size_exp > 0.3:
+            profile_details.append(f"🏢 Large-Cap Behavior ({size_exp:+.2f})")
+        elif size_exp < -0.3:
+            profile_details.append(f"🏠 Small-Cap Behavior ({size_exp:+.2f})")
         
-        # Current regime assessment
-        regime_info = self.ml_engine.pca_engine.get_market_regime()
+        char_text = ", ".join(chars) if chars else "balanced/neutral"
+        
+        # === SECTION 2: REGIME CONTEXT ===
+        regime_info = pca.get_market_regime()
         current_regime = regime_info.get('regime', 'Unknown')
+        confidence = regime_info.get('confidence', 0)
         
         if current_regime in regime_perf:
-            hist_ret = regime_perf[current_regime].get('avg_return', 0)
-            if hist_ret > 5:
-                regime_assessment = f"FAVORABLE. Historical {current_regime} return: {hist_ret:+.1f}%"
-            elif hist_ret < -5:
-                regime_assessment = f"UNFAVORABLE. Historical {current_regime} return: {hist_ret:+.1f}%"
+            perf = regime_perf[current_regime]
+            hist_ret = perf.get('avg_return', 0)
+            win_rate = perf.get('win_rate', 50)
+            count = perf.get('count', 0)
+            
+            if hist_ret > 5 and win_rate > 55:
+                regime_verdict = "🟢 FAVORABLE"
+                regime_advice = "Consider adding to position"
+            elif hist_ret < -5 or win_rate < 45:
+                regime_verdict = "🔴 UNFAVORABLE"
+                regime_advice = "Consider reducing exposure or hedging"
             else:
-                regime_assessment = f"NEUTRAL. Historical {current_regime} return: {hist_ret:+.1f}%"
+                regime_verdict = "🟡 NEUTRAL"
+                regime_advice = "Monitor closely for regime changes"
         else:
-            regime_assessment = "Insufficient data"
+            regime_verdict = "⚪ UNKNOWN"
+            regime_advice = "Insufficient historical data"
+            hist_ret = 0
+            win_rate = 50
+            count = 0
         
-        # Alpha
+        # === SECTION 3: ALPHA & ATTRIBUTION ===
         alpha = attribution.get('Alpha', 0)
-        alpha_text = f"Recent alpha: {alpha:+.1f}%" if alpha else ""
+        total_return = attribution.get('Total', 0)
+        mkt_contrib = attribution.get('Market', 0)
         
-        insight = f"{symbol} is a {char_text} stock. Current {current_regime} regime is {regime_assessment}. {alpha_text}"
+        if alpha > 2:
+            alpha_verdict = "🌟 Strong positive alpha - stock-specific outperformance"
+        elif alpha > 0:
+            alpha_verdict = "✅ Positive alpha - slight outperformance"
+        elif alpha < -2:
+            alpha_verdict = "⚠️ Negative alpha - stock-specific underperformance"
+        else:
+            alpha_verdict = "➖ Neutral alpha - returns explained by factors"
         
-        self.stock_ai_text.config(text=insight)
+        # === SECTION 4: ALIGNMENT ===
+        if alignment > 0.3:
+            align_verdict = "✅ ALIGNED with current regime factors"
+        elif alignment < -0.3:
+            align_verdict = "⚠️ MISALIGNED - positioned against regime factors"
+        else:
+            align_verdict = "➖ Neutral regime alignment"
+        
+        # === BUILD COMPREHENSIVE INSIGHT ===
+        insight_lines = [
+            f"📊 {symbol} FACTOR INTELLIGENCE",
+            f"",
+            f"🎯 PROFILE: {char_text.upper()}",
+        ]
+        
+        for detail in profile_details[:4]:  # Limit to top 4
+            insight_lines.append(f"   {detail}")
+        
+        insight_lines.extend([
+            f"",
+            f"⚡ REGIME CONTEXT ({current_regime} @ {confidence:.0%} confidence):",
+            f"   • Environment: {regime_verdict}",
+            f"   • Historical in this regime: {hist_ret:+.1f}% avg, {win_rate:.0f}% win rate ({count} periods)",
+            f"   • Recommendation: {regime_advice}",
+            f"",
+            f"💰 1M PERFORMANCE: {total_return:+.1f}% total",
+            f"   • Factor-driven: {mkt_contrib:+.1f}% | Alpha: {alpha:+.1f}%",
+            f"   • {alpha_verdict}",
+            f"",
+            f"🧭 ALIGNMENT: {alignment:+.2f} — {align_verdict}",
+        ])
+        
+        # Update text widget (not label)
+        self.stock_ai_text.config(state=tk.NORMAL)
+        self.stock_ai_text.delete('1.0', tk.END)
+        self.stock_ai_text.insert('1.0', "\n".join(insight_lines))
+        self.stock_ai_text.config(state=tk.DISABLED)
     
     def _on_similar_stock_click(self, event):
         """Handle click on similar stock to analyze it."""
