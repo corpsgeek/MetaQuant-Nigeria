@@ -1972,6 +1972,15 @@ class FlowTapeTab:
             self.pathway_status.configure(text=f"⚠️ {result['error']}")
             return
         
+        # Safe format helper to avoid NaN display
+        def safe_fmt(val, fmt=".2f", default="--"):
+            try:
+                if val is None or (isinstance(val, float) and (val != val)):  # NaN check
+                    return default
+                return f"{val:{fmt}}"
+            except:
+                return default
+        
         # Update horizon cards
         predictions = result.get('predictions', {})
         for horizon, data in predictions.items():
@@ -1979,31 +1988,32 @@ class FlowTapeTab:
                 card = self.pathway_cards[horizon]
                 
                 # Price and return
-                exp_price = data.get('expected_price', 0)
-                exp_ret = data.get('expected_return', 0)
-                card['price'].configure(text=f"₦{exp_price:,.2f}")
+                exp_price = data.get('expected_price', 0) or 0
+                exp_ret = data.get('expected_return', 0) or 0
+                card['price'].configure(text=f"₦{safe_fmt(exp_price, ',.2f', '0.00')}")
                 
                 ret_color = COLORS['gain'] if exp_ret >= 0 else COLORS['loss']
-                card['return'].configure(text=f"{'+' if exp_ret >= 0 else ''}{exp_ret}%", foreground=ret_color)
+                sign = '+' if exp_ret >= 0 else ''
+                card['return'].configure(text=f"{sign}{safe_fmt(exp_ret, '.2f', '0.00')}%", foreground=ret_color)
                 
                 # Bull scenario
                 bull = data.get('bull', {})
-                card['bull_price'].configure(text=f"₦{bull.get('price', 0):,.2f}")
-                card['bull_prob'].configure(text=f"({bull.get('probability', 0)}%)")
+                card['bull_price'].configure(text=f"₦{safe_fmt(bull.get('price', 0), ',.2f', '0.00')}")
+                card['bull_prob'].configure(text=f"({safe_fmt(bull.get('probability', 0), '.1f', '33')}%)")
                 
                 # Base scenario
                 base = data.get('base', {})
-                card['base_price'].configure(text=f"₦{base.get('price', 0):,.2f}")
-                card['base_prob'].configure(text=f"({base.get('probability', 0)}%)")
+                card['base_price'].configure(text=f"₦{safe_fmt(base.get('price', 0), ',.2f', '0.00')}")
+                card['base_prob'].configure(text=f"({safe_fmt(base.get('probability', 0), '.1f', '34')}%)")
                 
                 # Bear scenario
                 bear = data.get('bear', {})
-                card['bear_price'].configure(text=f"₦{bear.get('price', 0):,.2f}")
-                card['bear_prob'].configure(text=f"({bear.get('probability', 0)}%)")
+                card['bear_price'].configure(text=f"₦{safe_fmt(bear.get('price', 0), ',.2f', '0.00')}")
+                card['bear_prob'].configure(text=f"({safe_fmt(bear.get('probability', 0), '.1f', '33')}%)")
                 
                 # Confidence
-                conf = data.get('confidence', 50)
-                card['confidence'].configure(text=f"Confidence: {conf}%")
+                conf = data.get('confidence', 50) or 50
+                card['confidence'].configure(text=f"Confidence: {safe_fmt(conf, '.1f', '50')}%")
         
         # Update bid/offer gauge
         bidoffer = result.get('bid_offer', {})
