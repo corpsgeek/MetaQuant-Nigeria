@@ -733,7 +733,7 @@ class PCAAnalysisTab:
         self.stock_info_label.pack(side=tk.LEFT, padx=20)
     
     def _create_radar_panel(self, parent, row, col):
-        """Create factor radar chart panel."""
+        """Create factor profile bar chart panel (replaced radar to avoid segfault)."""
         frame = ttk.LabelFrame(parent, text="📊 Factor Profile")
         frame.grid(row=row, column=col, sticky='nsew', padx=3, pady=3)
         
@@ -741,6 +741,7 @@ class PCAAnalysisTab:
             from matplotlib.figure import Figure
             from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
             
+            # Use regular bar chart instead of polar (avoids macOS segfault)
             self._radar_fig = Figure(figsize=(3, 2.5), dpi=80, facecolor='#1a1a2e')
             self._radar_canvas = FigureCanvasTkAgg(self._radar_fig, master=frame)
             self._radar_canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
@@ -1177,43 +1178,49 @@ class PCAAnalysisTab:
         self._generate_stock_ai_insight(symbol, exposures, alignment, attribution, regime_perf)
     
     def _update_radar_chart(self, symbol: str, exposures: dict):
-        """Update the radar chart with stock factor profile."""
+        """Update the factor profile chart (horizontal bar, not polar)."""
         if not MATPLOTLIB_AVAILABLE or not hasattr(self, '_radar_fig'):
             return
         
         import numpy as np
         
-        self._radar_fig.clear()
-        ax = self._radar_fig.add_subplot(111, projection='polar')
-        ax.set_facecolor('#1a1a2e')
-        
-        factors = ['Market', 'Size', 'Value', 'Momentum', 'Volatility']
-        values = [exposures.get(f, 0) for f in factors]
-        values.append(values[0])  # Close the loop
-        
-        angles = np.linspace(0, 2 * np.pi, len(factors), endpoint=False).tolist()
-        angles.append(angles[0])
-        
-        # Stock line
-        ax.plot(angles, [(v + 1) * 50 for v in values], 'o-', linewidth=2, 
-                color='#00ff88', label=symbol)
-        ax.fill(angles, [(v + 1) * 50 for v in values], alpha=0.25, color='#00ff88')
-        
-        # Market average line
-        if self.ml_engine and hasattr(self.ml_engine, 'pca_engine'):
-            avg = self.ml_engine.pca_engine.get_market_average_exposures()
-            avg_values = [avg.get(f, 0) for f in factors]
-            avg_values.append(avg_values[0])
-            ax.plot(angles, [(v + 1) * 50 for v in avg_values], '--', 
-                    linewidth=1, color='#888888', label='Market Avg')
-        
-        ax.set_xticks(angles[:-1])
-        ax.set_xticklabels([f[:3] for f in factors], color='white', fontsize=8)
-        ax.set_yticks([])
-        ax.tick_params(colors='white')
-        
-        self._radar_fig.tight_layout()
-        self._radar_canvas.draw()
+        try:
+            self._radar_fig.clear()
+            ax = self._radar_fig.add_subplot(111)
+            ax.set_facecolor('#1a1a2e')
+            
+            factors = ['Mkt', 'Size', 'Val', 'Mom', 'Vol']
+            full_factors = ['Market', 'Size', 'Value', 'Momentum', 'Volatility']
+            stock_values = [exposures.get(f, 0) for f in full_factors]
+            
+            # Market average
+            avg_values = [0] * 5
+            if self.ml_engine and hasattr(self.ml_engine, 'pca_engine'):
+                avg = self.ml_engine.pca_engine.get_market_average_exposures()
+                avg_values = [avg.get(f, 0) for f in full_factors]
+            
+            y = np.arange(len(factors))
+            height = 0.35
+            
+            # Horizontal bars
+            bars1 = ax.barh(y - height/2, stock_values, height, label=symbol[:8], color='#00ff88')
+            bars2 = ax.barh(y + height/2, avg_values, height, label='Market', color='#555555', alpha=0.7)
+            
+            ax.set_yticks(y)
+            ax.set_yticklabels(factors, color='white', fontsize=8)
+            ax.axvline(x=0, color='white', linewidth=0.5, alpha=0.5)
+            ax.set_xlabel('Exposure', color='white', fontsize=8)
+            ax.tick_params(colors='white', labelsize=7)
+            ax.legend(loc='lower right', fontsize=7, facecolor='#2d2d4e', labelcolor='white')
+            
+            # Color bars by sign
+            for bar, val in zip(bars1, stock_values):
+                bar.set_color('#00ff88' if val >= 0 else '#ff6b6b')
+            
+            self._radar_fig.tight_layout()
+            self._radar_canvas.draw()
+        except Exception as e:
+            logger.debug(f"Radar chart update failed: {e}")
     
     def _generate_stock_ai_insight(self, symbol: str, exposures: dict, 
                                     alignment: float, attribution: dict, regime_perf: dict):
