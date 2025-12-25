@@ -172,9 +172,9 @@ def main():
     args = parser.parse_args()
     
     # Import after argument parsing to avoid import overhead if just checking help
-    from src.database.manager import DatabaseManager
-    from src.backtesting.engine import BacktestEngine
-    from src.trading.trading_tables import TradingTables
+    from src.database import DatabaseManager
+    from src.backtesting import BacktestEngine
+    from src.trading import TradingTables
     
     logger.info("Initializing database...")
     db = DatabaseManager()
