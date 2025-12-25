@@ -609,9 +609,22 @@ class PaperTradingTab:
             self.hero_metrics['open_positions'].config(text=f"{len(positions)}/15")
         
         # Update quick trade symbol combo
-        if hasattr(self, 'quick_symbol_combo') and self._price_data:
-            symbols = list(self._price_data.keys())
-            self.quick_symbol_combo['values'] = sorted(symbols)
+        if hasattr(self, 'quick_symbol_combo'):
+            symbols = []
+            # First try from price data
+            if self._price_data:
+                symbols = list(self._price_data.keys())
+            # Fallback to database query
+            if not symbols and self.db:
+                try:
+                    result = self.db.conn.execute(
+                        "SELECT symbol FROM stocks WHERE is_active = TRUE ORDER BY symbol"
+                    ).fetchall()
+                    symbols = [r[0] for r in result]
+                except:
+                    pass
+            if symbols:
+                self.quick_symbol_combo['values'] = sorted(symbols)
         
         # Format and display old metrics (for compatibility)
         if hasattr(self, 'perf_metrics'):
