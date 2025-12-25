@@ -273,13 +273,20 @@ class DataQualityTab:
                         'status_icon': status_icon
                     })
                 
-                # Update UI on main thread
-                self.parent.after(0, self._update_ui)
+                # Update UI on main thread - use try/except for thread safety
+                try:
+                    self.parent.after(0, self._update_ui)
+                except RuntimeError:
+                    # Main loop not ready yet, skip UI update
+                    pass
                 
             except Exception as e:
                 error_msg = str(e)
                 logger.error(f"Error loading data quality: {error_msg}")
-                self.parent.after(0, lambda msg=error_msg: self.status_var.set(f"Error: {msg}"))
+                try:
+                    self.parent.after(0, lambda msg=error_msg: self.status_var.set(f"Error: {msg}"))
+                except RuntimeError:
+                    pass
         
         threading.Thread(target=load, daemon=True).start()
     
