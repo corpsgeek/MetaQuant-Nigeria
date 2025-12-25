@@ -32,6 +32,19 @@ class DisclosureScraper:
     
     def _init_table(self):
         """Initialize database table for disclosures."""
+        # Check if table has correct schema by checking columns
+        try:
+            result = self.db.conn.execute("""
+                SELECT company_symbol FROM corporate_disclosures LIMIT 1
+            """).fetchone()
+        except:
+            # Column doesn't exist - drop and recreate with correct schema
+            logger.info("Recreating corporate_disclosures table with correct schema...")
+            try:
+                self.db.conn.execute("DROP TABLE IF EXISTS corporate_disclosures")
+            except:
+                pass
+        
         self.db.conn.execute("""
             CREATE TABLE IF NOT EXISTS corporate_disclosures (
                 id INTEGER PRIMARY KEY,
