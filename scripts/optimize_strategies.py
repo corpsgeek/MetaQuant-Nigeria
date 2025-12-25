@@ -145,9 +145,9 @@ def optimize_single_stock(symbol: str, df: pd.DataFrame, BacktestEngine, db, ml_
     else:
         buy_threshold = max(0.25, min(0.45, 0.3 - mom_20 * 0.3))
     
-    # If backtest didn't find enough trades, use statistical fallback
+    # If backtest didn't find enough trades, use statistical fallback with validation
     if best_result is None:
-        return calculate_statistical_strategy(symbol, df, buy_threshold)
+        return calculate_statistical_strategy(symbol, df, buy_threshold, BacktestEngine, db)
     
     return {
         'symbol': symbol,
@@ -164,19 +164,20 @@ def optimize_single_stock(symbol: str, df: pd.DataFrame, BacktestEngine, db, ml_
     }
 
 
-def calculate_statistical_strategy(symbol: str, df: pd.DataFrame, buy_threshold: float) -> dict:
+def calculate_statistical_strategy(symbol: str, df: pd.DataFrame, buy_threshold: float,
+                                    BacktestEngine=None, db=None) -> dict:
     """
-    Calculate strategy parameters using statistical analysis when backtest fails.
-    Uses volatility and price behavior to set reasonable parameters.
+    Calculate strategy parameters using statistical analysis, then validate
+    with quick backtests to find optimal stop-loss with highest win rate.
     """
     close = df['close'].astype(float)
     
-    # Calculate volatility-based stop-loss
+    # Calculate volatility for baseline
     daily_returns = close.pct_change().dropna()
     volatility = daily_returns.std()
     
-    # Stop-loss: based on 2.5x daily volatility, capped between 3-10%
-    stop_loss = max(0.03, min(0.10, volatility * 2.5))
+    # Baseline stop-loss from volatility
+    base_stop_loss = max(0.03, min(0.10, volatility * 2.5))
     
     # Calculate typical price swings for take-profit
     high = df['high'].astype(float) if 'high' in df.columns else close
@@ -185,28 +186,85 @@ def calculate_statistical_strategy(symbol: str, df: pd.DataFrame, buy_threshold:
     # Average true range / price ratio
     atr_ratio = ((high - low) / close).mean()
     
-    # Max drawup from recent lows (potential gain)
+    # Max drawup from recent lows
     rolling_min = close.rolling(20).min()
     max_gain = ((close - rolling_min) / rolling_min).max()
     
-    # Take-profit: based on ATR and max observed gains, capped between 8-25%
+    # Take-profit: based on ATR and max observed gains
     take_profit = max(0.08, min(0.25, atr_ratio * 15 + max_gain * 0.3))
     
     # Momentum
     mom_20 = (close.iloc[-1] - close.iloc[-20]) / close.iloc[-20] if len(close) >= 20 else 0
     
+    # If we have BacktestEngine, validate different stop-loss levels
+    best_stop_loss = base_stop_loss
+    best_win_rate = 0
+    best_sharpe = 0
+    best_return = 0
+    
+    if BacktestEngine and db and len(df) >= 90:
+        # Test 5 stop-loss values around the baseline
+        stop_loss_options = [
+            max(0.03, base_stop_loss - 0.02),
+            max(0.03, base_stop_loss - 0.01),
+            base_stop_loss,
+            min(0.12, base_stop_loss + 0.01),
+            min(0.12, base_stop_loss + 0.02)
+        ]
+        
+        price_data = {symbol: df}
+        end_date = datetime.now().strftime('%Y-%m-%d')
+        start_date = (datetime.now() - timedelta(days=90)).strftime('%Y-%m-%d')
+        
+        for sl in stop_loss_options:
+            try:
+                engine = BacktestEngine(
+                    initial_capital=10_000_000,
+                    max_positions=1,
+                    stop_loss_pct=sl,
+                    take_profit_pct=take_profit,
+                    db=db,
+                    ml_engine=None
+                )
+                
+                result = engine.run(
+                    symbols=[symbol],
+                    price_data=price_data,
+                    signal_data={},
+                    start_date=start_date,
+                    end_date=end_date
+                )
+                
+                del engine
+                
+                if result:
+                    metrics = result.get('metrics', {})
+                    win_rate = metrics.get('win_rate', 0)
+                    sharpe = metrics.get('sharpe_ratio', 0)
+                    total_return = metrics.get('total_return_pct', 0)
+                    
+                    # Pick the stop-loss with highest win rate (or Sharpe if tied)
+                    if win_rate > best_win_rate or (win_rate == best_win_rate and sharpe > best_sharpe):
+                        best_stop_loss = sl
+                        best_win_rate = win_rate
+                        best_sharpe = sharpe
+                        best_return = total_return
+                        
+            except Exception:
+                pass
+    
     return {
         'symbol': symbol,
-        'stop_loss': round(stop_loss, 3),
+        'stop_loss': round(best_stop_loss, 3),
         'take_profit': round(take_profit, 3),
         'buy_threshold': round(buy_threshold, 3),
         'sell_threshold': round(-buy_threshold * 0.8, 3),
         'avg_hold_days': 10,
         'min_hold_days': 3,
-        'return': round(float(mom_20 * 100), 2),  # 20-day momentum as proxy
-        'win_rate': 50,  # Unknown
-        'sharpe': 0,
-        'trades': 0  # Indicates statistical method used
+        'return': round(float(best_return if best_return else mom_20 * 100), 2),
+        'win_rate': round(best_win_rate, 1),
+        'sharpe': round(best_sharpe, 2),
+        'trades': 0  # Indicates statistical method with validation
     }
 
 
