@@ -103,11 +103,19 @@ class PaperTradingTab:
             self.status_label.config(text=f"Error: {e}", foreground=COLORS['loss'])
     
     def _get_current_price(self, symbol: str) -> Optional[float]:
-        """Get current price for a symbol."""
+        """Get current price for a symbol from loaded price data."""
+        # First try internal price data
+        if self._price_data and symbol in self._price_data:
+            df = self._price_data[symbol]
+            if not df.empty and 'close' in df.columns:
+                return float(df['close'].iloc[-1])
+        
+        # Fallback to external price provider
         if self.price_provider:
             try:
                 prices = self.price_provider()
-                return prices.get(symbol)
+                if isinstance(prices, dict) and symbol in prices:
+                    return float(prices[symbol])
             except:
                 pass
         return None
