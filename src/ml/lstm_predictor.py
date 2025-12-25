@@ -22,79 +22,89 @@ try:
     TORCH_AVAILABLE = True
 except ImportError:
     TORCH_AVAILABLE = False
+    torch = None
+    nn = None
+    Dataset = None
+    DataLoader = None
     logger.warning("PyTorch not available. LSTM prediction disabled.")
 
 
-class StockDataset(Dataset):
-    """PyTorch Dataset for stock price sequences."""
-    
-    def __init__(self, X: np.ndarray, y_dir: np.ndarray, y_mag: np.ndarray):
-        self.X = torch.FloatTensor(X)
-        self.y_dir = torch.LongTensor(y_dir)
-        self.y_mag = torch.FloatTensor(y_mag)
-    
-    def __len__(self):
-        return len(self.X)
-    
-    def __getitem__(self, idx):
-        return self.X[idx], self.y_dir[idx], self.y_mag[idx]
+# Only define PyTorch classes if available
+if TORCH_AVAILABLE:
+    class StockDataset(Dataset):
+        """PyTorch Dataset for stock price sequences."""
+        
+        def __init__(self, X: np.ndarray, y_dir: np.ndarray, y_mag: np.ndarray):
+            self.X = torch.FloatTensor(X)
+            self.y_dir = torch.LongTensor(y_dir)
+            self.y_mag = torch.FloatTensor(y_mag)
+        
+        def __len__(self):
+            return len(self.X)
+        
+        def __getitem__(self, idx):
+            return self.X[idx], self.y_dir[idx], self.y_mag[idx]
 
 
-class LSTMModel(nn.Module):
-    """
-    LSTM Neural Network for stock prediction.
-    
-    Architecture:
-    - 2 LSTM layers with dropout
-    - Dense layers for classification and regression
-    - Dual output: direction (3-class) + magnitude (regression)
-    """
-    
-    def __init__(self, input_size: int, hidden_size: int = 64, num_layers: int = 2, dropout: float = 0.3):
-        super().__init__()
+    class LSTMModel(nn.Module):
+        """
+        LSTM Neural Network for stock prediction.
         
-        self.hidden_size = hidden_size
-        self.num_layers = num_layers
+        Architecture:
+        - 2 LSTM layers with dropout
+        - Dense layers for classification and regression
+        - Dual output: direction (3-class) + magnitude (regression)
+        """
         
-        # LSTM layers
-        self.lstm = nn.LSTM(
-            input_size=input_size,
-            hidden_size=hidden_size,
-            num_layers=num_layers,
-            batch_first=True,
-            dropout=dropout if num_layers > 1 else 0
-        )
+        def __init__(self, input_size: int, hidden_size: int = 64, num_layers: int = 2, dropout: float = 0.3):
+            super().__init__()
+            
+            self.hidden_size = hidden_size
+            self.num_layers = num_layers
+            
+            # LSTM layers
+            self.lstm = nn.LSTM(
+                input_size=input_size,
+                hidden_size=hidden_size,
+                num_layers=num_layers,
+                batch_first=True,
+                dropout=dropout if num_layers > 1 else 0
+            )
+            
+            # Direction classifier (3 classes: DOWN, FLAT, UP)
+            self.direction_head = nn.Sequential(
+                nn.Linear(hidden_size, 32),
+                nn.ReLU(),
+                nn.Dropout(dropout),
+                nn.Linear(32, 3)
+            )
+            
+            # Magnitude regressor
+            self.magnitude_head = nn.Sequential(
+                nn.Linear(hidden_size, 32),
+                nn.ReLU(),
+                nn.Dropout(dropout),
+                nn.Linear(32, 1)
+            )
         
-        # Direction classifier (3 classes: DOWN, FLAT, UP)
-        self.direction_head = nn.Sequential(
-            nn.Linear(hidden_size, 32),
-            nn.ReLU(),
-            nn.Dropout(dropout),
-            nn.Linear(32, 3)
-        )
-        
-        # Magnitude regressor
-        self.magnitude_head = nn.Sequential(
-            nn.Linear(hidden_size, 32),
-            nn.ReLU(),
-            nn.Dropout(dropout),
-            nn.Linear(32, 1)
-        )
-    
-    def forward(self, x):
-        # LSTM forward
-        lstm_out, _ = self.lstm(x)
-        
-        # Take last time step output
-        last_output = lstm_out[:, -1, :]
-        
-        # Direction prediction
-        direction = self.direction_head(last_output)
-        
-        # Magnitude prediction
-        magnitude = self.magnitude_head(last_output).squeeze(-1)
-        
-        return direction, magnitude
+        def forward(self, x):
+            # LSTM forward
+            lstm_out, _ = self.lstm(x)
+            
+            # Take last time step output
+            last_output = lstm_out[:, -1, :]
+            
+            # Direction prediction
+            direction = self.direction_head(last_output)
+            
+            # Magnitude prediction
+            magnitude = self.magnitude_head(last_output).squeeze(-1)
+            
+            return direction, magnitude
+else:
+    # Placeholders when PyTorch not available
+    StockDataset = None
+    LSTMModel = None
 
 
 class LSTMPredictor:
