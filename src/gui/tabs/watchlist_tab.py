@@ -158,7 +158,7 @@ class WatchlistTab:
         """Load watchlists from database."""
         try:
             result = self.db.conn.execute(
-                "SELECT id, name, description FROM watchlists ORDER BY name"
+                "SELECT id, name FROM watchlists ORDER BY name"
             ).fetchall()
             
             self.watchlist_listbox.delete(0, tk.END)
