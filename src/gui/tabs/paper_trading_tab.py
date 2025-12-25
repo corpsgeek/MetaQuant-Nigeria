@@ -590,10 +590,13 @@ class PaperTradingTab:
         )
         self.frame.update()
         
-        # Run optimization script as subprocess
+        # Run optimization script as subprocess using same Python as GUI
         try:
+            import sys as _sys
+            python_exe = _sys.executable
+            
             self._opt_process = subprocess.Popen(
-                ['python', script_path, '--batch-size', '5', '--delay', '2.0'],
+                [python_exe, script_path, '--batch-size', '5', '--delay', '2.0'],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
