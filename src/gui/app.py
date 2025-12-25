@@ -232,6 +232,14 @@ class MetaQuantApp:
             price_provider=get_price_data
         )
         
+        # PCA Analysis tab
+        from src.gui.tabs.pca_analysis_tab import PCAAnalysisTab
+        self.pca_analysis_tab = PCAAnalysisTab(
+            self.notebook, self.db,
+            ml_engine=ml_engine,
+            price_provider=get_price_data
+        )
+        
         # Add tabs to notebook
         self.notebook.add(self.market_intel_tab.frame, text="🧠 Market Intel")
         self.notebook.add(self.universe_tab.frame, text="📋 Universe")
@@ -239,6 +247,7 @@ class MetaQuantApp:
         self.notebook.add(self.flow_tape_tab.frame, text="📊 Flow Tape")
         self.notebook.add(self.fundamentals_tab.frame, text="💰 Fundamentals")
         self.notebook.add(self.ml_intel_tab.frame, text="🤖 ML Intelligence")
+        self.notebook.add(self.pca_analysis_tab.frame, text="🔬 PCA Factors")
         self.notebook.add(self.backtest_tab.frame, text="📈 Backtest")
         self.notebook.add(self.paper_trading_tab.frame, text="📝 Paper Trading")
         self.notebook.add(self.portfolio_mgr_tab.frame, text="🤖 AI Manager")

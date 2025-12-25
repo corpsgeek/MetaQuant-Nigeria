@@ -7,6 +7,7 @@ from .flow_tape_tab import FlowTapeTab
 from .fundamentals_tab import FundamentalsTab
 from .market_intelligence_tab import MarketIntelligenceTab
 from .backtest_tab import BacktestTab
+from .pca_analysis_tab import PCAAnalysisTab
 
 __all__ = [
     'ScreenerTab',
@@ -15,6 +16,6 @@ __all__ = [
     'FlowTapeTab',
     'FundamentalsTab',
     'MarketIntelligenceTab',
-    'BacktestTab'
+    'BacktestTab',
+    'PCAAnalysisTab'
 ]
-
