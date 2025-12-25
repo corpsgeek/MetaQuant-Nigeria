@@ -316,7 +316,8 @@ class XGBPredictor:
             # Compute features
             features = self.compute_features(df, symbol)
             if features.empty or len(features) < 50:
-                return {'success': False, 'error': 'Insufficient data for training'}
+                logger.warning(f"{symbol}: Insufficient data - got {len(features)} feature rows from {len(df)} OHLCV rows (need 50)")
+                return {'success': False, 'error': f'Insufficient data for training ({len(features)} rows)'}
             
             # Align features with price data
             aligned_df = df.loc[features.index].copy()

@@ -281,16 +281,16 @@ class MLIntelligenceTab:
                 
                 for symbol, name, sector, price in stocks:
                     try:
-                        # Get OHLCV data for this symbol (need 200 to have 50+ after feature computation)
+                        # Get OHLCV data for this symbol (need 500 to get 50+ after SMA_200 warmup)
                         ohlcv = self.db.conn.execute("""
                             SELECT datetime, open, high, low, close, volume
                             FROM intraday_ohlcv
                             WHERE symbol = ?
                             ORDER BY datetime DESC
-                            LIMIT 200
+                            LIMIT 500
                         """, [symbol]).fetchall()
                         
-                        if len(ohlcv) < 50:
+                        if len(ohlcv) < 100:
                             continue  # Not enough data
                         
                         import pandas as pd
