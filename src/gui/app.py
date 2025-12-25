@@ -26,6 +26,7 @@ from src.gui.tabs.ml_intelligence_tab import MLIntelligenceTab
 from src.gui.tabs.backtest_tab import BacktestTab
 from src.gui.tabs.portfolio_manager_tab import PortfolioManagerTab
 from src.gui.tabs.paper_trading_tab import PaperTradingTab
+from src.gui.tabs.watchlist_tab import WatchlistTab
 from src.gui.components.tv_login_dialog import show_tv_login_dialog
 
 
@@ -244,6 +245,11 @@ class MetaQuantApp:
         self.notebook.add(self.market_intel_tab.frame, text="🧠 Market Intel")
         self.notebook.add(self.universe_tab.frame, text="📋 Universe")
         self.notebook.add(self.screener_tab.frame, text="📈 Screener")
+        
+        # Watchlist tab
+        self.watchlist_tab = WatchlistTab(self.notebook, self.db)
+        self.notebook.add(self.watchlist_tab.frame, text="⭐ Watchlist")
+        
         self.notebook.add(self.flow_tape_tab.frame, text="📊 Flow Tape")
         self.notebook.add(self.fundamentals_tab.frame, text="💰 Fundamentals")
         self.notebook.add(self.ml_intel_tab.frame, text="🤖 ML Intelligence")
