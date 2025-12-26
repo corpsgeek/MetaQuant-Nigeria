@@ -48,14 +48,7 @@ def check_password():
     if "password_correct" not in st.session_state:
         st.markdown("""
         <style>
-        .login-container {
-            max-width: 400px;
-            margin: 100px auto;
-            padding: 40px;
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-            border-radius: 20px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-        }
+        .stApp { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); }
         </style>
         """, unsafe_allow_html=True)
         
@@ -80,7 +73,6 @@ def check_password():
             st.error("😕 Invalid username or password")
         return False
     
-    # Password correct
     return True
 
 
@@ -109,52 +101,57 @@ if check_password():
         - 💼 Trading Tools
         """)
     
-    # Main content - Landing page
-    st.markdown("# 🧠 MetaQuant Nigeria Dashboard")
+    # Main content - Quick overview
+    st.markdown("# 📊 MetaQuant Nigeria")
     st.markdown("### Nigerian Stock Market Intelligence Platform")
     
-    # Quick stats row
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.metric("Securities", "155", "+3")
-    with col2:
-        st.metric("ASI", "99,012.45", "+0.42%")
-    with col3:
-        st.metric("Market Cap", "₦56.2T", "+1.2%")
-    with col4:
-        st.metric("ML Signals", "12 Bullish", "3 Bearish")
-    
+    # Quick navigation with icons
     st.markdown("---")
-    
-    # Navigation cards
     st.markdown("### 🚀 Quick Navigation")
     
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        st.markdown("""
-        #### 📊 Analysis
-        Stock screener, universe browser, watchlist, fundamentals
-        """)
-        st.page_link("pages/1_📊_Analysis.py", label="Go to Analysis →", icon="📊")
+        st.markdown("#### 🧠 Dashboard")
+        st.markdown("Live market, sector rotation, flow analysis, smart money, AI synthesis")
+        st.page_link("pages/0_🧠_Dashboard.py", label="Open Dashboard →")
     
     with col2:
-        st.markdown("""
-        #### 🤖 ML & Signals
-        ML predictions, PCA factors, anomaly detection
-        """)
-        st.page_link("pages/2_🤖_ML_Signals.py", label="Go to ML →", icon="🤖")
+        st.markdown("#### 📊 Analysis")
+        st.markdown("Screener, universe, watchlist, fundamentals, disclosures")
+        st.page_link("pages/1_📊_Analysis.py", label="Open Analysis →")
     
     with col3:
-        st.markdown("""
-        #### 💼 Trading
-        Backtest, paper trading, risk dashboard
-        """)
-        st.page_link("pages/3_💼_Trading.py", label="Go to Trading →", icon="💼")
+        st.markdown("#### 🤖 ML & Signals")
+        st.markdown("ML predictions, PCA factors, data quality")
+        st.page_link("pages/2_🤖_ML_Signals.py", label="Open ML →")
     
     with col4:
-        st.markdown("""
-        #### ⚙️ Settings
-        Configuration and preferences
-        """)
-        st.page_link("pages/4_⚙️_Settings.py", label="Go to Settings →", icon="⚙️")
+        st.markdown("#### 💼 Trading")
+        st.markdown("Backtest, paper trading, risk dashboard")
+        st.page_link("pages/3_💼_Trading.py", label="Open Trading →")
+    
+    st.markdown("---")
+    
+    # Quick stats
+    st.markdown("### 📈 Quick Stats")
+    
+    try:
+        from src.database.db_manager import DatabaseManager
+        db = DatabaseManager()
+        db.initialize()
+        
+        # Get stock count
+        stock_count = db.conn.execute("SELECT COUNT(*) FROM stocks").fetchone()[0]
+        
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Securities", stock_count)
+        with col2:
+            st.metric("Data Source", "TradingView")
+        with col3:
+            st.metric("AI Engine", "Groq (Llama 3.3)")
+        with col4:
+            st.metric("ML Models", "XGBoost Ensemble")
+    except Exception as e:
+        st.warning(f"Database not connected: {e}")

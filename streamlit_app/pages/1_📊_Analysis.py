@@ -1,5 +1,6 @@
 """
-Analysis Page - Stock Screener, Universe, Watchlist, Fundamentals
+Analysis Page - Stock Screener, Universe, Watchlist, Fundamentals, Disclosures, Flow Tape
+Full integration with database and real data
 """
 
 import streamlit as st
@@ -7,7 +8,6 @@ import pandas as pd
 import sys
 from pathlib import Path
 
-# Add parent directories for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 st.set_page_config(page_title="Analysis | MetaQuant", page_icon="📊", layout="wide")
@@ -23,15 +23,63 @@ if "password_correct" not in st.session_state or not st.session_state["password_
 
 @st.cache_resource
 def get_db():
-    """Get database connection."""
     try:
         from src.database.db_manager import DatabaseManager
         db = DatabaseManager()
         db.initialize()
         return db
     except Exception as e:
-        st.error(f"Database connection failed: {e}")
         return None
+
+@st.cache_resource
+def get_collector():
+    try:
+        from src.collectors.tradingview_collector import TradingViewCollector
+        return TradingViewCollector()
+    except:
+        return None
+
+@st.cache_data(ttl=300)
+def load_all_stocks():
+    collector = get_collector()
+    if collector:
+        try:
+            df = collector.get_all_stocks()
+            return df if not df.empty else pd.DataFrame()
+        except:
+            pass
+    return pd.DataFrame()
+
+@st.cache_data(ttl=300)
+def load_universe():
+    db = get_db()
+    if db:
+        try:
+            result = db.conn.execute("""
+                SELECT symbol, name, sector, subsector, market_cap
+                FROM stocks
+                ORDER BY symbol
+            """).fetchall()
+            return pd.DataFrame(result, columns=['Symbol', 'Name', 'Sector', 'Subsector', 'Market Cap'])
+        except:
+            pass
+    return pd.DataFrame()
+
+@st.cache_data(ttl=300)
+def load_disclosures():
+    db = get_db()
+    if db:
+        try:
+            result = db.conn.execute("""
+                SELECT date, company_symbol, type, url
+                FROM corporate_disclosures
+                ORDER BY date DESC
+                LIMIT 50
+            """).fetchall()
+            return pd.DataFrame(result, columns=['Date', 'Symbol', 'Type', 'URL'])
+        except:
+            pass
+    return pd.DataFrame()
 
 db = get_db()
 
@@ -41,12 +89,12 @@ db = get_db()
 
 st.markdown("# 📊 Stock Analysis")
 
-# Sub-navigation tabs
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "📈 Screener", 
     "📋 Universe", 
     "⭐ Watchlist",
     "💰 Fundamentals",
+    "📋 Disclosures",
     "📊 Flow Tape"
 ])
 
@@ -56,67 +104,69 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
 with tab1:
     st.markdown("### 📈 Stock Screener")
     
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        sector = st.selectbox("Sector", ["All", "Banking", "Oil & Gas", "Consumer Goods", "Insurance", "Industrial"])
-    with col2:
-        min_price = st.number_input("Min Price (₦)", value=0.0)
-    with col3:
-        max_price = st.number_input("Max Price (₦)", value=10000.0)
+    df = load_all_stocks()
+    universe = load_universe()
     
-    if st.button("🔍 Screen Stocks", type="primary"):
-        if db:
-            try:
-                stocks = db.get_all_stocks()
-                df = pd.DataFrame(stocks)
-                
-                # Apply filters
-                if sector != "All":
-                    df = df[df.get('sector', '') == sector]
-                
-                df = df[(df.get('close', 0) >= min_price) & (df.get('close', 0) <= max_price)]
-                
-                st.dataframe(df, use_container_width=True)
-                st.success(f"Found {len(df)} stocks matching criteria")
-            except Exception as e:
-                st.error(f"Screener error: {e}")
-        else:
-            # Demo data
-            st.info("Using demo data (database not connected)")
-            demo_df = pd.DataFrame({
-                'Symbol': ['DANGCEM', 'GTCO', 'MTNN', 'ZENITHBANK', 'AIRTEL'],
-                'Name': ['Dangote Cement', 'GTBank', 'MTN Nigeria', 'Zenith Bank', 'Airtel Africa'],
-                'Price': [485.0, 45.5, 295.0, 38.2, 2372.0],
-                'Change': ['+2.1%', '-0.5%', '+1.2%', '+0.8%', '+0.4%'],
-                'Volume': ['1.2M', '5.4M', '890K', '3.2M', '120K']
-            })
-            st.dataframe(demo_df, use_container_width=True)
+    if not df.empty:
+        # Get unique sectors from universe
+        sectors = ['All'] + sorted(universe['Sector'].dropna().unique().tolist()) if not universe.empty else ['All']
+        
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            sector = st.selectbox("Sector", sectors)
+        with col2:
+            min_price = st.number_input("Min Price", value=0.0)
+        with col3:
+            max_price = st.number_input("Max Price", value=10000.0)
+        with col4:
+            min_change = st.number_input("Min Change %", value=-100.0)
+        
+        if st.button("🔍 Screen", type="primary"):
+            # Apply filters
+            filtered = df.copy()
+            
+            if 'close' in filtered.columns:
+                filtered = filtered[(filtered['close'] >= min_price) & (filtered['close'] <= max_price)]
+            
+            if 'change' in filtered.columns:
+                filtered = filtered[filtered['change'] >= min_change]
+            
+            if sector != 'All' and not universe.empty:
+                sector_symbols = universe[universe['Sector'] == sector]['Symbol'].tolist()
+                filtered = filtered[filtered['symbol'].isin(sector_symbols)]
+            
+            st.success(f"Found {len(filtered)} stocks")
+            
+            if not filtered.empty:
+                display = filtered[['symbol', 'close', 'change', 'volume']].copy()
+                display.columns = ['Symbol', 'Price', 'Change %', 'Volume']
+                st.dataframe(display, use_container_width=True, hide_index=True, height=400)
+    else:
+        st.info("Loading data...")
 
 # -----------------------------------------------------------------------------
 # TAB 2: UNIVERSE
 # -----------------------------------------------------------------------------
 with tab2:
     st.markdown("### 📋 Stock Universe")
-    st.markdown("View all 155 securities on the Nigerian Stock Exchange")
     
-    if db:
-        try:
-            stocks = db.get_all_stocks()
-            df = pd.DataFrame(stocks)
-            
-            # Search filter
-            search = st.text_input("🔍 Search by symbol or name")
-            if search:
-                mask = df['symbol'].str.contains(search.upper(), na=False) | \
-                       df.get('name', pd.Series()).str.contains(search, case=False, na=False)
-                df = df[mask]
-            
-            st.dataframe(df, use_container_width=True, height=500)
-            st.caption(f"Showing {len(df)} securities")
-        except Exception as e:
-            st.error(f"Error loading universe: {e}")
+    universe = load_universe()
+    
+    if not universe.empty:
+        search = st.text_input("🔍 Search by symbol or name")
+        
+        filtered = universe
+        if search:
+            mask = (
+                filtered['Symbol'].str.contains(search.upper(), na=False) | 
+                filtered['Name'].str.contains(search, case=False, na=False)
+            )
+            filtered = filtered[mask]
+        
+        st.dataframe(filtered, use_container_width=True, hide_index=True, height=500)
+        st.caption(f"Showing {len(filtered)} of {len(universe)} securities")
     else:
-        st.info("Database not connected")
+        st.info("Loading universe...")
 
 # -----------------------------------------------------------------------------
 # TAB 3: WATCHLIST
@@ -124,31 +174,48 @@ with tab2:
 with tab3:
     st.markdown("### ⭐ Your Watchlist")
     
-    # Session state for watchlist
     if "watchlist" not in st.session_state:
         st.session_state.watchlist = ["DANGCEM", "GTCO", "MTNN", "ZENITHBANK", "AIRTEL"]
     
-    # Add symbol
     col1, col2 = st.columns([3, 1])
     with col1:
-        new_symbol = st.text_input("Add symbol to watchlist")
+        new_symbol = st.text_input("Add symbol")
     with col2:
         st.markdown("<br>", unsafe_allow_html=True)
         if st.button("➕ Add"):
-            if new_symbol.upper() not in st.session_state.watchlist:
+            if new_symbol.upper() and new_symbol.upper() not in st.session_state.watchlist:
                 st.session_state.watchlist.append(new_symbol.upper())
                 st.success(f"Added {new_symbol.upper()}")
+                st.rerun()
     
-    # Display watchlist
     st.markdown("---")
-    for i, symbol in enumerate(st.session_state.watchlist):
-        col1, col2, col3 = st.columns([2, 2, 1])
+    
+    # Get prices for watchlist
+    df = load_all_stocks()
+    
+    for symbol in st.session_state.watchlist:
+        col1, col2, col3, col4 = st.columns([2, 2, 1, 1])
+        
         with col1:
             st.markdown(f"**{symbol}**")
+        
         with col2:
-            st.markdown("₦---.--")  # Would fetch real price
+            if not df.empty and 'symbol' in df.columns:
+                stock = df[df['symbol'] == symbol]
+                if not stock.empty:
+                    price = stock.iloc[0].get('close', 0)
+                    change = stock.iloc[0].get('change', 0)
+                    st.markdown(f"₦{price:,.2f} ({change:+.2f}%)")
+                else:
+                    st.markdown("--")
+            else:
+                st.markdown("--")
+        
         with col3:
-            if st.button("❌", key=f"remove_{i}"):
+            pass
+        
+        with col4:
+            if st.button("❌", key=f"rm_{symbol}"):
                 st.session_state.watchlist.remove(symbol)
                 st.rerun()
 
@@ -158,40 +225,74 @@ with tab3:
 with tab4:
     st.markdown("### 💰 Fundamentals")
     
-    symbol = st.selectbox("Select Stock", ["DANGCEM", "GTCO", "MTNN", "ZENITHBANK", "AIRTEL", "NESTLE"])
+    universe = load_universe()
+    symbols = universe['Symbol'].tolist() if not universe.empty else []
     
-    if symbol:
-        col1, col2 = st.columns(2)
+    if symbols:
+        symbol = st.selectbox("Select Stock", symbols)
         
-        with col1:
-            st.markdown("#### Key Metrics")
-            st.metric("Market Cap", "₦8.5T")
-            st.metric("P/E Ratio", "12.5")
-            st.metric("EPS", "₦38.50")
-            st.metric("Dividend Yield", "4.2%")
-        
-        with col2:
-            st.markdown("#### Performance")
-            st.metric("52W High", "₦540.00")
-            st.metric("52W Low", "₦320.00")
-            st.metric("YTD Return", "+18.5%")
-            st.metric("Beta", "0.85")
+        if symbol:
+            df = load_all_stocks()
+            
+            if not df.empty:
+                stock = df[df['symbol'] == symbol]
+                
+                if not stock.empty:
+                    s = stock.iloc[0]
+                    
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        st.markdown("#### Key Metrics")
+                        st.metric("Price", f"₦{s.get('close', 0):,.2f}")
+                        st.metric("Change", f"{s.get('change', 0):+.2f}%")
+                        st.metric("Volume", f"{s.get('volume', 0):,.0f}")
+                        if 'market_cap_basic' in s:
+                            st.metric("Market Cap", f"₦{s.get('market_cap_basic', 0)/1e9:.2f}B")
+                    
+                    with col2:
+                        st.markdown("#### Performance")
+                        if 'Perf.W' in s:
+                            st.metric("1W Return", f"{s.get('Perf.W', 0):+.2f}%")
+                        if 'Perf.1M' in s:
+                            st.metric("1M Return", f"{s.get('Perf.1M', 0):+.2f}%")
+                        if 'Perf.Y' in s:
+                            st.metric("YTD Return", f"{s.get('Perf.Y', 0):+.2f}%")
+                else:
+                    st.info(f"No data for {symbol}")
+    else:
+        st.info("Loading...")
 
 # -----------------------------------------------------------------------------
-# TAB 5: FLOW TAPE
+# TAB 5: DISCLOSURES
 # -----------------------------------------------------------------------------
 with tab5:
+    st.markdown("### 📋 Corporate Disclosures")
+    
+    disclosures = load_disclosures()
+    
+    if not disclosures.empty:
+        st.dataframe(disclosures, use_container_width=True, hide_index=True)
+    else:
+        st.info("No recent disclosures found")
+
+# -----------------------------------------------------------------------------
+# TAB 6: FLOW TAPE
+# -----------------------------------------------------------------------------
+with tab6:
     st.markdown("### 📊 Flow Tape")
-    st.markdown("Real-time order flow analysis")
     
-    # Demo flow data
-    flow_data = pd.DataFrame({
-        'Time': ['09:31:15', '09:31:12', '09:31:08', '09:31:05', '09:31:01'],
-        'Symbol': ['DANGCEM', 'GTCO', 'MTNN', 'ZENITHBANK', 'AIRTEL'],
-        'Side': ['BUY', 'SELL', 'BUY', 'BUY', 'SELL'],
-        'Price': ['₦485.00', '₦45.5', '₦295.00', '₦38.20', '₦2,372.00'],
-        'Volume': ['50,000', '120,000', '25,000', '80,000', '5,000'],
-        'Delta': ['+1.2M', '-5.4M', '+7.4M', '+3.0M', '-11.9M']
-    })
+    df = load_all_stocks()
     
-    st.dataframe(flow_data, use_container_width=True)
+    if not df.empty and 'volume' in df.columns:
+        # Calculate money flow
+        df['money_flow'] = df['close'] * df['volume']
+        df['direction'] = df['change'].apply(lambda x: '📈 BUY' if x > 0 else ('📉 SELL' if x < 0 else '➡️ NEUTRAL'))
+        
+        top_flows = df.nlargest(20, 'money_flow')[['symbol', 'direction', 'close', 'volume', 'money_flow', 'change']]
+        top_flows['money_flow'] = top_flows['money_flow'].apply(lambda x: f"₦{x/1e6:.1f}M")
+        top_flows.columns = ['Symbol', 'Direction', 'Price', 'Volume', 'Flow', 'Change %']
+        
+        st.dataframe(top_flows, use_container_width=True, hide_index=True)
+    else:
+        st.info("Loading flow data...")
