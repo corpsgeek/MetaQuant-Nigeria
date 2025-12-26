@@ -212,7 +212,7 @@ class MetaQuantApp:
         settings_btn.pack(side=tk.LEFT, padx=(10, 0))
     
     def _create_notebook(self):
-        """Create the tabbed notebook interface."""
+        """Create the tabbed notebook interface with logical grouping."""
         notebook_frame = ttk.Frame(self.main_frame)
         notebook_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
         
@@ -222,32 +222,28 @@ class MetaQuantApp:
             self.notebook = ttk.Notebook(notebook_frame)
         self.notebook.pack(fill=tk.BOTH, expand=True)
         
-        # Create tabs
+        # ============================================================
+        # Initialize all tabs
+        # ============================================================
+        
+        # Market Overview tabs
         self.market_intel_tab = MarketIntelligenceTab(self.notebook, self.db)
+        self.flow_tape_tab = FlowTapeTab(self.notebook, self.db)
+        self.disclosures_tab = DisclosuresTab(self.notebook, self.db)
+        
+        # Stock Analysis tabs
         self.screener_tab = ScreenerTab(self.notebook, self.db)
         self.universe_tab = UniverseTab(self.notebook, self.db)
-        self.history_tab = HistoryTab(self.notebook, self.db)
-        self.flow_tape_tab = FlowTapeTab(self.notebook, self.db)
+        self.watchlist_tab = WatchlistTab(self.notebook, self.db)
         self.fundamentals_tab = FundamentalsTab(self.notebook, self.db)
-        self.ml_intel_tab = MLIntelligenceTab(self.notebook, self.db)
         
-        # Get ML engine from ML tab for backtest/portfolio integration
+        # ML & Analytics tabs
+        self.ml_intel_tab = MLIntelligenceTab(self.notebook, self.db)
         ml_engine = getattr(self.ml_intel_tab, 'ml_engine', None)
         
-        self.backtest_tab = BacktestTab(self.notebook, self.db, ml_engine=ml_engine)
-        self.portfolio_mgr_tab = PortfolioManagerTab(self.notebook, self.db, ml_engine=ml_engine)
-        
-        # Paper Trading tab with price data provider
         def get_price_data():
             return getattr(self.backtest_tab, 'price_data', {})
         
-        self.paper_trading_tab = PaperTradingTab(
-            self.notebook, self.db, 
-            ml_engine=ml_engine,
-            price_provider=get_price_data
-        )
-        
-        # PCA Analysis tab
         from src.gui.tabs.pca_analysis_tab import PCAAnalysisTab
         self.pca_analysis_tab = PCAAnalysisTab(
             self.notebook, self.db,
@@ -255,35 +251,48 @@ class MetaQuantApp:
             price_provider=get_price_data
         )
         
-        # Add tabs to notebook
-        self.notebook.add(self.market_intel_tab.frame, text="🧠 Market Intel")
-        self.notebook.add(self.universe_tab.frame, text="📋 Universe")
-        self.notebook.add(self.screener_tab.frame, text="📈 Screener")
-        
-        # Watchlist tab
-        self.watchlist_tab = WatchlistTab(self.notebook, self.db)
-        self.notebook.add(self.watchlist_tab.frame, text="⭐ Watchlist")
-        
-        self.notebook.add(self.flow_tape_tab.frame, text="📊 Flow Tape")
-        self.notebook.add(self.fundamentals_tab.frame, text="💰 Fundamentals")
-        self.notebook.add(self.ml_intel_tab.frame, text="🤖 ML Intelligence")
-        self.notebook.add(self.pca_analysis_tab.frame, text="🔬 PCA Factors")
-        self.notebook.add(self.backtest_tab.frame, text="📈 Backtest")
-        self.notebook.add(self.paper_trading_tab.frame, text="📝 Paper Trading")
-        
-        # Risk Dashboard
-        self.risk_dashboard_tab = RiskDashboardTab(self.notebook, self.db)
-        self.notebook.add(self.risk_dashboard_tab.frame, text="⚠️ Risk Dashboard")
-        
-        # Data Quality Dashboard
         self.data_quality_frame = ttk.Frame(self.notebook)
         self.data_quality_tab = DataQualityTab(self.data_quality_frame, self.db)
-        self.notebook.add(self.data_quality_frame, text="📊 Data Quality")
         
-        # Corporate Disclosures Intelligence
-        self.disclosures_tab = DisclosuresTab(self.notebook, self.db)
+        # Trading & Risk tabs
+        self.backtest_tab = BacktestTab(self.notebook, self.db, ml_engine=ml_engine)
+        self.paper_trading_tab = PaperTradingTab(
+            self.notebook, self.db, 
+            ml_engine=ml_engine,
+            price_provider=get_price_data
+        )
+        self.risk_dashboard_tab = RiskDashboardTab(self.notebook, self.db)
+        self.portfolio_mgr_tab = PortfolioManagerTab(self.notebook, self.db, ml_engine=ml_engine)
+        self.history_tab = HistoryTab(self.notebook, self.db)
+        
+        # ============================================================
+        # GROUP 1: Market Overview
+        # ============================================================
+        self.notebook.add(self.market_intel_tab.frame, text="🧠 Dashboard")
+        self.notebook.add(self.flow_tape_tab.frame, text="📊 Flow Tape")
         self.notebook.add(self.disclosures_tab.frame, text="📋 Disclosures")
         
+        # ============================================================
+        # GROUP 2: Stock Analysis
+        # ============================================================
+        self.notebook.add(self.screener_tab.frame, text="📈 Screener")
+        self.notebook.add(self.universe_tab.frame, text="📋 Universe")
+        self.notebook.add(self.watchlist_tab.frame, text="⭐ Watchlist")
+        self.notebook.add(self.fundamentals_tab.frame, text="💰 Fundamentals")
+        
+        # ============================================================
+        # GROUP 3: ML & Analytics
+        # ============================================================
+        self.notebook.add(self.ml_intel_tab.frame, text="🤖 ML Intelligence")
+        self.notebook.add(self.pca_analysis_tab.frame, text="🔬 PCA Factors")
+        self.notebook.add(self.data_quality_frame, text="📊 Data Quality")
+        
+        # ============================================================
+        # GROUP 4: Trading & Risk
+        # ============================================================
+        self.notebook.add(self.backtest_tab.frame, text="📈 Backtest")
+        self.notebook.add(self.paper_trading_tab.frame, text="📝 Paper Trading")
+        self.notebook.add(self.risk_dashboard_tab.frame, text="⚠️ Risk Dashboard")
         self.notebook.add(self.portfolio_mgr_tab.frame, text="🤖 AI Manager")
         self.notebook.add(self.history_tab.frame, text="📅 History")
     
