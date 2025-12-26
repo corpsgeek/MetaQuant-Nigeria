@@ -1,0 +1,10 @@
+# Streamlit App Requirements
+streamlit>=1.29.0
+plotly>=5.18.0
+pandas>=2.0.0
+numpy>=1.24.0
+
+# These are already in the main project
+# duckdb
+# xgboost
+# groq
