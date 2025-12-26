@@ -436,19 +436,22 @@ Next update in 30 min 📊
                 except:
                     pass
             
-            # 2. PCA FACTOR OVERVIEW (no db needed)
+            # 2. MARKET REGIME (from SmartMoneyDetector which works with DB data)
             try:
-                from src.ml.pca_factor_engine import PCAFactorEngine
-                pca = PCAFactorEngine(n_components=5)
-                regime = pca.get_market_regime() if hasattr(pca, 'get_market_regime') else {}
-                regime_name = regime.get('regime', 'Unknown')
+                from src.analysis.smart_money_detector import SmartMoneyDetector
+                smart_money = SmartMoneyDetector(db=self.db)
+                sm_result = smart_money.analyze_stocks(stocks_data) if stocks_data else {}
+                regime_info = sm_result.get('market_regime', {})
+                regime_name = regime_info.get('regime', 'NEUTRAL')
+                regime_confidence = regime_info.get('confidence', 0.5)
                 
-                factor_lines = []
-                # Factor returns need fitted data, skip for now
+                # Also get flow signals
+                unusual_vol = sm_result.get('unusual_volume', [])[:3]
+                vol_lines = [f"• {v.get('symbol', 'N/A')}: {v.get('volume_ratio', 1):.1f}x avg" for v in unusual_vol]
             except Exception as e:
-                logger.error(f"PCA error: {e}")
-                regime_name = "Unknown"
-                factor_lines = []
+                logger.error(f"Regime error: {e}")
+                regime_name = "NEUTRAL"
+                vol_lines = []
             
             # 3. PATHWAY SUMMARY
             all_signals = []
@@ -492,8 +495,8 @@ Next update in 30 min 📊
 <b>📊 FLOW TAPE:</b>
 {chr(10).join(flow_summaries[:5]) if flow_summaries else '• Neutral flow'}
 
-<b>📈 PCA REGIME: {regime_name.upper()}</b>
-{chr(10).join(factor_lines[:4]) if factor_lines else '• Factors computing...'}
+<b>📈 MARKET REGIME: {regime_name.upper()}</b>
+{chr(10).join(vol_lines) if vol_lines else '• No unusual volume'}
 
 <b>🟢 BULLISH ({len(bullish)}):</b>
 {chr(10).join(bull_lines) if bull_lines else '• None detected'}
