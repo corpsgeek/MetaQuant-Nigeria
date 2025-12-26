@@ -222,14 +222,9 @@ class MetaQuantApp:
             self.notebook = ttk.Notebook(notebook_frame)
         self.notebook.pack(fill=tk.BOTH, expand=True)
         
-        # ============================================================
-        # Initialize ML engine first (needed by multiple tabs)
-        # ============================================================
-        self.ml_intel_tab = MLIntelligenceTab(self.notebook, self.db)
-        ml_engine = getattr(self.ml_intel_tab, 'ml_engine', None)
-        
-        # Placeholder for price data (will be set after backtest_tab creation)
+        # Placeholder for price data and ml_engine (will be set after tab creation)
         self._price_data = {}
+        ml_engine = None
         def get_price_data():
             return self._price_data
         
@@ -274,6 +269,10 @@ class MetaQuantApp:
         else:
             ml_notebook = ttk.Notebook(ml_frame)
         ml_notebook.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        # Initialize ML Intelligence tab with correct parent (ml_notebook)
+        self.ml_intel_tab = MLIntelligenceTab(ml_notebook, self.db)
+        ml_engine = getattr(self.ml_intel_tab, 'ml_engine', None)
         
         from src.gui.tabs.pca_analysis_tab import PCAAnalysisTab
         self.pca_analysis_tab = PCAAnalysisTab(
