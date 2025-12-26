@@ -212,7 +212,7 @@ class MetaQuantApp:
         settings_btn.pack(side=tk.LEFT, padx=(10, 0))
     
     def _create_notebook(self):
-        """Create the tabbed notebook interface with logical grouping."""
+        """Create the consolidated tabbed notebook interface (5 main tabs)."""
         notebook_frame = ttk.Frame(self.main_frame)
         notebook_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
         
@@ -223,78 +223,138 @@ class MetaQuantApp:
         self.notebook.pack(fill=tk.BOTH, expand=True)
         
         # ============================================================
-        # Initialize all tabs
+        # Initialize ML engine first (needed by multiple tabs)
         # ============================================================
-        
-        # Market Overview tabs
-        self.market_intel_tab = MarketIntelligenceTab(self.notebook, self.db)
-        self.flow_tape_tab = FlowTapeTab(self.notebook, self.db)
-        self.disclosures_tab = DisclosuresTab(self.notebook, self.db)
-        
-        # Stock Analysis tabs
-        self.screener_tab = ScreenerTab(self.notebook, self.db)
-        self.universe_tab = UniverseTab(self.notebook, self.db)
-        self.watchlist_tab = WatchlistTab(self.notebook, self.db)
-        self.fundamentals_tab = FundamentalsTab(self.notebook, self.db)
-        
-        # ML & Analytics tabs
         self.ml_intel_tab = MLIntelligenceTab(self.notebook, self.db)
         ml_engine = getattr(self.ml_intel_tab, 'ml_engine', None)
         
+        # Placeholder for price data (will be set after backtest_tab creation)
+        self._price_data = {}
         def get_price_data():
-            return getattr(self.backtest_tab, 'price_data', {})
+            return self._price_data
+        
+        # ============================================================
+        # TAB 1: DASHBOARD (Market Overview)
+        # ============================================================
+        self.market_intel_tab = MarketIntelligenceTab(self.notebook, self.db)
+        self.notebook.add(self.market_intel_tab.frame, text="🧠 Dashboard")
+        
+        # ============================================================
+        # TAB 2: ANALYSIS (Nested sub-tabs)
+        # ============================================================
+        analysis_frame = ttk.Frame(self.notebook)
+        if TTKBOOTSTRAP_AVAILABLE:
+            analysis_notebook = ttk_bs.Notebook(analysis_frame, bootstyle="secondary")
+        else:
+            analysis_notebook = ttk.Notebook(analysis_frame)
+        analysis_notebook.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        self.screener_tab = ScreenerTab(analysis_notebook, self.db)
+        self.universe_tab = UniverseTab(analysis_notebook, self.db)
+        self.watchlist_tab = WatchlistTab(analysis_notebook, self.db)
+        self.fundamentals_tab = FundamentalsTab(analysis_notebook, self.db)
+        self.disclosures_tab = DisclosuresTab(analysis_notebook, self.db)
+        self.flow_tape_tab = FlowTapeTab(analysis_notebook, self.db)
+        
+        analysis_notebook.add(self.screener_tab.frame, text="📈 Screener")
+        analysis_notebook.add(self.universe_tab.frame, text="📋 Universe")
+        analysis_notebook.add(self.watchlist_tab.frame, text="⭐ Watchlist")
+        analysis_notebook.add(self.fundamentals_tab.frame, text="💰 Fundamentals")
+        analysis_notebook.add(self.disclosures_tab.frame, text="📋 Disclosures")
+        analysis_notebook.add(self.flow_tape_tab.frame, text="📊 Flow Tape")
+        
+        self.notebook.add(analysis_frame, text="📊 Analysis")
+        
+        # ============================================================
+        # TAB 3: ML & SIGNALS (Nested sub-tabs)
+        # ============================================================
+        ml_frame = ttk.Frame(self.notebook)
+        if TTKBOOTSTRAP_AVAILABLE:
+            ml_notebook = ttk_bs.Notebook(ml_frame, bootstyle="secondary")
+        else:
+            ml_notebook = ttk.Notebook(ml_frame)
+        ml_notebook.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
         from src.gui.tabs.pca_analysis_tab import PCAAnalysisTab
         self.pca_analysis_tab = PCAAnalysisTab(
-            self.notebook, self.db,
+            ml_notebook, self.db,
             ml_engine=ml_engine,
             price_provider=get_price_data
         )
         
-        self.data_quality_frame = ttk.Frame(self.notebook)
+        self.data_quality_frame = ttk.Frame(ml_notebook)
         self.data_quality_tab = DataQualityTab(self.data_quality_frame, self.db)
         
-        # Trading & Risk tabs
-        self.backtest_tab = BacktestTab(self.notebook, self.db, ml_engine=ml_engine)
+        ml_notebook.add(self.ml_intel_tab.frame, text="🤖 ML Intelligence")
+        ml_notebook.add(self.pca_analysis_tab.frame, text="🔬 PCA Factors")
+        ml_notebook.add(self.data_quality_frame, text="📊 Data Quality")
+        
+        self.notebook.add(ml_frame, text="🤖 ML & Signals")
+        
+        # ============================================================
+        # TAB 4: TRADING (Nested sub-tabs)
+        # ============================================================
+        trading_frame = ttk.Frame(self.notebook)
+        if TTKBOOTSTRAP_AVAILABLE:
+            trading_notebook = ttk_bs.Notebook(trading_frame, bootstyle="secondary")
+        else:
+            trading_notebook = ttk.Notebook(trading_frame)
+        trading_notebook.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        self.backtest_tab = BacktestTab(trading_notebook, self.db, ml_engine=ml_engine)
+        self._price_data = getattr(self.backtest_tab, 'price_data', {})
+        
         self.paper_trading_tab = PaperTradingTab(
-            self.notebook, self.db, 
+            trading_notebook, self.db, 
             ml_engine=ml_engine,
             price_provider=get_price_data
         )
-        self.risk_dashboard_tab = RiskDashboardTab(self.notebook, self.db)
-        self.portfolio_mgr_tab = PortfolioManagerTab(self.notebook, self.db, ml_engine=ml_engine)
-        self.history_tab = HistoryTab(self.notebook, self.db)
+        self.risk_dashboard_tab = RiskDashboardTab(trading_notebook, self.db)
+        self.portfolio_mgr_tab = PortfolioManagerTab(trading_notebook, self.db, ml_engine=ml_engine)
+        self.history_tab = HistoryTab(trading_notebook, self.db)
+        
+        trading_notebook.add(self.backtest_tab.frame, text="📈 Backtest")
+        trading_notebook.add(self.paper_trading_tab.frame, text="📝 Paper Trading")
+        trading_notebook.add(self.risk_dashboard_tab.frame, text="⚠️ Risk")
+        trading_notebook.add(self.portfolio_mgr_tab.frame, text="🤖 AI Manager")
+        trading_notebook.add(self.history_tab.frame, text="📅 History")
+        
+        self.notebook.add(trading_frame, text="💼 Trading")
         
         # ============================================================
-        # GROUP 1: Market Overview
+        # TAB 5: SETTINGS
         # ============================================================
-        self.notebook.add(self.market_intel_tab.frame, text="🧠 Dashboard")
-        self.notebook.add(self.flow_tape_tab.frame, text="📊 Flow Tape")
-        self.notebook.add(self.disclosures_tab.frame, text="📋 Disclosures")
+        settings_frame = ttk.Frame(self.notebook)
+        settings_frame.pack(fill=tk.BOTH, expand=True)
         
-        # ============================================================
-        # GROUP 2: Stock Analysis
-        # ============================================================
-        self.notebook.add(self.screener_tab.frame, text="📈 Screener")
-        self.notebook.add(self.universe_tab.frame, text="📋 Universe")
-        self.notebook.add(self.watchlist_tab.frame, text="⭐ Watchlist")
-        self.notebook.add(self.fundamentals_tab.frame, text="💰 Fundamentals")
+        # Settings content
+        settings_label = ttk.Label(
+            settings_frame, 
+            text="⚙️ Settings",
+            font=get_font('header')
+        )
+        settings_label.pack(pady=20)
         
-        # ============================================================
-        # GROUP 3: ML & Analytics
-        # ============================================================
-        self.notebook.add(self.ml_intel_tab.frame, text="🤖 ML Intelligence")
-        self.notebook.add(self.pca_analysis_tab.frame, text="🔬 PCA Factors")
-        self.notebook.add(self.data_quality_frame, text="📊 Data Quality")
+        # TradingView login button
+        tv_btn = ttk.Button(
+            settings_frame,
+            text="🔗 Configure TradingView Login",
+            command=self._show_settings
+        )
+        tv_btn.pack(pady=10)
         
-        # ============================================================
-        # GROUP 4: Trading & Risk
-        # ============================================================
-        self.notebook.add(self.backtest_tab.frame, text="📈 Backtest")
-        self.notebook.add(self.paper_trading_tab.frame, text="📝 Paper Trading")
-        self.notebook.add(self.risk_dashboard_tab.frame, text="⚠️ Risk Dashboard")
-        self.notebook.add(self.portfolio_mgr_tab.frame, text="🤖 AI Manager")
-        self.notebook.add(self.history_tab.frame, text="📅 History")
+        # App info
+        info_label = ttk.Label(
+            settings_frame,
+            text=f"MetaQuant Nigeria v{self.APP_VERSION}\n\n"
+                 f"• 155 Securities monitored\n"
+                 f"• ML Intelligence powered by XGBoost\n"
+                 f"• AI Synthesis powered by Groq (Llama 3.3)",
+            justify=tk.CENTER
+        )
+        info_label.pack(pady=20)
+        
+        self.notebook.add(settings_frame, text="⚙️ Settings")
     
     def _create_status_bar(self):
         """Create the status bar at the bottom."""
