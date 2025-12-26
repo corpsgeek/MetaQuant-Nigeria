@@ -338,7 +338,9 @@ Good morning! 🌅
             # 4. SECTOR ROTATION
             srp_result = srp.predict() if hasattr(srp, 'predict') else {}
             leading_sector = srp_result.get('predicted_leader', 'Banking')
-            confidence = srp_result.get('confidence', 0.5)
+            raw_confidence = srp_result.get('confidence', 0.5)
+            # Cap confidence at 100% (value should be 0-1 range)
+            confidence = min(raw_confidence if raw_confidence <= 1 else raw_confidence / 100, 1.0)
             
             # 5. SMART MONEY
             sm_result = smart_money.analyze_stocks(stocks_data) if stocks_data else {}
